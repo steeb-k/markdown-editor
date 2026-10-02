@@ -43,7 +43,8 @@ final class ImageControllerTests: XCTestCase {
         XCTAssertEqual(c.resolve("file:///x/y.png")?.path, "/x/y.png")
         XCTAssertEqual(c.resolve("https://example.com/a.png")?.absoluteString, "https://example.com/a.png")
         XCTAssertNil(c.resolve("ftp://example.com/a.png"))
-        XCTAssertNil(c.resolve("data:image/png;base64,AAAA"))
+        // Inline pictures: shown, as the preview shows them (one rule for both, DocumentFileAccess).
+        XCTAssertEqual(c.resolve("data:image/png;base64,AAAA")?.scheme, "data")
         XCTAssertNil(c.resolve(""))
         c.documentURL = { nil }
         XCTAssertNil(c.resolve("img/a.png"), "an untitled document resolves relative paths against nothing")

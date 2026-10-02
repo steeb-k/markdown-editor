@@ -28,10 +28,12 @@ private func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
 /// Every editor object the script has seen, weakly: what is still alive after documents close.
 private let seenObjects = NSHashTable<AnyObject>.weakObjects()
 
+/// Runs on the main run loop, like a person at the keyboard.
+@MainActor
 final class UIScriptRunner {
-    static var isRequested: Bool { scriptPath != nil }
+    nonisolated static var isRequested: Bool { scriptPath != nil }
 
-    private static var scriptPath: String? {
+    nonisolated private static var scriptPath: String? {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "--ui-script"), i + 1 < args.count { return args[i + 1] }
         return ProcessInfo.processInfo.environment["MARKDOWN_UI_SCRIPT"]
@@ -44,7 +46,7 @@ final class UIScriptRunner {
     }
 
     /// Defaults for `Settings.shared` while a script runs: a private, emptied suite.
-    static func scriptDefaults() -> UserDefaults? {
+    nonisolated static func scriptDefaults() -> UserDefaults? {
         guard isRequested else { return nil }
         let name = "io.github.steeb-k.Markdown.uiscript"
         let d = UserDefaults(suiteName: name)
@@ -213,7 +215,9 @@ final class UIScriptRunner {
         } else if let f = (step["previewScroll"] as? NSNumber)?.doubleValue {
             // Scrolls the preview the way a person would (its own scroll event is the user's).
             let p = controller?.previewController
-            _ = p?.evaluateSync("const m = Math.max(0, document.documentElement.scrollHeight - window.innerHeight); window.scrollTo(0, m * f); return m;", arguments: ["f": f])
+            // The page's own scroll event waits for a rendering update, which WebKit holds back
+            // for a window it thinks hidden: it is sent at once, as that update would.
+            _ = p?.evaluateSync("const m = Math.max(0, document.documentElement.scrollHeight - window.innerHeight); window.scrollTo(0, m * f); window.dispatchEvent(new Event('scroll')); return m;", arguments: ["f": f])
             record(["previewScroll": f], ok: p != nil)
             later(0.3, done)
         } else if let f = (step["editorScroll"] as? NSNumber)?.doubleValue {
@@ -1245,15 +1249,20 @@ final class UIScriptRunner {
         let count = m["count"] as? Int ?? 40
         let interval = (m["interval"] as? NSNumber)?.doubleValue ?? 0.06
         let rounds = m["rounds"] as? Int ?? 3
+        // Fails the step when handing an update to the page held the main thread longer than this.
+        let maxMain = (m["maxMainThreadMs"] as? NSNumber)?.doubleValue ?? .infinity
         guard let p = controller?.previewController else { record(["measurePreview": "no preview"], ok: false); done(); return }
-        var latencies: [Double] = [], cores: [Double] = [], pages: [Double] = []
+        var latencies: [Double] = [], cores: [Double] = [], pages: [Double] = [], calls: [Double] = [], gaps: [Double] = []
         var round = 0
         func nextRound() {
             guard round < rounds else {
                 func med(_ v: [Double]) -> Double { v.sorted()[v.count / 2] }
                 record(["measurePreview": ["rounds": rounds, "latency_ms_median": latencies.isEmpty ? 0 : med(latencies), "latency_ms_max": latencies.max() ?? 0,
                                            "core_render_ms_median": cores.isEmpty ? 0 : med(cores), "page_update_ms_median": pages.isEmpty ? 0 : med(pages),
-                                           "renders": p.renders, "applied": p.applied, "superseded": p.superseded]], ok: !latencies.isEmpty)
+                                           "page_update_main_thread_ms_max": calls.max() ?? 0,
+                                           "longest_main_thread_gap_while_updating_ms": gaps.max() ?? 0,
+                                           "renders": p.renders, "applied": p.applied, "superseded": p.superseded, "patches": p.patchesSent]],
+                       ok: !latencies.isEmpty && (calls.max() ?? 0) <= maxMain)
                 done()
                 return
             }
@@ -1269,13 +1278,25 @@ final class UIScriptRunner {
                     return
                 }
                 let last = CFAbsoluteTimeGetCurrent()
+                // The main thread's longest stall while the preview catches up (a 1 ms heartbeat).
+                var beat = CFAbsoluteTimeGetCurrent(), longest = 0.0
+                let heartbeat = Timer(timeInterval: 0.001, repeats: true) { _ in
+                    let now = CFAbsoluteTimeGetCurrent()
+                    longest = max(longest, now - beat)
+                    beat = now
+                }
+                RunLoop.main.add(heartbeat, forMode: .common)
                 func poll() {
                     if p.isSettled && p.applied > applied0 {
+                        heartbeat.invalidate()
                         latencies.append((CFAbsoluteTimeGetCurrent() - last) * 1000)
                         cores.append(p.lastRenderTime * 1000)
                         pages.append(p.lastApplyTime * 1000)
+                        calls.append(p.lastApplyMainThreadTime * 1000)
+                        gaps.append(longest * 1000)
                         later(0.1, nextRound)
                     } else if CFAbsoluteTimeGetCurrent() - last > 30 {
+                        heartbeat.invalidate()
                         record(["measurePreview": "timed out"], ok: false)
                         done()
                     } else {
@@ -1632,10 +1653,11 @@ final class UIScriptRunner {
                 check("pdf text is dark", darkest < 0.3, "\(darkest)")
             }
             if let m = v["marginsAtLeast"] as? NSNumber {
-                // The text keeps this many points from every edge on page 0.
-                if let box = PDFInspector.mediaBox(url, page: 0), let t = PDFInspector.textBounds(url, page: 0) {
+                // What is visibly drawn on page 0 keeps this many points from every edge. (By ink,
+                // not by the text layer: WebKit leaves invisible clipped copies in the margins.)
+                if let box = PDFInspector.mediaBox(url, page: 0), let t = PDFInspector.inkBounds(url, page: 0) {
                     let least = min(t.minX - box.minX, box.maxX - t.maxX, t.minY - box.minY, box.maxY - t.maxY)
-                    check("pdf text keeps \(m) points from the edges", least >= CGFloat(m.doubleValue) - 0.5, "least \(least), text \(t), page \(box)")
+                    check("pdf ink keeps \(m) points from the edges", least >= CGFloat(m.doubleValue) - 1, "least \(least), ink \(t), page \(box), text layer \(String(describing: PDFInspector.textBounds(url, page: 0)))")
                 } else { check("pdf text bounds", false) }
             }
         }

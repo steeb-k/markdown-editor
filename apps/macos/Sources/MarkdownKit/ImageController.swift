@@ -87,21 +87,11 @@ public final class ImageController {
     /// absolute path, or a path relative to the document. Nil when it cannot be resolved (a
     /// relative path in a document that was never saved, or an unsupported scheme).
     public func resolve(_ destination: String) -> URL? {
-        let d = destination.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !d.isEmpty else { return nil }
-        if let colon = d.firstIndex(of: ":"), d[..<colon].count > 1, d[..<colon].allSatisfy({ $0.isLetter || $0.isNumber || "+-.".contains($0) }) {
-            guard let url = URL(string: d) ?? URL(string: d.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else { return nil }
-            switch url.scheme?.lowercased() {
-            case "http", "https": return url
-            case "file": return url.standardizedFileURL
-            default: return nil
-            }
-        }
-        let path = d.removingPercentEncoding ?? d
-        if path.hasPrefix("/") { return URL(fileURLWithPath: path).standardizedFileURL }
-        if path.hasPrefix("~/") { return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath).standardizedFileURL }
-        guard let doc = documentURL() else { return nil }
-        return URL(fileURLWithPath: path, relativeTo: doc.deletingLastPathComponent()).standardizedFileURL
+        // The rule the preview follows too (DocumentFileAccess decides for both).
+        let doc = documentURL()
+        guard let url = DocumentFileAccess.pictureURL(for: destination, documentURL: doc) else { return nil }
+        if url.isFileURL, !DocumentFileAccess.mayRead(url, documentURL: doc) { return nil }
+        return url
     }
 
     // MARK: asking
@@ -206,6 +196,10 @@ public final class ImageController {
             guard let d = try? DocumentFileAccess.read(url) else { return nil }
             data = d
             modified = DocumentFileAccess.modificationDate(of: url)
+        } else if url.scheme?.lowercased() == "data" {
+            // Inline: no file and no network.
+            guard let d = try? Data(contentsOf: url), d.count <= Self.maxRemoteBytes else { return nil }
+            data = d
         } else {
             guard let (d, date) = fetchRemote(url) else { return nil }
             data = d

@@ -5,6 +5,10 @@ public final class MarkdownDocument: NSDocument {
     public let session: EditorSession
     public private(set) var hasBOM = false
     public private(set) var lineEnding: LineEnding = .lf
+    /// File > Print is loading the page or showing its panel (a second Print waits for it).
+    var isPreparingPrint = false
+    /// The print operation File > Print last ran (tests end its panel).
+    weak var lastPrintOperation: NSPrintOperation?
 
     public override init() {
         session = EditorSession(settings: .shared)

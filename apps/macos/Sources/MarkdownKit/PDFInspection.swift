@@ -81,5 +81,26 @@ enum PDFInspector {
     }
 
     static func mediaBox(_ url: URL, page index: Int) -> CGRect? { PDFDocument(url: url)?.page(at: index)?.bounds(for: .mediaBox) }
+
+    /// The box around everything visibly drawn on a page (pixels darker than near-white), in PDF
+    /// points from the bottom left. Unlike `textBounds` it ignores text drawn outside the clip
+    /// (WebKit leaves such copies in the margins).
+    static func inkBounds(_ url: URL, page index: Int) -> CGRect? {
+        guard let page = PDFDocument(url: url)?.page(at: index) else { return nil }
+        let size = page.bounds(for: .mediaBox).size
+        guard let rep = page.thumbnail(of: size, for: .mediaBox).tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)) else { return nil }
+        let sx = size.width / CGFloat(rep.pixelsWide), sy = size.height / CGFloat(rep.pixelsHigh)
+        var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                      c.redComponent + c.greenComponent + c.blueComponent < 2.85 else { continue }
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        // Bitmap rows run from the top; PDF points from the bottom.
+        return CGRect(x: CGFloat(minX) * sx, y: size.height - CGFloat(maxY + 1) * sy, width: CGFloat(maxX - minX + 1) * sx, height: CGFloat(maxY - minY + 1) * sy)
+    }
 }
 #endif

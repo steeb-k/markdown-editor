@@ -107,6 +107,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome)
         splitView.onRatioChange = { [weak self] ratio in self?.session.settings.splitRatio = Double(ratio) }
+        // When the editor's pane changes width (the divider, the window), its top character stays.
+        splitView.captureTop = { [weak self] in self?.scrollView.isHidden == false ? self?.keptTopAnchor() : nil }
+        splitView.restoreTop = { [weak self] anchor in self?.restoreEditorTop(anchor) }
         previewController.observeEditor(scroll)
         installModeSwitch(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
@@ -270,6 +273,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// preview, the keyboard focus where the user can work.
     private func applyLayout() {
         let layout = session.layout
+        // A narrower or wider editor wraps differently, so a scroll offset in points would land on
+        // other text: what stays put is the character at the top of the editor. (While the editor
+        // is hidden, the one it had when it was hidden.)
+        let top = scrollView.isHidden ? hiddenEditorTop : keptTopAnchor()
+        splitView.suspendsTopKeeping = true
         scrollView.isHidden = !layout.showsEditor
         previewPane.isHidden = !layout.showsPreview
         splitView.needsLayout = true
@@ -279,12 +287,88 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         updateToolbarVisibility()
         updateFadeGeometry()
         if layout == .split { restoreSplitPosition() }
+        splitView.layoutSubtreeIfNeeded()
+        splitView.suspendsTopKeeping = false
+        if layout.showsEditor {
+            if let top { restoreEditorTop(top) }
+            hiddenEditorTop = nil
+        } else {
+            hiddenEditorTop = top
+        }
         previewController.setVisible(layout.showsPreview)
         if let window, window.isVisible || window.firstResponder != nil {
             window.makeFirstResponder(layout == .preview ? previewController.webView : textView)
         }
         // The editor's text view lays out lazily while hidden; its scroll position is not touched.
         if layout.showsPreview, layout.showsEditor { previewController.pushEditorScroll() }
+    }
+
+    /// The editor's top character while it is hidden (the Preview layout).
+    private var hiddenEditorTop: EditorTopAnchor?
+
+    /// The character at the top of the editor's viewport, and how far into its line the viewport
+    /// starts (nil when nothing is laid out).
+    func editorTopAnchor() -> EditorTopAnchor? {
+        guard let lm = textView.layoutManager, let tc = textView.textContainer, session.storage.length > 0 else { return nil }
+        let y = scrollView.contentView.bounds.minY + scrollView.contentInsets.top - textView.textContainerOrigin.y
+        if y <= 0 { return EditorTopAnchor(character: 0, intoLine: y) }
+        lm.ensureLayout(forBoundingRect: NSRect(x: 0, y: y, width: tc.size.width, height: 1), in: tc)
+        let glyph = lm.glyphIndex(for: NSPoint(x: 0, y: y), in: tc)
+        guard glyph < lm.numberOfGlyphs else { return nil }
+        let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        return EditorTopAnchor(character: lm.characterIndexForGlyph(at: glyph), intoLine: y - fragment.minY)
+    }
+
+    /// Scrolls the editor so the anchor's character is at the top again, as far into its line as it
+    /// was; and once more after AppKit has finished laying out (the text view takes its new width
+    /// a pass later, and the lines above move), unless the user scrolled meanwhile.
+    func restoreEditorTop(_ anchor: EditorTopAnchor) {
+        restoreEditorTopOnce(anchor)
+        let placed = scrollView.contentView.bounds.minY
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, abs(self.scrollView.contentView.bounds.minY - placed) < 0.5 else { return }
+                self.restoreEditorTopOnce(anchor)
+            }
+        }
+    }
+
+    private func restoreEditorTopOnce(_ anchor: EditorTopAnchor) {
+        guard let lm = textView.layoutManager, session.storage.length > 0 else { return }
+        let clip = scrollView.contentView
+        let insets = scrollView.contentInsets
+        var y: CGFloat
+        if anchor.character == 0 && anchor.intoLine <= 0 {
+            y = anchor.intoLine
+        } else {
+            let character = min(anchor.character, session.storage.length - 1)
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: character + 1))
+            let glyph = lm.glyphIndexForCharacter(at: character)
+            let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            y = fragment.minY + min(max(0, anchor.intoLine), max(0, fragment.height - 1))
+        }
+        let wanted = y + textView.textContainerOrigin.y - insets.top
+        // Within what the clip view allows (the end is AppKit's), but never pulled up from the
+        // top line by its odd top limit.
+        let constrained = clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: wanted, width: clip.bounds.width, height: clip.bounds.height)).minY
+        let target = min(max(wanted, -insets.top), max(constrained, -insets.top))
+        if abs(clip.bounds.minY - target) >= 0.5 {
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: target))
+            scrollView.reflectScrolledClipView(clip)
+        }
+        restored = (anchor, clip.bounds.minY)
+    }
+
+    /// The anchor last restored and where it left the editor: while the editor is still there
+    /// (the user has not scrolled), a further change of width keeps that same character, not the
+    /// first character of the line it is now on (which, rewrapped again, can be a line earlier).
+    private var restored: (anchor: EditorTopAnchor, offset: CGFloat)?
+
+    /// The top to keep across a change of width: the last one restored if the editor has not moved since.
+    func keptTopAnchor() -> EditorTopAnchor? {
+        if let restored, abs(scrollView.contentView.bounds.minY - restored.offset) < 0.5 { return restored.anchor }
+        restored = nil
+        return editorTopAnchor()
     }
 
     /// The formatting toolbar is for editing: not in the preview, and when the setting says so.
@@ -308,8 +392,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         panel.canCreateDirectories = true
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            doc.exportPDF(to: url) { error in
-                if let error { NSAlert(error: error).beginSheetModal(for: window) }
+            doc.exportPDF(to: url) { [weak window] error in
+                guard let error else { return }
+                // The window may have closed while the PDF was being made.
+                guard let window, window.isVisible, window.attachedSheet == nil else { NSSound.beep(); return }
+                NSAlert(error: error).beginSheetModal(for: window)
             }
         }
     }
@@ -442,6 +529,13 @@ final class EdgeFadeView: NSView {
     }
 }
 
+/// Which character is at the top of the editor, and how many points of its line are scrolled
+/// past the top: what a layout change keeps.
+public struct EditorTopAnchor: Equatable {
+    public var character: Int
+    public var intoLine: CGFloat
+}
+
 /// The editor and the preview side by side, laid out by frames: the divider is a hairline in the
 /// theme's rule colour that the user can drag; a pane that is hidden gives its room to the other.
 public final class PreviewSplitView: NSView {
@@ -455,6 +549,12 @@ public final class PreviewSplitView: NSView {
     public static let minimumPane: CGFloat = 260
     private let thickness: CGFloat = 1
     private var dragging = false
+    /// Asked before the first pane changes width, and told after: the editor keeps the character
+    /// at its top (the text wraps differently at another width).
+    var captureTop: (() -> EditorTopAnchor?)?
+    var restoreTop: ((EditorTopAnchor) -> Void)?
+    /// The window controller is moving the panes itself (a layout switch) and keeps the top itself.
+    var suspendsTopKeeping = false
 
     func setPanes(first: NSView, second: NSView) {
         self.first = first
@@ -475,13 +575,23 @@ public final class PreviewSplitView: NSView {
         super.layout()
         guard let first, let second else { return }
         let h = bounds.height
+        var firstFrame = first.frame, secondFrame = second.frame
         if bothShown {
             let w = firstWidth
-            first.frame = NSRect(x: 0, y: 0, width: w, height: h)
-            second.frame = NSRect(x: w + thickness, y: 0, width: bounds.width - w - thickness, height: h)
+            firstFrame = NSRect(x: 0, y: 0, width: w, height: h)
+            secondFrame = NSRect(x: w + thickness, y: 0, width: bounds.width - w - thickness, height: h)
         } else {
-            first.frame = first.isHidden ? NSRect(x: 0, y: 0, width: 0, height: h) : bounds
-            second.frame = second.isHidden ? NSRect(x: bounds.width, y: 0, width: 0, height: h) : bounds
+            // The shown pane takes the width. A hidden one keeps the width it had: collapsing the
+            // editor to nothing would wrap its whole text at zero width, and again on the way back.
+            firstFrame = first.isHidden ? NSRect(x: 0, y: 0, width: first.frame.width, height: h) : bounds
+            secondFrame = second.isHidden ? NSRect(x: bounds.width - second.frame.width, y: 0, width: second.frame.width, height: h) : bounds
+        }
+        let anchor = !suspendsTopKeeping && !first.isHidden && abs(first.frame.width - firstFrame.width) >= 0.5 ? captureTop?() : nil
+        first.frame = firstFrame
+        second.frame = secondFrame
+        if let anchor {
+            first.layoutSubtreeIfNeeded()
+            restoreTop?(anchor)
         }
         window?.invalidateCursorRects(for: self)
         needsDisplay = true

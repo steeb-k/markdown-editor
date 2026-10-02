@@ -11,17 +11,47 @@ public enum DocumentFileAccess {
         try data.write(to: url, options: .atomic)
     }
 
-    /// Whether the preview (and so the PDF and print paths) may serve `file`. What the Markdown
-    /// names relative to the document (`explicit == false`) must lie in the document's folder or
-    /// below; what it names outright (an absolute path, a `file:` URL, `~/`) is allowed, as the
-    /// editor already shows such pictures. This is the one place that decides it: the sandbox
-    /// milestone replaces it with the folder grant.
-    public static func canReadForPreview(_ file: URL, documentFolder: URL?, explicit: Bool) -> Bool {
-        if explicit { return true }
-        guard let folder = documentFolder else { return false }
-        let base = folder.standardizedFileURL.path
-        let path = file.standardizedFileURL.path
-        return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+    // MARK: pictures: one rule for the editor, the preview, PDF and print
+
+    /// The schemes a picture is fetched from over the network (by the editor's `ImageController`
+    /// through URLSession, by the preview's web view itself). Both are subject to the same App
+    /// Transport Security settings in Info.plist, so they load the same remote pictures.
+    public static let remotePictureSchemes: Set<String> = ["http", "https"]
+
+    /// Where the picture a Markdown document names (`![](destination)`, or an `<img src>`) is:
+    /// an `http(s)` URL, a `data:` URL, or a file (a `file:` URL, an absolute path, `~/`, or a path
+    /// relative to the document's folder, `..` included). Nil when it cannot be resolved (a
+    /// relative path in a document never saved, another scheme). Percent-escapes in a path are
+    /// decoded once, so the destination as written and the same destination as an escaped `src`
+    /// attribute give the same file.
+    ///
+    /// The editor (`ImageController`) and the preview, PDF and print (`PreviewSchemeHandler`)
+    /// both ask here and then `mayRead`, so they show the same pictures.
+    public static func pictureURL(for destination: String, documentURL: URL?) -> URL? {
+        let d = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !d.isEmpty else { return nil }
+        if let colon = d.firstIndex(of: ":"), d[..<colon].count > 1, d[..<colon].allSatisfy({ $0.isLetter || $0.isNumber || "+-.".contains($0) }) {
+            guard let url = URL(string: d) ?? URL(string: d.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "") else { return nil }
+            switch url.scheme?.lowercased() {
+            case let s? where remotePictureSchemes.contains(s): return url
+            case "data": return url
+            case "file": return url.standardizedFileURL
+            default: return nil
+            }
+        }
+        let path = d.removingPercentEncoding ?? d
+        if path.hasPrefix("/") { return URL(fileURLWithPath: path).standardizedFileURL }
+        if path.hasPrefix("~/") { return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath).standardizedFileURL }
+        guard let doc = documentURL else { return nil }
+        return URL(fileURLWithPath: path, relativeTo: doc.deletingLastPathComponent()).standardizedFileURL
+    }
+
+    /// Whether the app may read `file` on behalf of the document at `documentURL` (nil: untitled).
+    /// Today every file the user can read: the editor has always shown absolute, `~/` and `..`
+    /// pictures. **This is the function the sandbox milestone changes** (to the document's folder
+    /// and the folders the user granted); the editor and the preview follow it together.
+    public static func mayRead(_ file: URL, documentURL: URL?) -> Bool {
+        file.isFileURL
     }
 
     /// When the file was last modified; nil when it cannot be read.

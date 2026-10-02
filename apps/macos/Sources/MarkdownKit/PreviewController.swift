@@ -19,6 +19,9 @@ public final class PreviewWebView: WKWebView {
 /// What the preview shows for one window: the document rendered by the core (on the analysis
 /// queue, debounced, never more than one render in flight), applied to the page in place so the
 /// scroll position survives, kept in step with the editor's scrolling, themed like the editor.
+/// Main thread only (`@MainActor`): WebKit calls its delegates there, the analysis queue's answers
+/// arrive there.
+@MainActor
 public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     public let webView: PreviewWebView
     public let schemeHandler = PreviewSchemeHandler()
@@ -29,6 +32,9 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     private var isLoaded = false
     private var isLoading = false
     private var isInitialLoad = false
+    /// The app's own load of the page has been let through (once per load: a refresh or a frame
+    /// the document's HTML asks for is not).
+    private var initialNavigationAllowed = false
     private var stale = true
     private var inFlight = false
     private var timer: Timer?
@@ -46,6 +52,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     public private(set) var lastLatency: TimeInterval = 0
     public private(set) var lastRenderTime: TimeInterval = 0
     public private(set) var lastApplyTime: TimeInterval = 0
+    /// How long handing the last update to the page held the main thread (the call itself).
+    public private(set) var lastApplyMainThreadTime: TimeInterval = 0
     private var lastEditTime = CFAbsoluteTimeGetCurrent()
     /// Called on the main thread after every update of the page.
     public var onApplied: (() -> Void)?
@@ -58,7 +66,6 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     // Scroll sync.
     weak var scrollView: NSScrollView?
     private var lastEditorOffset: CGFloat?
-    private var ignoreEditorScrollsUntil: CFAbsoluteTime = 0
     private var scrollInFlight = false
     private var scrollDirty = false
     private var observers: [NSObjectProtocol] = []
@@ -76,7 +83,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         config.userContentController.addUserScript(WKUserScript(source: PreviewScripts.source, injectionTime: .atDocumentStart,
                                                                 forMainFrameOnly: true, in: PreviewScripts.world))
         config.userContentController.add(weakHandler, contentWorld: PreviewScripts.world, name: PreviewScripts.handlerName)
-        schemeHandler.documentFolder = { [weak session] in PreviewURL.folder(of: session?.documentURL()) }
+        schemeHandler.documentURL = { [weak session] in session?.documentURL() }
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsMagnification = false
@@ -86,10 +93,15 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     deinit {
-        timer?.invalidate()
-        observers.forEach(NotificationCenter.default.removeObserver)
-        webView.configuration.userContentController.removeAllUserScripts()
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: PreviewScripts.handlerName, contentWorld: PreviewScripts.world)
+        // Swift may run this on any thread; WebKit is main-thread only.
+        let web = webView, timer = timer, observers = observers
+        let cleanup: @MainActor () -> Void = {
+            timer?.invalidate()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            web.configuration.userContentController.removeAllUserScripts()
+            web.configuration.userContentController.removeScriptMessageHandler(forName: PreviewScripts.handlerName, contentWorld: PreviewScripts.world)
+        }
+        if Thread.isMainThread { MainActor.assumeIsolated(cleanup) } else { DispatchQueue.main.async { MainActor.assumeIsolated(cleanup) } }
     }
 
     /// Stops listening and drops the page (the window closed).
@@ -129,7 +141,9 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
 
     private func renderSoon(delay: TimeInterval) {
         timer?.invalidate()
-        let t = Timer(timeInterval: delay, repeats: false) { [weak self] _ in self?.timer = nil; self?.startRender() }
+        let t = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.timer = nil; self?.startRender() }
+        }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
@@ -161,8 +175,16 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         let first = !isLoaded
         let options = renderOptions(standalone: first)
         let started = CFAbsoluteTimeGetCurrent()
-        session.coordinator.async({ doc in doc.renderHtml(options: options) }) { [weak self] html, processedSeq in
+        // The body the page holds: the new one is sent as a patch against it, worked out here on
+        // the analysis queue rather than on the main thread.
+        let base = first ? nil : pageBody
+        session.coordinator.async({ doc -> (String, BodyPatch?) in
+            let html = doc.renderHtml(options: options)
+            return (html, base.flatMap { BodyPatch.make(from: $0, to: html) })
+        }) { [weak self] rendered, processedSeq in
             guard let self else { return }
+            let (html, patch) = rendered
+            if base == nil { rendersWithoutBase += 1 } else if patch == nil { rendersWithoutPatch += 1 }
             inFlight = false
             lastRenderTime = CFAbsoluteTimeGetCurrent() - started
             guard let session = self.session else { return }
@@ -174,7 +196,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
                 return
             }
             if !isVisible { stale = true; return }
-            apply(html, standalone: first, seq: processedSeq)
+            apply(html, patch: patch, standalone: first, seq: processedSeq)
             if stale, isVisible, timer == nil { renderSoon(delay: ScrollSync.debounce(forLength: session.storage.length)) }
         }
     }
@@ -190,46 +212,84 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         return PreviewStyle(theme: appearance.theme, typography: PreviewTypography.make(from: appearance))
     }
 
-    private func apply(_ html: String, standalone: Bool, seq: Int) {
+    private func apply(_ html: String, patch: BodyPatch? = nil, standalone: Bool, seq: Int) {
         let t0 = CFAbsoluteTimeGetCurrent()
         let total = lines(forSeq: seq).lineCount
         if standalone {
-            // The first time: a complete page, loaded with the app's scheme as its address.
+            pageBody = nil
+            // The first time: the page with an empty body, loaded with the app's scheme as its
+            // address; the body follows the way every later one does (`replaceBody`), so its
+            // pictures and links are routed before anything in it loads.
             isLoading = true
             isLoaded = false
             isInitialLoad = true
+            initialNavigationAllowed = false
             appliedCSS = previewCSS()
             appliedFonts = PreviewTypography.fontFaceCSS(for: session?.appearance)
-            lastBodyHTML = Self.body(of: html)
+            let parts = Self.split(page: html)
+            lastBodyHTML = parts.body
+            pendingBody = parts.body
             applyBackground()
-            webView.loadHTMLString(html, baseURL: PreviewURL.base)
+            webView.loadHTMLString(parts.shell, baseURL: PreviewURL.base)
             pendingTotalLines = total
             return
         }
         lastBodyHTML = html
         jsInFlight += 1
-        webView.callAsyncJavaScript("return __md.replaceBody(html, total);", arguments: ["html": html, "total": total],
-                                    in: nil, in: PreviewScripts.world) { [weak self] result in
+        defer { lastApplyMainThreadTime = CFAbsoluteTimeGetCurrent() - t0 }
+        let script: String
+        let arguments: [String: Any]
+        if let patch, pageBody != nil {
+            script = "return __md.patchBody(start, oldEnd, insert, delta, total, oldLength, newLength);"
+            arguments = ["start": patch.start, "oldEnd": patch.oldEnd, "insert": patch.insert, "delta": patch.lineDelta, "total": total,
+                         "oldLength": patch.oldLength, "newLength": patch.newLength]
+            patchesSent += 1
+        } else {
+            script = "return __md.replaceBody(html, total);"
+            arguments = ["html": html, "total": total]
+        }
+        pageBody = nil
+        webView.callAsyncJavaScript(script, arguments: arguments, in: nil, in: PreviewScripts.world) { [weak self] result in
             guard let self else { return }
             jsInFlight -= 1
             if case .failure = result { stale = true; renderSoon(delay: 0.2); return }
+            if case .success(let value) = result, (value as? Bool) != true {
+                // The page did not hold what the patch was made from: the whole body, then.
+                patchesRefused += 1
+                apply(html, standalone: false, seq: seq)
+                return
+            }
+            pageBody = html
             applied += 1
             lastApplyTime = CFAbsoluteTimeGetCurrent() - t0
             lastLatency = CFAbsoluteTimeGetCurrent() - lastEditTime
-            syncAfterUpdate()
+            syncAfterUpdate(afterEdit: true)
             onApplied?()
         }
     }
 
     private var pendingTotalLines = 0
+    private var pendingBody = ""
+    /// The body the page is known to hold (nil while an update is on its way or after a failure).
+    private var pageBody: String?
+    /// Instrumentation: updates sent as patches, and patches the page could not apply.
+    public private(set) var patchesSent = 0
+    public private(set) var patchesRefused = 0
+    public private(set) var rendersWithoutBase = 0
+    public private(set) var rendersWithoutPatch = 0
     private var appliedCSS = ""
     private var appliedFonts = ""
 
-    /// The part of a standalone page's HTML that the core's non-standalone render would give.
-    static func body(of page: String) -> String {
-        guard let start = page.range(of: "<main class=\"md\" id=\"md\">\n"), let end = page.range(of: "</main>\n</body>", options: .backwards) else { return page }
-        return String(page[start.upperBound..<end.lowerBound])
+    /// A standalone page as the page without its body (`<main>` empty), and the body (what the
+    /// core's non-standalone render gives).
+    static func split(page: String) -> (shell: String, body: String) {
+        guard let start = page.range(of: "<main class=\"md\" id=\"md\">\n"), let end = page.range(of: "</main>\n</body>", options: .backwards),
+              start.upperBound <= end.lowerBound else { return (page, "") }
+        return (String(page[..<start.upperBound]) + String(page[end.lowerBound...]), String(page[start.upperBound..<end.lowerBound]))
     }
+
+    /// The part of a standalone page's HTML that the core's non-standalone render would give.
+    static func body(of page: String) -> String { split(page: page).body }
 
     private func lines(forSeq seq: Int) -> LineTable {
         if let l = lineTable, l.seq == seq { return l.table }
@@ -247,11 +307,14 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         isLoading = false
         jsInFlight += 1
         let fonts = PreviewTypography.fontFaceCSS(for: session?.appearance)
-        webView.callAsyncJavaScript("__md.prepare(total); __md.setFonts(fonts); __md.setChrome(top, bottom); return true;",
-                                    arguments: ["total": pendingTotalLines, "fonts": fonts, "top": chrome.top, "bottom": chrome.bottom],
-                                    in: nil, in: PreviewScripts.world) { [weak self] _ in
+        let body = pendingBody
+        pendingBody = ""
+        webView.callAsyncJavaScript("__md.prepare(total); __md.setFonts(fonts); __md.setChrome(top, bottom); __md.replaceBody(body, total); return true;",
+                                    arguments: ["total": pendingTotalLines, "fonts": fonts, "top": chrome.top, "bottom": chrome.bottom, "body": body],
+                                    in: nil, in: PreviewScripts.world) { [weak self] result in
             guard let self else { return }
             jsInFlight -= 1
+            if case .success = result { pageBody = body }
             applied += 1
             lastApplyTime = 0
             lastLatency = CFAbsoluteTimeGetCurrent() - lastEditTime
@@ -279,8 +342,9 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
             url: navigationAction.request.url,
             isLinkActivation: navigationAction.navigationType == .linkActivated,
             isMainFrame: navigationAction.targetFrame?.isMainFrame ?? false,
-            isInitialLoad: isInitialLoad && navigationAction.navigationType == .other,
-            documentFolder: PreviewURL.folder(of: session?.documentURL()))
+            isInitialLoad: isInitialLoad && !initialNavigationAllowed && navigationAction.navigationType == .other,
+            documentURL: session?.documentURL())
+        if action == .allow { initialNavigationAllowed = true }
         perform(action)
         decisionHandler(action == .allow ? .allow : .cancel)
     }
@@ -289,7 +353,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         let action = LinkPolicy.decide(url: navigationAction.request.url, isLinkActivation: true, isMainFrame: true,
-                                       isInitialLoad: false, documentFolder: PreviewURL.folder(of: session?.documentURL()))
+                                       isInitialLoad: false, documentURL: session?.documentURL())
         perform(action)
         return nil
     }
@@ -354,25 +418,44 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         scroll.contentView.postsBoundsChangedNotifications = true
         observers.append(NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
-        ) { [weak self] _ in self?.editorScrolled() })
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.editorScrolled() } })
     }
 
     private var syncs: Bool { isVisible && isLoaded && (session?.layout == .split) }
 
     private func editorScrolled() {
         guard syncs, let clip = scrollView?.contentView else { return }
-        // The editor's own notifications for a scroll the preview asked for (AppKit sends more than one).
-        if CFAbsoluteTimeGetCurrent() < ignoreEditorScrollsUntil { return }
-        if let last = lastEditorOffset, abs(clip.bounds.minY - last) < 1 { lastEditorOffset = nil; return }
+        // The editor's own notifications for a scroll the preview asked for (AppKit sends more
+        // than one): recognised by where they leave the editor, not by when they come, so a
+        // scroll the user makes straight after is never taken for one.
+        if let last = lastEditorOffset, abs(clip.bounds.minY - last) < 1 { return }
         lastEditorOffset = nil
         pushEditorScroll()
     }
 
-    /// Moves the preview to where the editor is.
+    /// Whether the editor is scrolled as far down as it goes.
+    private var editorIsAtEnd: Bool {
+        guard let sv = scrollView else { return false }
+        return Self.isAtEnd(sv)
+    }
+
+    /// Whether `scrollView` is scrolled as far down as AppKit lets it go (asked of the clip view:
+    /// the content insets make the arithmetic easy to get wrong).
+    static func isAtEnd(_ scrollView: NSScrollView) -> Bool {
+        let clip = scrollView.contentView
+        let lowest = clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: 1e9, width: clip.bounds.width, height: clip.bounds.height)).minY
+        let highest = clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: -1e9, width: clip.bounds.width, height: clip.bounds.height)).minY
+        return lowest > highest + 1 && clip.bounds.minY >= lowest - 1
+    }
+
+    /// Moves the preview to where the editor is. The ends are the ends: the editor at its last
+    /// screenful puts the preview at its last (each view's last screenful starts at a different
+    /// line, so interpolating would leave one short of its end).
     func pushEditorScroll() {
         guard syncs else { return }
         if scrollInFlight { scrollDirty = true; return }
-        guard let position = editorReadingPosition() else { return }
+        guard var position = editorReadingPosition() else { return }
+        if editorIsAtEnd { position = Double(currentLineTable().lineCount + 1) }
         scrollInFlight = true
         jsInFlight += 1
         webView.callAsyncJavaScript("return __md.scrollToLine(line, false);", arguments: ["line": position],
@@ -386,11 +469,19 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
 
     /// After the page changed under the editor: put it back where the editor is (only when it has
     /// drifted, so typing does not make it jitter) and keep the block being typed in on screen.
-    private func syncAfterUpdate() {
-        guard syncs, let session, let position = editorReadingPosition() else { return }
+    private func syncAfterUpdate(afterEdit: Bool = false) {
+        guard syncs, let session, var position = editorReadingPosition() else { return }
+        if editorIsAtEnd { position = Double(currentLineTable().lineCount + 1) }
         var caretLine: Int?
-        if let tv = session.textView, tv.window?.firstResponder === tv {
-            caretLine = lines(forSeq: session.coordinator.latestSeq).line(at: tv.selectedRange().location)
+        // The block being typed in stays on screen: after an edit, and only when the caret is on
+        // the editor's screen (a theme change, or a caret the user scrolled away from, does not
+        // pull the preview off the editor's place).
+        if afterEdit, let tv = session.textView, tv.window?.firstResponder === tv {
+            let caret = tv.selectedRange().location
+            let visible = tv.visibleCharacterRange()
+            if caret >= visible.location, caret <= NSMaxRange(visible) {
+                caretLine = lines(forSeq: session.coordinator.latestSeq).line(at: caret)
+            }
         }
         jsInFlight += 1
         webView.callAsyncJavaScript("__md.scrollToLine(line, true); if (caret !== null) { __md.revealLine(caret); } return true;",
@@ -402,7 +493,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         guard let body = message.body as? [String: Any], body["kind"] as? String == "scroll",
               let line = (body["line"] as? NSNumber)?.doubleValue else { return }
         receivedScrolls.append(line)
-        scrollEditor(toPosition: line)
+        if receivedScrolls.count > 200 { receivedScrolls.removeFirst(100) }
+        scrollEditor(toPosition: line, atEnd: (body["atEnd"] as? Bool) ?? false)
     }
 
     /// Instrumentation: the source positions the page reported (user scrolls of the preview).
@@ -438,7 +530,24 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
 
     /// Scrolls the editor so that source position `position` is at its top (a scroll the user did
     /// not make: its echo is ignored).
-    func scrollEditor(toPosition position: Double) {
+    func scrollEditor(toPosition position: Double, atEnd: Bool = false) {
+        scrollEditorOnce(toPosition: position, atEnd: atEnd)
+        // The editor lays out lazily: the heights above the target were partly estimates, and
+        // drawing the new screenful lays them out. Aim again once that has happened.
+        guard !atEnd else { return }
+        pendingEditorPosition = position
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.pendingEditorPosition == position else { return }
+                self.pendingEditorPosition = nil
+                self.scrollEditorOnce(toPosition: position, atEnd: false)
+            }
+        }
+    }
+
+    private var pendingEditorPosition: Double?
+
+    private func scrollEditorOnce(toPosition position: Double, atEnd: Bool) {
         guard syncs, let session, let tv = session.textView, let sv = scrollView ?? tv.enclosingScrollView,
               let tc = tv.textContainer else { return }
         let lm = session.layoutManager
@@ -446,7 +555,24 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         let length = session.storage.length
         let location = min(table.location(at: position), max(0, length - 1))
         var y: CGFloat = 0
-        if length > 0 {
+        if atEnd {
+            // The preview at its end: the editor at its end. The editor lays out lazily and its
+            // height is an estimate until the end is laid out: the text view's own scroll to the
+            // end (what Command-Down does, without moving the selection) lays it out first.
+            if length > 0 {
+                lm.ensureLayout(forCharacterRange: NSRange(location: max(0, length - 1), length: 1))
+                lm.ensureLayout(forBoundingRect: NSRect(x: 0, y: lm.usedRect(for: tc).maxY - 2 * sv.contentView.bounds.height,
+                                                        width: tc.size.width, height: 2 * sv.contentView.bounds.height), in: tc)
+                tv.sizeToFit()
+            }
+            tv.scrollToEndOfDocument(nil)
+            lastEditorOffset = sv.contentView.bounds.minY
+            lastEditorScrollTrace = "position end target \(sv.contentView.bounds.minY)"
+            return
+        } else if position <= 0.0001 {
+            // The top is the top (not the first line's top, which sits below the editor's margin).
+            y = -tv.textContainerOrigin.y
+        } else if length > 0 {
             lm.ensureLayout(forCharacterRange: NSRange(location: location, length: min(1, length - location)))
             let glyph = lm.glyphIndexForCharacter(at: location)
             var glyphRange = NSRange()
@@ -460,12 +586,12 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         }
         let clip = sv.contentView
         let insets = sv.contentInsets
-        let target = ScrollSync.clamp(Double(y + tv.textContainerOrigin.y - insets.top), contentHeight: Double(tv.frame.height + insets.bottom),
-                                      viewportHeight: Double(clip.bounds.height), minimum: Double(-insets.top))
+        // As far as the clip view allows (it knows what the content insets do to the range).
+        let wanted = y + tv.textContainerOrigin.y - insets.top
+        let target = Double(clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: wanted, width: clip.bounds.width, height: clip.bounds.height)).minY)
         lastEditorScrollTrace = "position \(position) target \(target) was \(clip.bounds.minY) y \(y)"
         guard abs(clip.bounds.minY - CGFloat(target)) >= 1 else { return }
         lastEditorOffset = CGFloat(target)
-        ignoreEditorScrollsUntil = CFAbsoluteTimeGetCurrent() + 0.1
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: CGFloat(target)))
         sv.reflectScrolledClipView(clip)
     }

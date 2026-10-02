@@ -475,6 +475,34 @@ public enum LinkOpener {
 
     public static func open(_ url: URL) {
         if let hook = opened, hook(url) { return }
+        if url.isFileURL, launchesSomething(url) {
+            // A document's link to a program is shown, not run: a click should not be enough
+            // for a file someone sent to start an application or a script.
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return
+        }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Whether opening `file` would run something rather than show it: an application, an
+    /// executable, a script, an installer, a shortcut to elsewhere.
+    public static func launchesSomething(_ file: URL) -> Bool {
+        let ext = file.pathExtension.lowercased()
+        if ["app", "command", "tool", "sh", "bash", "zsh", "csh", "ksh", "py", "rb", "pl", "scpt", "applescript", "scptd",
+            "workflow", "action", "terminal", "pkg", "mpkg", "jar", "webloc", "inetloc", "fileloc", "url", "prefpane",
+            "saver", "kext", "plugin", "osax", "service", "shortcut", "dylib", "bundle", "xpc", "jnlp"].contains(ext) {
+            return true
+        }
+        if !ext.isEmpty, let type = UTType(filenameExtension: ext),
+           [UTType.application, .applicationBundle, .executable, .unixExecutable, .script, .shellScript].contains(where: { type.conforms(to: $0) }) {
+            return true
+        }
+        // No extension: a program if it is marked executable (a document with one opens in its
+        // application, whatever its mode).
+        var isDirectory: ObjCBool = false
+        if ext.isEmpty, FileManager.default.fileExists(atPath: file.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+            return FileManager.default.isExecutableFile(atPath: file.path)
+        }
+        return false
     }
 }

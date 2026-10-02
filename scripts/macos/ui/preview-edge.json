@@ -1,0 +1,362 @@
+[
+ {
+  "log": "Preview edge cases: pictures of every kind in the editor and the preview (same rule), links of every kind, a hostile document, themes and fonts, export. Uses the real bundle, so App Transport Security applies."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "defaultViewMode": "source"
+  }
+ },
+ {
+  "httpServe": "scripts/macos/ui/fixtures/images",
+  "port": 8767
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-edge/preview-edge.md",
+  "folder": true
+ },
+ {
+  "copyFile": {
+   "from": "scripts/macos/ui/fixtures/images/small.png",
+   "to": "up.png"
+  }
+ },
+ {
+  "resize": [
+   1400,
+   900
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "selectText": "Text after the raw HTML",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitImages": 15
+ },
+ {
+  "log": "The editor: eight pictures load, the missing one does not."
+ },
+ {
+  "assert": {
+   "images": {
+    "loaded": 8,
+    "failed": 1
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "log": "The preview: the same eight, plus the raw <img src=x> that is broken in both; nothing in the raw HTML ran."
+ },
+ {
+  "assert": {
+   "layout": "split",
+   "preview": {
+    "visible": true,
+    "bodyMatchesCore": true,
+    "scriptsOff": true,
+    "contains": "Text after the raw HTML",
+    "images": {
+     "total": 10,
+     "loaded": 8,
+     "broken": 2
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "01-split-live-light"
+ },
+ {
+  "clickPreviewLink": "web"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "open(https://example.com/x)"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "mail"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "open(mailto:someone@example.com)"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "sibling"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "other.md"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "one up"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "up.md"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "a fragment"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "scrollToFragment(\"a-table-and-code\")"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "an application"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "Calculator.app"
+   }
+  }
+ },
+ {
+  "log": "A javascript: link: WebKit keeps no href for it with page JavaScript off, so a click goes nowhere."
+ },
+ {
+  "assert": {
+   "preview": {
+    "htmlContains": "<a>script</a>"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "script"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "Calculator.app"
+   }
+  }
+ },
+ {
+  "clickPreviewLink": "www.example.org"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "open(http://www.example.org"
+   }
+  }
+ },
+ {
+  "editorScroll": 0.0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrollSynced": 1
+   }
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "preview": {
+    "styleContains": "--bg: #"
+   }
+  }
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrollSynced": 1
+   }
+  }
+ },
+ {
+  "snapshot": "02-split-dark"
+ },
+ {
+  "setting": {
+   "theme": "sepia",
+   "fontChoice": "iaDuo"
+  }
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "03-split-sepia-duo"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaMono"
+  }
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "04-split-light-mono"
+ },
+ {
+  "setting": {
+   "fontChoice": "systemSerif",
+   "fontSize": 19,
+   "lineWidth": 60
+  }
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "05-split-serif-19-60"
+ },
+ {
+  "setting": {
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "layout": "preview",
+   "preview": {
+    "visible": true,
+    "editorShown": false
+   }
+  }
+ },
+ {
+  "snapshot": "06-preview-only"
+ },
+ {
+  "exportPDF": "edge.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "edge.pdf",
+    "minPages": 2,
+    "images": 6,
+    "light": true,
+    "contains": [
+     "Preview edge cases",
+     "Text after the raw HTML",
+     "greeting"
+    ],
+    "lacks": [
+     "data-ran"
+    ]
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "log": "An untitled document: relative pictures have no folder to come from (in both); the page still renders."
+ },
+ {
+  "new": true
+ },
+ {
+  "load": "# Untitled\n\n![relative](img/a.png)\n\n![served](http://127.0.0.1:8767/small.png)\n\nText.\n"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 20
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "assert": {
+   "preview": {
+    "bodyMatchesCore": true,
+    "images": {
+     "total": 2,
+     "loaded": 1,
+     "broken": 1
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "07-untitled"
+ }
+]

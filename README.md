@@ -23,7 +23,9 @@ cargo test --workspace
 # PROPTEST_CASES=1000000 cargo test --profile fuzz -p markdown-core --test authorship   # authorship arithmetic and the file format
 # cargo test -p markdown-core --test authorship -- --ignored spec_readme    # the format's own spec README (fetched, not vendored) still verifies
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing, HTML rendering included
-# RENDER_FUZZ_CASES=50000 cargo test --profile fuzz -p markdown-core --test render rendering_never_panics   # render fuzzing
+# RENDER_FUZZ_CASES=50000 cargo test --profile fuzz -p markdown-core --test render   # render fuzzing, sanitizer soup checked by a browser-faithful tokenizer
+# RENDER_DIFF_CASES=1000000 cargo test --profile fuzz -p markdown-core --test render_diff   # the renderer against pulldown-cmark's own writer, additions normalised away
+# cargo test --release -p markdown-core --test perf -- --ignored --nocapture worst_case   # no 1 MB render over 100 ms (highlighting budget)
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
 
 # Build the core: static lib + Swift bindings + XCFramework (host arch, debug)
@@ -55,7 +57,8 @@ RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-live.json   # the same
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/threshold.json  # Live mode either side of the whole-text limit
 scripts/macos/ui-script.sh scripts/macos/ui/preview.json        # Split and Preview layouts: three themes, typing, scroll sync both ways, links, fonts, snapshots of the web view
 scripts/macos/ui-script.sh scripts/macos/ui/preview-export.json # PDF export (Dark, Sepia; preview hidden, split, preview): pages, text, picture, white page, margins
-RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB in Split: typing with the preview closed and open, preview latency
+scripts/macos/ui-script.sh scripts/macos/ui/preview-edge.json   # pictures of every kind in editor and preview alike, links of every kind, a hostile document, themes and fonts, untitled
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB in Split: typing with the preview closed and open, preview latency, main-thread cost of an update (≤ 16 ms)
 scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
 scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
 ```

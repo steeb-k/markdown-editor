@@ -28,11 +28,6 @@
 	<true/>
 	<key>ATSApplicationFontsPath</key>
 	<string>Fonts</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoadsInWebContent</key>
-		<true/>
-	</dict>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

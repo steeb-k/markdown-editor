@@ -6,6 +6,7 @@ import MarkdownCore
 @testable import MarkdownKit
 
 /// The preview, layouts, link policy, scroll mapping, PDF export and Copy As.
+@MainActor
 final class PreviewTests: XCTestCase {
     private func pump(_ seconds: TimeInterval = 0.05) { RunLoop.current.run(until: Date(timeIntervalSinceNow: seconds)) }
 
@@ -98,6 +99,100 @@ final class PreviewTests: XCTestCase {
         doc.close()
     }
 
+    /// A patch from one render to the next rebuilds the next exactly, for random documents and
+    /// random edits (inserted lines renumber every block below: the patch carries that as one shift).
+    func testBodyPatchesRebuildTheNewBodyExactly() throws {
+        let tokens = ["# ", "## ", "> ", "- ", "1. ", "- [ ] ", "```rust\n", "```\n", "\n", "\n\n", "*", "**", "`", "[a](b)", "![p](x.png)", "| a | b |\n|---|---|\n| 1 | 2 |\n",
+                      "word ", "text ", "日本 ", "🎉", "e\u{301}", "<div>", "</div>", "[^1]", "[^1]: note\n", "data-line=\"5\" ", "https://x.y ", "---\n"]
+        var seed: UInt64 = 42
+        func next() -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int(seed >> 33) }
+        let options = RenderOptions(sourceLines: true, standalone: false, sanitize: false, highlight: true, fallbackTitle: "", style: nil)
+        var patched = 0, total = 0
+        for _ in 0..<300 {
+            var text = (0..<(20 + next() % 200)).map { _ in tokens[next() % tokens.count] }.joined()
+            let old = Document(text: text).renderHtml(options: options)
+            // An edit: a few characters typed, a line or two inserted, or a deletion, somewhere.
+            let ns = text as NSString
+            let at = next() % (ns.length + 1)
+            let safe = ns.rangeOfComposedCharacterSequence(at: min(at, max(0, ns.length - 1))).location
+            let loc = at >= ns.length ? ns.length : safe
+            switch next() % 4 {
+            case 0: text = ns.replacingCharacters(in: NSRange(location: loc, length: 0), with: "x")
+            case 1: text = ns.replacingCharacters(in: NSRange(location: loc, length: 0), with: "\n")
+            case 2: text = ns.replacingCharacters(in: NSRange(location: loc, length: 0), with: "\n\nnew para\n\n")
+            default:
+                let len = min(ns.length - loc, next() % 6)
+                text = ns.replacingCharacters(in: ns.rangeOfComposedCharacterSequences(for: NSRange(location: loc, length: len)), with: "")
+            }
+            let new = Document(text: text).renderHtml(options: options)
+            total += 1
+            guard let patch = BodyPatch.make(from: old, to: new) else { continue }
+            patched += 1
+            XCTAssertEqual(patch.apply(to: old), new, "\(text.debugDescription)")
+        }
+        XCTAssertGreaterThan(patched, total / 2, "most edits are sent as patches")
+        // At 1 MB a keystroke's patch is small.
+        let unit = "## Section\n\nA paragraph with *emphasis* and a [link](https://example.com).\n\n- item\n- item\n\n```rust\nfn main() {}\n```\n\n"
+        let big = String(repeating: unit, count: 1_000_000 / unit.count)
+        let a = Document(text: big).renderHtml(options: options)
+        let mid = (big as NSString).length / 2
+        let typed = (big as NSString).replacingCharacters(in: NSRange(location: mid, length: 0), with: "z")
+        let returned = (big as NSString).replacingCharacters(in: NSRange(location: mid, length: 0), with: "\n\n")
+        for edited in [typed, returned] {
+            let b = Document(text: edited).renderHtml(options: options)
+            let t0 = Date()
+            let patch = try XCTUnwrap(BodyPatch.make(from: a, to: b))
+            print("1 MB body patch: \(patch.insert.utf16.count) units sent of \(b.utf16.count), delta \(patch.lineDelta), made in \(Int(Date().timeIntervalSince(t0) * 1000)) ms (off the main thread)")
+            XCTAssertLessThan(patch.insert.utf16.count, 2000)
+            XCTAssertEqual(patch.apply(to: a), b)
+        }
+    }
+
+    /// Random editing with the preview open: once things settle, the page holds exactly the core's
+    /// render of the final text (the HTML the page was sent, and the DOM it built from it).
+    func testRandomEditsWithThePreviewOpenEndWithTheCoresRender() throws {
+        var text = "# Start\n\n"
+        for i in 0..<60 { text += "Paragraph \(i) with *some* words.\n\n- item \(i)\n\n" }
+        let (doc, wc) = try open(text, layout: .split)
+        let p = wc.previewController
+        XCTAssertTrue(p.waitUntilSettled())
+        let tv = wc.textView
+        var seed: UInt64 = 7
+        func next() -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int(seed >> 33) }
+        let inserts = ["x", "y", "z", " ", "\n", "\n\n", "# ", "*", "- ", "```\n", "| a |\n|---|\n", " 🎉", "[^1]", "\n[^1]: n\n"]
+        for step in 0..<160 {
+            let length = (tv.string as NSString).length
+            // Typing happens at the caret; now and then the caret jumps somewhere else.
+            if step % 12 == 0 {
+                let loc = next() % (length + 1)
+                let range = (tv.string as NSString).rangeOfComposedCharacterSequences(for: NSRange(location: min(loc, length), length: 0))
+                tv.setSelectedRange(NSRange(location: range.location, length: 0))
+            }
+            let caret = tv.selectedRange().location
+            if next() % 6 == 0, caret > 2 {
+                let del = (tv.string as NSString).rangeOfComposedCharacterSequences(for: NSRange(location: caret - 1, length: 1))
+                tv.insertText("", replacementRange: del)
+            } else {
+                // Mostly letters, sometimes structure.
+                let token = next() % 3 == 0 ? inserts[next() % inserts.count] : inserts[next() % 4]
+                tv.insertText(token, replacementRange: NSRange(location: NSNotFound, length: 0))
+            }
+            // Sometimes let a render land, sometimes not.
+            pump(step % 5 == 0 ? 0.25 : 0.005)
+        }
+        XCTAssertTrue(p.waitUntilSettled(timeout: 30))
+        pump(0.2)
+        XCTAssertTrue(p.waitUntilSettled(timeout: 30))
+        let core = coreBody(doc.session, p)
+        XCTAssertEqual(p.lastBodyHTML, core, "what was sent last is the core's render of the final text")
+        XCTAssertEqual(p.evaluateSync("return __md.source();") as? String, core, "the page holds it")
+        let dom = p.evaluateSync("return document.getElementById('md').innerHTML === __md.parsed(__md.source());") as? Bool
+        XCTAssertEqual(dom, true, "and its DOM is what that HTML parses to")
+        XCTAssertGreaterThan(p.patchesSent, 3, "updates went as patches: renders \(p.renders), applied \(p.applied), superseded \(p.superseded), patches \(p.patchesSent), no base \(p.rendersWithoutBase), no patch \(p.rendersWithoutPatch)")
+        XCTAssertEqual(p.patchesRefused, 0)
+        doc.close()
+    }
+
     func testNothingIsRenderedWhileHidden() throws {
         let (doc, wc) = try open("# Hidden\n")
         let p = wc.previewController
@@ -135,47 +230,130 @@ final class PreviewTests: XCTestCase {
 
     // MARK: local pictures
 
-    func testSchemeResolutionIsLimitedToTheDocumentFolderAndExplicitPaths() {
-        let folder = URL(fileURLWithPath: "/Users/me/notes")
-        func r(_ s: String, folder: URL? = folder) -> PreviewURL.Resolution { PreviewURL.resolve(URL(string: s)!, documentFolder: folder, home: URL(fileURLWithPath: "/Users/me")) }
-        XCTAssertEqual(r("mdoc://doc/rel/img/a.png"), .file(URL(fileURLWithPath: "/Users/me/notes/img/a.png")))
-        XCTAssertEqual(r("mdoc://doc/rel/a%20b.png"), .file(URL(fileURLWithPath: "/Users/me/notes/a b.png")))
-        XCTAssertEqual(r("mdoc://doc/rel/../secret.png"), .denied, "the document's folder and below only")
-        XCTAssertEqual(r("mdoc://doc/rel/a/../../secret.png"), .denied)
-        XCTAssertEqual(r("mdoc://doc/rel/%2e%2e/secret.png"), .denied)
-        XCTAssertEqual(r("mdoc://doc/rel/img/a.png", folder: nil), .denied, "an untitled document has no base")
-        XCTAssertEqual(r("mdoc://doc/abs/Users/me/pics/a.png"), .file(URL(fileURLWithPath: "/Users/me/pics/a.png")), "named outright, as the editor allows")
-        XCTAssertEqual(r("mdoc://doc/home/pics/a.png"), .file(URL(fileURLWithPath: "/Users/me/pics/a.png")))
+    /// Picture destinations as a document may write them, and the file each names (nil: none),
+    /// for a document at `<root>/notes/doc.md` with the user's home at `home`. The one table the
+    /// editor's resolver, the preview's scheme handler and both real loaders are checked against.
+    static func pictureCases(root: URL, home: URL) -> [(String, URL?)] {
+        let notes = root.appendingPathComponent("notes")
+        return [
+            ("img/a.png", notes.appendingPathComponent("img/a.png")),
+            ("./img/a.png", notes.appendingPathComponent("img/a.png")),
+            ("img/../img/a.png", notes.appendingPathComponent("img/a.png")),
+            ("../shared/b.png", root.appendingPathComponent("shared/b.png")),
+            ("../../c.png", root.deletingLastPathComponent().appendingPathComponent("c.png")),
+            ("%2e%2e/shared/b.png", root.appendingPathComponent("shared/b.png")),
+            ("..%2Fshared%2Fb.png", root.appendingPathComponent("shared/b.png")),
+            ("with space.png", notes.appendingPathComponent("with space.png")),
+            ("with%20space.png", notes.appendingPathComponent("with space.png")),
+            ("caf\u{e9} \u{65E5}\u{672C}.png", notes.appendingPathComponent("caf\u{e9} \u{65E5}\u{672C}.png")),
+            ("caf%C3%A9%20%E6%97%A5%E6%9C%AC.png", notes.appendingPathComponent("caf\u{e9} \u{65E5}\u{672C}.png")),
+            ("deep/er/nested/d.png", notes.appendingPathComponent("deep/er/nested/d.png")),
+            (root.appendingPathComponent("shared/b.png").path, root.appendingPathComponent("shared/b.png")),
+            ("file://" + root.appendingPathComponent("shared/b.png").path, root.appendingPathComponent("shared/b.png")),
+            ("file:///" + root.appendingPathComponent("shared/b.png").path.dropFirst(), root.appendingPathComponent("shared/b.png")),
+            ("~/pics/e.png", home.appendingPathComponent("pics/e.png")),
+            ("  img/a.png  ", notes.appendingPathComponent("img/a.png")),
+            ("javascript:alert(1)", nil),
+            ("ftp://example.com/x.png", nil),
+            ("", nil),
+        ]
+    }
+
+    func testThePreviewResolvesPicturesExactlyAsTheEditorDoes() throws {
+        let root = URL(fileURLWithPath: "/Users/me/work")
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let doc = root.appendingPathComponent("notes/doc.md")
+        let images = ImageController()
+        images.documentURL = { doc }
+        for (destination, want) in Self.pictureCases(root: root, home: home) {
+            let editor = images.resolve(destination)
+            XCTAssertEqual(editor?.standardizedFileURL, want?.standardizedFileURL, "editor: \(destination.debugDescription)")
+            // The page sends the destination as written (an attribute's value: after the
+            // renderer's escaping, which decoding undoes the same way).
+            let preview = PreviewURL.resolve(PreviewURL.picture(destination), documentURL: doc)
+            XCTAssertEqual(preview, want.map { .file($0.standardizedFileURL) } ?? .denied, "preview: \(destination.debugDescription)")
+        }
+        // Remote and inline pictures are the page's own business, and the editor's: both load them.
+        XCTAssertEqual(images.resolve("https://example.com/a.png"), URL(string: "https://example.com/a.png"))
+        XCTAssertEqual(images.resolve("http://example.com/a.png"), URL(string: "http://example.com/a.png"))
+        XCTAssertEqual(images.resolve("data:image/png;base64,AAAA")?.scheme, "data")
+        // An untitled document has no folder: relative pictures resolve nowhere, in both.
+        images.documentURL = { nil }
+        XCTAssertNil(images.resolve("img/a.png"))
+        XCTAssertEqual(PreviewURL.resolve(PreviewURL.picture("img/a.png"), documentURL: nil), .denied)
+        XCTAssertEqual(PreviewURL.resolve(PreviewURL.picture(root.appendingPathComponent("x.png").path), documentURL: nil), .file(root.appendingPathComponent("x.png")))
+        // Other routes.
+        func r(_ s: String) -> PreviewURL.Resolution { PreviewURL.resolve(URL(string: s)!, documentURL: doc) }
+        XCTAssertEqual(r("mdoc://doc/rel/img/a.png"), .file(root.appendingPathComponent("notes/img/a.png")))
+        XCTAssertEqual(r("mdoc://doc/rel/..%2F..%2Fsecret.png"), .denied, "relative resources of raw HTML stay in the folder")
+        XCTAssertEqual(r("mdoc://doc/rel/%2E%2E/secret.png"), .denied)
         XCTAssertEqual(r("mdoc://doc/font/iAWriterQuattroS-Regular.ttf"), .font("iAWriterQuattroS-Regular.ttf"))
+        XCTAssertEqual(r("mdoc://doc/link?href=..%2Fother.md"), .link("../other.md"))
         XCTAssertEqual(r("mdoc://doc/other"), .denied)
+        XCTAssertEqual(r("mdoc://doc/abs/etc/passwd"), .denied, "no route by absolute path any more")
         XCTAssertEqual(r("https://doc/rel/a.png"), .unknown)
         XCTAssertEqual(r("mdoc://elsewhere/rel/a.png"), .unknown)
     }
 
-    func testTheSchemeHandlerServesADocumentRelativePicture() throws {
+    /// The same table, end to end: real files on disk; the editor's ImageController and the
+    /// preview's page each load what the table says, and nothing else.
+    func testThePreviewAndTheEditorLoadTheSamePictures() throws {
         let png = try Data(contentsOf: Fixtures.root.appendingPathComponent("scripts/macos/ui/fixtures/images/small.png"))
-        try FileManager.default.createDirectory(at: tmp.appendingPathComponent("img"), withIntermediateDirectories: true)
-        try png.write(to: tmp.appendingPathComponent("img/small.png"))
-        try Data("secret".utf8).write(to: tmp.deletingLastPathComponent().appendingPathComponent("outside-\(tmp.lastPathComponent).png"))
-        let md = "![ok](img/small.png)\n\n![missing](img/none.png)\n\n![outside](../outside-\(tmp.lastPathComponent).png)\n\n![abs](file://\(tmp.path)/img/small.png)\n"
-        let (doc, wc) = try open(md, file: "doc.md", layout: .split)
-        defer { try? FileManager.default.removeItem(at: tmp.deletingLastPathComponent().appendingPathComponent("outside-\(tmp.lastPathComponent).png")) }
+        let root = tmp!
+        let home = tmp.appendingPathComponent("home")
+        let cases = Self.pictureCases(root: root, home: home).filter { !$0.0.hasPrefix("~/") }
+        for case (_, let file?) in cases {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try png.write(to: file)
+        }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("notes"), withIntermediateDirectories: true)
+        // Plus one that is missing; each picture on its own line, with its index as alt text.
+        let all = cases.map(\.0) + ["missing.png"]
+        let md = all.enumerated().map { "![p\($0.offset)](<\($0.element.trimmingCharacters(in: .whitespaces))>)" }.joined(separator: "\n\n") + "\n"
+        try Data(md.utf8).write(to: root.appendingPathComponent("notes/doc.md"))
+        let settings = isolatedSettings()
+        settings.defaultLayout = .split
+        let doc = MarkdownDocument(settings: settings)
+        try doc.read(from: Data(md.utf8), ofType: "net.daringfireball.markdown")
+        doc.fileURL = root.appendingPathComponent("notes/doc.md")
+        doc.makeWindowControllers()
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        XCTAssertTrue(doc.session.waitUntilStyled())
         let p = wc.previewController
         XCTAssertTrue(p.waitUntilSettled())
-        func state() -> [String: Int] { p.evaluateSync("const i = [...document.images]; return {total: i.length, loaded: i.filter(x => x.complete && x.naturalWidth > 0).length, broken: i.filter(x => x.complete && x.naturalWidth === 0).length};") as? [String: Int] ?? [:] }
-        XCTAssertTrue(spin { state()["loaded"] == 2 && state()["broken"] == 2 }, "\(state())")
-        XCTAssertGreaterThanOrEqual(p.schemeHandler.denied, 1, "the picture outside the folder was refused")
-        XCTAssertTrue(p.schemeHandler.requests.contains { $0.path == "/rel/img/small.png" })
+        func pageState() -> [String: Bool] {
+            let r = p.evaluateSync("const o = {}; for (const i of document.images) { if (!i.complete) return null; o[i.alt] = i.naturalWidth > 0; } return o;") as? [String: Bool]
+            return r ?? [:]
+        }
+        XCTAssertTrue(spin(timeout: 10) { pageState().count == all.count }, "\(pageState())")
+        let page = pageState()
+        // The editor's loader, through the same function.
+        let images = doc.session.imageController
+        images.documentURL = { [weak doc] in doc?.fileURL }
+        var editor: [String: Bool] = [:]
+        for (i, destination) in all.enumerated() {
+            let trimmed = destination.trimmingCharacters(in: .whitespaces)
+            _ = images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1)
+            XCTAssertTrue(spin(timeout: 5) { images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1).phase != .loading }, trimmed)
+            editor["p\(i)"] = images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1).phase == .loaded
+        }
+        for (i, destination) in all.enumerated() {
+            let want = i < cases.count ? cases[i].1 != nil : false
+            XCTAssertEqual(page["p\(i)"], want, "preview: \(destination.debugDescription)")
+            XCTAssertEqual(editor["p\(i)"], want, "editor: \(destination.debugDescription)")
+        }
+        XCTAssertEqual(p.schemeHandler.unanswered, 0, "every request was answered")
         doc.close()
     }
 
     // MARK: links
 
     func testLinkPolicy() {
-        let folder = URL(fileURLWithPath: "/Users/me/notes")
-        func decide(_ s: String, link: Bool = true, main: Bool = true, initial: Bool = false, folder: URL? = folder) -> LinkAction {
-            LinkPolicy.decide(url: URL(string: s), isLinkActivation: link, isMainFrame: main, isInitialLoad: initial, documentFolder: folder)
+        let document = URL(fileURLWithPath: "/Users/me/notes/doc.md")
+        func decide(_ s: String, link: Bool = true, main: Bool = true, initial: Bool = false, doc: URL? = document) -> LinkAction {
+            LinkPolicy.decide(url: URL(string: s), isLinkActivation: link, isMainFrame: main, isInitialLoad: initial, documentURL: doc)
         }
+        func routed(_ href: String) -> String { "mdoc://doc/link?href=" + href.addingPercentEncoding(withAllowedCharacters: .alphanumerics)! }
         let table: [(String, LinkAction)] = [
             ("https://example.com/a?b=c#d", .open(URL(string: "https://example.com/a?b=c#d")!)),
             ("http://example.com", .open(URL(string: "http://example.com")!)),
@@ -184,22 +362,38 @@ final class PreviewTests: XCTestCase {
             ("mdoc://doc/rel/#the-end", .scrollToFragment("the-end")),
             ("mdoc://doc/rel/#caf%C3%A9", .scrollToFragment("café")),
             ("mdoc://doc/rel/", .ignore),
-            ("mdoc://doc/rel/other.md", .open(URL(fileURLWithPath: "/Users/me/notes/other.md"))),
-            ("mdoc://doc/rel/sub/x.pdf#page=2", .open(URL(fileURLWithPath: "/Users/me/notes/sub/x.pdf"))),
-            ("mdoc://doc/rel/../escape.md", .ignore),
-            ("file:///Users/me/a.txt", .open(URL(fileURLWithPath: "/Users/me/a.txt"))),
+            // Links the page routes to the app go where a Cmd-click in the editor goes.
+            (routed("other.md"), .open(URL(fileURLWithPath: "/Users/me/notes/other.md"))),
+            (routed("sub/x.pdf#page=2"), .open(URL(fileURLWithPath: "/Users/me/notes/sub/x.pdf"))),
+            (routed("../up.md"), .open(URL(fileURLWithPath: "/Users/me/up.md"))),
+            (routed("~/a.txt"), .open(URL(fileURLWithPath: NSString(string: "~/a.txt").expandingTildeInPath))),
+            (routed("file:///Users/me/a.txt"), .open(URL(fileURLWithPath: "/Users/me/a.txt"))),
+            (routed("javascript:alert(1)"), .ignore),
+            (routed("ftp://example.com/x"), .ignore),
+            // Not routed: never followed.
+            ("mdoc://doc/rel/other.md", .ignore),
+            ("file:///Users/me/a.txt", .ignore),
             ("javascript:alert(1)", .ignore),
             ("data:text/html,hi", .ignore),
             ("ftp://example.com/x", .ignore),
             ("x-apple.systempreferences:", .ignore),
         ]
-        for (url, want) in table { XCTAssertEqual(decide(url), want, "\(url) \(PreviewURL.resolve(URL(string: url)!, documentFolder: folder))") }
-        XCTAssertEqual(decide("mdoc://doc/rel/other.md", folder: nil), .ignore, "an untitled document has no neighbours")
+        for (url, want) in table { XCTAssertEqual(decide(url), want, url) }
+        // The routed links agree with the editor's own Cmd-click, case by case.
+        for href in ["other.md", "../up.md", "/abs/x.md", "~/y.md", "file:///z.md", "www.example.com", "#frag", "javascript:x", "a%20b.md"] {
+            let editor = LinkOpener.url(for: href, documentURL: document)
+            let preview = decide(routed(href))
+            if href.hasPrefix("#") { XCTAssertEqual(preview, .scrollToFragment("frag")); continue }
+            XCTAssertEqual(preview, editor.map { .open($0) } ?? .ignore, href)
+        }
+        XCTAssertEqual(decide(routed("other.md"), doc: nil), .ignore, "an untitled document has no neighbours")
         XCTAssertEqual(decide("https://example.com", link: false), .ignore, "only a click opens things")
         XCTAssertEqual(decide("https://example.com", main: false), .ignore, "a frame in the document's HTML navigates nowhere")
         XCTAssertEqual(decide("mdoc://doc/rel/", link: false, initial: true), .allow, "the app's own load of the page")
+        XCTAssertEqual(decide("mdoc://doc/rel/", link: false, main: false, initial: true), .ignore, "not into a frame")
+        XCTAssertEqual(decide("mdoc://doc/picture?src=%2Fetc%2Fpasswd", link: false, initial: true), .ignore, "a refresh to a file is not the page")
         XCTAssertEqual(decide("https://example.com", link: false, initial: true), .ignore)
-        XCTAssertEqual(LinkPolicy.decide(url: nil, isLinkActivation: true, isMainFrame: true, isInitialLoad: false, documentFolder: nil), .ignore)
+        XCTAssertEqual(LinkPolicy.decide(url: nil, isLinkActivation: true, isMainFrame: true, isInitialLoad: false, documentURL: nil), .ignore)
     }
 
     func testClickingLinksInThePreviewUsesThePolicy() throws {
@@ -346,28 +540,115 @@ final class PreviewTests: XCTestCase {
         doc.close()
     }
 
-    func testSwitchingLayoutsKeepsTheEditorsSelectionAndScroll() throws {
+    /// The line fragment (its top, in the text view) holding character `i`.
+    private func lineTop(_ wc: EditorWindowController, _ i: Int) -> CGFloat {
+        let lm = wc.textView.layoutManager!
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: i + 1))
+        return lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: i), effectiveRange: nil).minY
+    }
+
+    /// The character at the top of the editor is still in the first visible line: switching
+    /// layouts, dragging the divider and resizing the window rewrap the text, and the reader keeps
+    /// their place to within a line (not a scroll offset in points, which lands on other text).
+    func testSwitchingLayoutsDraggingTheDividerAndResizingKeepTheTopCharacter() throws {
         var text = "# Title\n\n"
-        for i in 0..<80 { text += "Paragraph \(i) with some words in it.\n\n" }
+        for i in 0..<120 { text += "Paragraph \(i) " + String(repeating: "with words that wrap differently at each width ", count: 1 + i % 4) + "\n\n" }
         let (doc, wc) = try open(text)
-        wc.window?.setContentSize(NSSize(width: 1000, height: 600))
+        wc.showWindow(nil)
+        wc.window?.setContentSize(NSSize(width: 1300, height: 700))
+        pump(0.1)
         let sv = wc.scrollView
         let clip = sv.contentView
-        clip.scroll(to: NSPoint(x: 0, y: 700))
+        clip.scroll(to: NSPoint(x: 0, y: 2300))
         sv.reflectScrolledClipView(clip)
         wc.textView.setSelectedRange(NSRange(location: 400, length: 12))
         pump(0.1)
-        // The text at the top of the editor (a narrower pane wraps differently, so offsets in points move).
-        let top = wc.textView.visibleCharacterRange().location
-        XCTAssertGreaterThan(top, 100)
-        for layout in [LayoutMode.preview, .split, .preview, .editor, .split] {
+        let anchor = try XCTUnwrap(wc.editorTopAnchor())
+        XCTAssertGreaterThan(anchor.character, 500)
+        func checkTop(_ label: String) {
+            guard let now = wc.editorTopAnchor() else { return XCTFail("\(label): no top") }
+            let lineHeight = wc.textView.layoutManager!.defaultLineHeight(for: wc.textView.font!)
+            // Same line: the original character's line is the one at the top.
+            XCTAssertEqual(lineTop(wc, now.character), lineTop(wc, anchor.character), accuracy: 0.5, "\(label): top is character \(now.character) +\(now.intoLine), was \(anchor.character) +\(anchor.intoLine); line height \(lineHeight)")
+            XCTAssertLessThan(abs(now.intoLine - anchor.intoLine), lineHeight, label)
+        }
+        for layout in [LayoutMode.split, .preview, .split, .editor, .preview, .editor, .split, .split] {
             doc.session.setLayout(layout)
-            pump(0.3)
+            pump(0.2)
             XCTAssertEqual(wc.textView.selectedRange(), NSRange(location: 400, length: 12), "\(layout)")
-            if layout.showsEditor { XCTAssertEqual(Double(wc.textView.visibleCharacterRange().location), Double(top), accuracy: 120, "\(layout)") }
             XCTAssertEqual(wc.scrollView.isHidden, !layout.showsEditor)
             XCTAssertEqual(wc.previewPane.isHidden, !layout.showsPreview)
+            if layout.showsEditor { checkTop("\(layout)") }
         }
+        // Drag the divider (through the split view's own mouse handling), to its limits and back.
+        doc.session.setLayout(.split)
+        pump(0.1)
+        let split = wc.splitView
+        let window = try XCTUnwrap(wc.window)
+        func drag(to x: CGFloat) {
+            let p = split.convert(NSPoint(x: x, y: split.bounds.midY), to: nil)
+            let e = NSEvent.mouseEvent(with: .leftMouseDragged, location: p, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                       context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            split.mouseDragged(with: e)
+        }
+        split.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                                 context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        for x in [400, 900, 10, 5000, 650] as [CGFloat] {
+            drag(to: x)
+            pump(0.05)
+            XCTAssertGreaterThanOrEqual(wc.scrollView.frame.width, PreviewSplitView.minimumPane - 0.5, "x \(x)")
+            XCTAssertGreaterThanOrEqual(wc.previewPane.frame.width, PreviewSplitView.minimumPane - 0.5, "x \(x)")
+            checkTop("divider at \(x)")
+        }
+        split.mouseUp(with: NSEvent.mouseEvent(with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                               context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        XCTAssertEqual(doc.session.settings.splitRatio, Double(split.ratio), accuracy: 0.001, "the ratio is remembered")
+        // The window: narrower and wider.
+        for width in [900, 1500, 1100] as [CGFloat] {
+            window.setContentSize(NSSize(width: width, height: 700))
+            pump(0.1)
+            checkTop("window \(width)")
+        }
+        // A new window starts at the remembered ratio.
+        let (doc2, wc2) = try open("x\n", layout: .split)
+        _ = doc2
+        wc2.window?.setContentSize(NSSize(width: 1100, height: 600))
+        pump(0.1)
+        XCTAssertEqual(wc2.splitView.ratio, split.ratio, accuracy: 0.001)
+        doc2.close()
+        doc.close()
+    }
+
+    /// The editor's reading position (what the preview is synced to) at the top of the document is
+    /// the top, in every state the editor can be in (it once came back as the end of the document).
+    func testTheReadingPositionAtTheTopIsTheTop() throws {
+        var text = "# Title\n\n"
+        for i in 0..<200 { text += "Paragraph \(i) with some words in it.\n\n" }
+        let (doc, wc) = try open(text, layout: .split)
+        wc.showWindow(nil)
+        let p = wc.previewController
+        XCTAssertTrue(p.waitUntilSettled())
+        func atTop(_ label: String) {
+            let clip = wc.scrollView.contentView
+            clip.scroll(to: NSPoint(x: 0, y: -wc.scrollView.contentInsets.top))
+            wc.scrollView.reflectScrolledClipView(clip)
+            let r = p.editorReadingPosition() ?? -1
+            XCTAssertLessThan(r, 1, "\(label): reading position \(r) at the top")
+        }
+        atTop("split")
+        doc.session.setLayout(.preview); pump(0.1)
+        doc.session.setLayout(.split); pump(0.1)
+        atTop("after the preview layout")
+        doc.session.setViewMode(.live); pump(0.2)
+        atTop("live")
+        wc.window?.setContentSize(NSSize(width: 700, height: 500)); pump(0.1)
+        atTop("narrow window")
+        // Chrome hidden and shown changes the insets under the scroll position.
+        wc.simulatePointerMoved(); pump(0.1)
+        atTop("chrome shown")
+        doc.session.load("")
+        pump(0.2)
+        XCTAssertEqual(p.editorReadingPosition(), 0, "empty document")
         doc.close()
     }
 

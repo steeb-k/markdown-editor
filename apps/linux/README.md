@@ -59,8 +59,27 @@ What a GTK shell writes for the focus tools, given what the core already does:
   - `source_lines` puts `data-line="N"` (0-based first source line) on every block-level element: scroll
     sync is "line of the editor's top visible text" to the nearest preceding element and back, interpolating
     between the elements either side (see `ScrollSync` in the macOS shell; the same few lines in JS).
-  - Local pictures: serve document-relative files through a custom URI scheme (`webkit_web_context_register_uri_scheme`)
-    that reads through your file-access seam rather than `file:`; the base URI of the page is the scheme root.
+  - The standalone page carries a Content-Security-Policy (`render::CONTENT_SECURITY_POLICY`): no script, frame,
+    plugin, form submission or `<base>`; fonts and stylesheets only from the page's own origin or inline; pictures and
+    media from there, `http(s):` and `data:`. JavaScript-off alone does not stop a document's raw HTML from loading a
+    stylesheet or a frame from the network; the policy does. So **serve everything the page loads from the page's own
+    origin** (your custom scheme with one host), which is what `'self'` allows.
+  - Local pictures and links: serve them through a custom URI scheme (`webkit_web_context_register_uri_scheme`)
+    that reads through your file-access seam rather than `file:`. Do not let the web view resolve relative paths
+    itself (it drops `..` against the base and cannot express `~/`): before inserting a body, rewrite every
+    `<img src>` that is not `http(s):`/`data:` to `<scheme>://<host>/picture?src=<the attribute, URI-encoded>` and
+    every `<a href>` that is not `#…`, `http(s):`, `mailto:` or `tel:` to `…/link?href=…`, then resolve `src` with the
+    same function the editor's pictures use (the macOS shell: `DocumentFileAccess.pictureURL` then `mayRead`), so
+    the editor and the preview show the same pictures. The macOS page script (`PreviewScripts.route`) is the model.
+  - `render_html_fragment(…, sanitize: true)` is an allowlist (elements, attributes, URL schemes `http`, `https`,
+    `mailto`, `tel`, raster `data:` images); everything it keeps is rewritten as a normalised tag. Use it for
+    anything that leaves the app (the clipboard).
+  - Fenced-code highlighting is bounded per render (`HIGHLIGHT_BUDGET_BYTES`, `HIGHLIGHT_BUDGET_TIME`): blocks past
+    the budget are plain and carry `data-highlight="skipped"`. No 1 MB render takes over about 100 ms in release.
+  - Printing: give the page an `@page { margin: … }` rule from the page setup's margins (WebKit lays pages out by the
+    stylesheet's `@page`, not by the print settings). Headings are kept with what follows by the print stylesheet
+    itself (an invisible tail on each heading); a table longer than a page may still leave its header at a page's
+    foot, and WebKit does not repeat table headers.
   - PDF and printing: load the standalone page into an offscreen web view and use `WebKitPrintOperation`
     (the page's `@media print` section makes it light, paginated, links without URLs). Syntax highlighting
     is class-based (`s-keyword`, ...; syntect with its pure-Rust regex backend, no C), coloured by the

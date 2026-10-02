@@ -1,6 +1,8 @@
 import AppKit
 import UniformTypeIdentifiers
-import WebKit
+// A URL scheme task is answered on the main thread only (the file is read elsewhere and the
+// answer hops back), which WebKit's annotations cannot express.
+@preconcurrency import WebKit
 import MarkdownCore
 
 /// How a window shows its document: the editor alone, the editor beside the preview, or the
@@ -32,12 +34,16 @@ public enum LayoutMode: String, CaseIterable, Sendable {
 // MARK: - the preview's addresses
 
 /// The preview page lives at `mdoc://doc/rel/`; everything it loads goes through the app's own
-/// scheme handler (`PreviewSchemeHandler`), never through `file:`:
+/// scheme handler (`PreviewSchemeHandler`), never through `file:`. The page's script rewrites
+/// every picture and every link that is not to the web, before the page can load it, to carry
+/// the destination exactly as the Markdown wrote it, so the same functions the editor uses decide
+/// what it is (`DocumentFileAccess.pictureURL`, `LinkOpener.url`):
 ///
-///     mdoc://doc/rel/<path>    a file relative to the document's folder (and below)
-///     mdoc://doc/abs/<path>    a file the Markdown names by absolute path or `file:` URL
-///     mdoc://doc/home/<path>   a file the Markdown names as `~/path`
-///     mdoc://doc/font/<name>   one of the bundled writing fonts
+///     mdoc://doc/picture?src=<as written>   a picture (`<img src>`), resolved and checked like the editor's
+///     mdoc://doc/link?href=<as written>     a link to a file (opened only on a click, see LinkPolicy)
+///     mdoc://doc/font/<name>                one of the bundled writing fonts
+///     mdoc://doc/rel/<path>                 anything else the page's raw HTML refers to by a relative
+///                                           path (a stylesheet, `srcset`): the document's folder and below
 public enum PreviewURL {
     public static let scheme = "mdoc"
     public static let host = "doc"
@@ -46,43 +52,57 @@ public enum PreviewURL {
     public enum Resolution: Equatable {
         case file(URL)
         case font(String)
+        /// A link as written in the document (for `LinkOpener.url`).
+        case link(String)
         /// Refused: outside what the document may read.
         case denied
         /// Not one of ours.
         case unknown
     }
 
-    /// Where a request for `url` is served from. `documentFolder` is nil for a document that was
-    /// never saved (relative paths then have no base). Relative requests may not climb out of the
-    /// document's folder; explicit absolute and `~/` paths are allowed, as the editor allows
-    /// them (see `DocumentFileAccess.canReadForPreview`).
-    public static func resolve(_ url: URL, documentFolder: URL?, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Resolution {
+    /// The address the page loads the picture `src` (as written) from.
+    public static func picture(_ src: String) -> URL {
+        var c = URLComponents()
+        c.scheme = scheme
+        c.host = host
+        c.path = "/picture"
+        c.queryItems = [URLQueryItem(name: "src", value: src)]
+        return c.url!
+    }
+
+    /// Where a request for `url` is served from. `documentURL` is nil for a document that was
+    /// never saved (relative paths then have no base).
+    public static func resolve(_ url: URL, documentURL: URL?) -> Resolution {
         guard url.scheme == scheme, url.host == host else { return .unknown }
         // Percent-decoded path components, the way the file system will see them.
         let path = url.path(percentEncoded: false)
-        func rest(after prefix: String) -> String? { path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : nil }
-        if let name = rest(after: "/font/") {
-            return .font(name)
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        switch path {
+        case "/picture":
+            guard let src = query.first(where: { $0.name == "src" })?.value,
+                  let file = DocumentFileAccess.pictureURL(for: src, documentURL: documentURL),
+                  file.isFileURL, DocumentFileAccess.mayRead(file, documentURL: documentURL) else { return .denied }
+            return .file(file)
+        case "/link":
+            guard let href = query.first(where: { $0.name == "href" })?.value else { return .denied }
+            return .link(href)
+        default:
+            break
         }
-        if let relative = rest(after: "/rel/") {
-            guard let folder = documentFolder else { return .denied }
-            let file = URL(fileURLWithPath: relative, isDirectory: false, relativeTo: URL(fileURLWithPath: folder.standardizedFileURL.path, isDirectory: true)).standardizedFileURL
-            return DocumentFileAccess.canReadForPreview(file, documentFolder: folder, explicit: false) ? .file(file) : .denied
+        if path.hasPrefix("/font/") {
+            return .font(String(path.dropFirst("/font/".count)))
         }
-        if let absolute = rest(after: "/abs/") {
-            let file = URL(fileURLWithPath: "/" + absolute).standardizedFileURL
-            return DocumentFileAccess.canReadForPreview(file, documentFolder: documentFolder, explicit: true) ? .file(file) : .denied
-        }
-        if let underHome = rest(after: "/home/") {
-            let file = URL(fileURLWithPath: underHome, isDirectory: false, relativeTo: URL(fileURLWithPath: home.path, isDirectory: true)).standardizedFileURL
-            return DocumentFileAccess.canReadForPreview(file, documentFolder: documentFolder, explicit: true) ? .file(file) : .denied
+        if path.hasPrefix("/rel/") {
+            // WebKit has already taken `..` segments out; a decoded `%2F` could still spell one,
+            // so the result must stay in the document's folder.
+            guard let folder = documentURL?.deletingLastPathComponent().standardizedFileURL else { return .denied }
+            let relative = String(path.dropFirst("/rel/".count))
+            let file = URL(fileURLWithPath: relative, isDirectory: false, relativeTo: URL(fileURLWithPath: folder.path, isDirectory: true)).standardizedFileURL
+            let base = folder.path.hasSuffix("/") ? folder.path : folder.path + "/"
+            guard file.path.hasPrefix(base), DocumentFileAccess.mayRead(file, documentURL: documentURL) else { return .denied }
+            return .file(file)
         }
         return .denied
-    }
-
-    /// The document folder a relative request is checked against.
-    public static func folder(of documentURL: URL?) -> URL? {
-        documentURL?.deletingLastPathComponent().standardizedFileURL
     }
 }
 
@@ -106,27 +126,31 @@ public enum LinkPolicy {
     /// - `isMainFrame`: the navigation targets the page, not a frame a document's raw HTML made.
     /// - `isInitialLoad`: the app's own `loadHTMLString` for the page.
     public static func decide(url: URL?, isLinkActivation: Bool, isMainFrame: Bool, isInitialLoad: Bool,
-                              documentFolder: URL?) -> LinkAction {
+                              documentURL: URL?) -> LinkAction {
         guard let url else { return .ignore }
-        if isInitialLoad, url.scheme == PreviewURL.scheme { return .allow }
+        // The app's own load of the page, and nothing else that happens to use the scheme (a
+        // `<meta refresh>` or a frame in the document's raw HTML).
+        if isInitialLoad, isMainFrame, url == PreviewURL.base { return .allow }
         guard isMainFrame, isLinkActivation else { return .ignore }
         switch url.scheme?.lowercased() {
         case "http", "https", "mailto", "tel":
             return .open(url)
         case PreviewURL.scheme:
-            // Relative to the page: a fragment of it, or another file.
+            // A fragment of the page itself.
             let samePage = url.host == PreviewURL.host && (url.path == "/rel/" || url.path == "/rel")
             if samePage {
                 guard let fragment = url.fragment(percentEncoded: false), !fragment.isEmpty else { return .ignore }
                 return .scrollToFragment(fragment)
             }
-            switch PreviewURL.resolve(url, documentFolder: documentFolder) {
-            case .file(let file): return .open(file)
-            default: return .ignore
+            // A link the page's script routed here, as written: the editor's own rule (Cmd-click).
+            if case .link(let href) = PreviewURL.resolve(url, documentURL: documentURL) {
+                if href.hasPrefix("#") { return href.count > 1 ? .scrollToFragment(String(href.dropFirst()).removingPercentEncoding ?? String(href.dropFirst())) : .ignore }
+                return LinkOpener.url(for: href, documentURL: documentURL).map { .open($0) } ?? .ignore
             }
-        case "file":
-            return .open(url.standardizedFileURL)
+            return .ignore
         default:
+            // `file:` and everything else reach here only if the script did not route them: the
+            // script routes them all, so this is a page that bypassed it.
             return .ignore
         }
     }
@@ -268,23 +292,125 @@ public enum ScrollSync {
     }
 }
 
+// MARK: - updating the page by the part that changed
+
+/// How to turn the body the page holds into a new one without sending all of it: keep the first
+/// `start` UTF-16 units, put `insert` in place of the units up to `oldEnd`, and keep the rest with
+/// every `data-line="N"` in it moved by `lineDelta` (typing a Return renumbers every block below).
+/// Computed off the main thread; handing a megabyte of HTML to the page held the main thread for
+/// about 50 ms, a patch for a keystroke takes well under one.
+public struct BodyPatch: Equatable {
+    public var start: Int
+    public var oldEnd: Int
+    public var insert: String
+    public var lineDelta: Int
+    /// The new body's length in UTF-16 units (the page checks it got the same).
+    public var newLength: Int
+    /// The old body's length, which the page checks it holds before patching.
+    public var oldLength: Int
+
+    /// The patch from `old` to `new`, or nil when it would not be much smaller than `new` itself.
+    public static func make(from old: String, to new: String) -> BodyPatch? {
+        let a = Array(old.utf16), b = Array(new.utf16)
+        // Common prefix, not ending inside a surrogate pair.
+        var p = 0
+        let limit = min(a.count, b.count)
+        while p < limit, a[p] == b[p] { p += 1 }
+        if p > 0, UTF16.isLeadSurrogate(a[p - 1]) { p -= 1 }
+        func isDigit(_ c: UInt16) -> Bool { c >= 48 && c <= 57 }
+        let marker = Array("data-line=\"".utf16)
+        // Not ending inside a `data-line="N"` (the texts agree up to the first renumbered digit):
+        // the kept tail must start with whole attributes, or the page's shift would miss one.
+        var q = p
+        while q > 0, isDigit(a[q - 1]) { q -= 1 }
+        if q >= marker.count, Array(a[(q - marker.count)..<q]) == marker {
+            p = q - marker.count
+        } else if q == p {
+            for k in stride(from: min(marker.count - 1, p), through: 1, by: -1) where Array(a[(p - k)..<p]) == Array(marker[0..<k]) {
+                p -= k
+                break
+            }
+        }
+        // Common suffix from the end, where data-line values may differ by one constant.
+        var i = a.count, j = b.count
+        var delta: Int?
+        func run(_ s: [UInt16], endingAt e: Int) -> (start: Int, value: Int?, isDataLine: Bool) {
+            var k = e
+            while k > 0, isDigit(s[k - 1]) { k -= 1 }
+            let digits = s[k..<e]
+            let value = digits.count <= 9 ? digits.reduce(0) { $0 * 10 + Int($1 - 48) } : nil
+            let isDataLine = k >= marker.count && Array(s[(k - marker.count)..<k]) == marker && e < s.count && s[e] == 34 // "
+            return (k, value, isDataLine)
+        }
+        while i > p, j > p {
+            let x = a[i - 1], y = b[j - 1]
+            if !isDigit(x) || !isDigit(y) {
+                guard x == y else { break }
+                i -= 1; j -= 1
+                continue
+            }
+            let ra = run(a, endingAt: i), rb = run(b, endingAt: j)
+            if ra.isDataLine, rb.isDataLine, let va = ra.value, let vb = rb.value, ra.start >= p, rb.start >= p {
+                let d = vb - va
+                if delta == nil { delta = d }
+                guard d == delta else { break }
+            } else {
+                guard !ra.isDataLine, !rb.isDataLine, a[ra.start..<i] == b[rb.start..<j], ra.start >= p, rb.start >= p else { break }
+            }
+            i = ra.start; j = rb.start
+        }
+        // Not starting the kept tail inside a surrogate pair.
+        while j < b.count, i < a.count, UTF16.isTrailSurrogate(b[j]) { i += 1; j += 1 }
+        guard j >= p, i >= p else { return nil }
+        let insert = String(decoding: b[p..<j], as: UTF16.self)
+        // Worth it only when far smaller than the whole.
+        guard insert.utf16.count * 4 < b.count || b.count < 4096 else { return nil }
+        return BodyPatch(start: p, oldEnd: i, insert: insert, lineDelta: delta ?? 0, newLength: b.count, oldLength: a.count)
+    }
+
+    /// The new body, from the old one (what the page's script does, for tests).
+    public func apply(to old: String) -> String? {
+        let a = Array(old.utf16)
+        guard a.count == oldLength, start <= oldEnd, oldEnd <= a.count else { return nil }
+        var tail = String(decoding: a[oldEnd...], as: UTF16.self)
+        if lineDelta != 0 {
+            let re = try! NSRegularExpression(pattern: "data-line=\"(\\d+)\"")
+            let ns = tail as NSString
+            var out = ""
+            var last = 0
+            for m in re.matches(in: tail, range: NSRange(location: 0, length: ns.length)) {
+                out += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+                let n = Int(ns.substring(with: m.range(at: 1)))! + lineDelta
+                out += "data-line=\"\(n)\""
+                last = NSMaxRange(m.range)
+            }
+            out += ns.substring(from: last)
+            tail = out
+        }
+        return String(decoding: a[..<start], as: UTF16.self) + insert + tail
+    }
+}
+
 // MARK: - serving the preview's files
 
-/// Answers `mdoc://` requests: document-relative and explicitly named files (through
-/// `DocumentFileAccess`, the sandbox seam) and the bundled fonts. Replies are made on the main
-/// thread; the reading happens on a background queue.
+/// Answers `mdoc://` requests: pictures and files (resolved and checked by `DocumentFileAccess`,
+/// the sandbox seam, exactly as the editor's pictures are) and the bundled fonts. WebKit calls it
+/// on the main thread and its replies are made there; the reading happens on a background queue.
+@MainActor
 public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
-    /// The folder relative requests resolve against; nil for an untitled document.
-    public var documentFolder: () -> URL? = { nil }
+    /// The document whose pictures these are; nil for an untitled document.
+    public var documentURL: () -> URL? = { nil }
     public var fontDirectory: URL? = Bundle.main.resourceURL?.appendingPathComponent("Fonts")
-    /// Instrumentation: the URLs asked for, and how many were refused.
+    /// Instrumentation: the last URLs asked for, and how many were refused.
     public private(set) var requests: [URL] = []
     public private(set) var denied = 0
     public private(set) var failed = 0
     public private(set) var served = 0
 
     private let queue = DispatchQueue(label: "markdown.preview.files", qos: .userInitiated, attributes: .concurrent)
-    private var stopped = Set<ObjectIdentifier>()
+    /// Tasks started and not yet answered or stopped. (Not a set of stopped ones: an identifier
+    /// is an address, which a later task may reuse.)
+    private var open = Set<ObjectIdentifier>()
     private struct CacheEntry { var data: Data; var modified: Date? }
     private let cache = NSCache<NSURL, AnyObject>()
     private static let fontNames = try! NSRegularExpression(pattern: "^iAWriter(Mono|Duo|Quattro)S-(Regular|Bold|Italic|BoldItalic)\\.ttf$")
@@ -297,10 +423,12 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     public func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
         guard let url = task.request.url else { task.didFailWithError(URLError(.badURL)); return }
         requests.append(url)
-        let folder = documentFolder()
+        if requests.count > 200 { requests.removeFirst(requests.count - 100) }
         let id = ObjectIdentifier(task as AnyObject)
-        switch PreviewURL.resolve(url, documentFolder: folder) {
-        case .denied, .unknown:
+        open.insert(id)
+        switch PreviewURL.resolve(url, documentURL: documentURL()) {
+        case .denied, .unknown, .link:
+            // A link is followed by a click (LinkPolicy), never loaded into the page.
             denied += 1
             fail(task, id: id, status: 403, url: url)
         case .font(let name):
@@ -314,8 +442,12 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     public func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {
-        stopped.insert(ObjectIdentifier(task as AnyObject))
+        // Answering a stopped task raises an exception.
+        open.remove(ObjectIdentifier(task as AnyObject))
     }
+
+    /// Instrumentation (tests): requests started and not yet answered.
+    var unanswered: Int { open.count }
 
     private func load(_ file: URL, for task: any WKURLSchemeTask, id: ObjectIdentifier, url: URL, mime: String) {
         let key = file as NSURL
@@ -327,10 +459,12 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         queue.async { [weak self] in
             let data = try? DocumentFileAccess.read(file)
             DispatchQueue.main.async {
-                guard let self else { return }
-                guard let data else { self.failed += 1; self.fail(task, id: id, status: 404, url: url); return }
-                self.cache.setObject(CacheBox(CacheEntry(data: data, modified: modified)), forKey: key, cost: data.count)
-                self.reply(task, id: id, url: url, mime: mime, data: data)
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    guard let data else { self.failed += 1; self.fail(task, id: id, status: 404, url: url); return }
+                    self.cache.setObject(CacheBox(CacheEntry(data: data, modified: modified)), forKey: key, cost: data.count)
+                    self.reply(task, id: id, url: url, mime: mime, data: data)
+                }
             }
         }
     }
@@ -341,7 +475,7 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func reply(_ task: any WKURLSchemeTask, id: ObjectIdentifier, url: URL, mime: String, data: Data) {
-        if stopped.remove(id) != nil { return }
+        guard open.remove(id) != nil else { return }
         let headers = ["Content-Type": mime, "Content-Length": "\(data.count)", "Cache-Control": "no-cache"]
         guard let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers) else { return }
         served += 1
@@ -351,7 +485,7 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func fail(_ task: any WKURLSchemeTask, id: ObjectIdentifier, status: Int, url: URL) {
-        if stopped.remove(id) != nil { return }
+        guard open.remove(id) != nil else { return }
         // An answer, not an error: the page shows the image's alt text or the broken-image icon.
         if let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Length": "0"]) {
             task.didReceive(response)
@@ -376,21 +510,32 @@ enum PreviewScripts {
       'use strict';
       const post = (m) => { try { window.webkit.messageHandlers.md.postMessage(m); } catch (e) {} };
       let anchors = null, chromeTop = 0, totalLines = 0, lastSet = null, ticking = false, lastPost = 0;
+      // The body's HTML as the app sent it (patches are made against it).
+      let source = null;
+      // The last scroll events: [scrollY, the position the app had set] (diagnostics).
+      const scrollLog = [];
       const main = () => document.getElementById('md');
 
-      // Absolute paths and `file:` URLs in the Markdown go through the app's scheme (a page cannot
-      // read `file:`), `~/` too; relative ones already resolve against the page's address.
-      function fixImages(scope) {
-        for (const img of scope.querySelectorAll('img')) {
+      // Every picture that is not on the web or inline, and every link that is not to the web, goes
+      // to the app with its destination exactly as the document wrote it: the app resolves it with
+      // the editor's own rules (`..`, `~/`, absolute paths and `file:` included). Done to content
+      // that is not in the page yet, so nothing loads from the unrouted address first.
+      const web = /^\s*(https?|mailto|tel):/i;
+      function route(scope) {
+        for (const img of scope.querySelectorAll('img[src]')) {
           const raw = img.getAttribute('src');
-          if (!raw) continue;
-          let to = null;
-          if (/^file:/i.test(raw)) to = 'mdoc://doc/abs' + raw.replace(/^file:\/\/(localhost)?/i, '').replace(/^\/*/, '/');
-          else if (raw.startsWith('/')) to = 'mdoc://doc/abs' + raw;
-          else if (raw.startsWith('~/')) to = 'mdoc://doc/home/' + raw.slice(2);
-          if (to) img.setAttribute('src', to);
+          if (/^\s*(https?|data|mdoc):/i.test(raw)) continue;
+          img.setAttribute('src', 'mdoc://doc/picture?src=' + encodeURIComponent(raw));
+        }
+        for (const a of scope.querySelectorAll('a[href]')) {
+          const raw = a.getAttribute('href');
+          if (raw.startsWith('#') || web.test(raw) || /^\s*mdoc:/i.test(raw)) continue;
+          a.setAttribute('href', 'mdoc://doc/link?href=' + encodeURIComponent(raw));
         }
       }
+      // The source position at the top of the view, kept while pictures and fonts arrive and the
+      // page grows above it (it is what the reader is looking at).
+      let readingLine = null;
 
       function build() {
         const el = main();
@@ -440,11 +585,22 @@ enum PreviewScripts {
         window.scrollTo(0, t);
         return t;
       }
+      function topForLine(line) { return line <= 0.0001 ? 0 : Math.min(Math.max(yForLine(line), 0), maxScroll()); }
+      // The page changed size (a picture or a font arrived): the reading position stays put.
+      function relayout() {
+        anchors = null;
+        if (readingLine === null) return;
+        const t = topForLine(readingLine);
+        if (Math.abs(t - window.scrollY) >= 1) setTop(t);
+      }
 
       window.__md = {
-        ready() {
-          const waits = [...document.images].filter((i) => !i.complete).map((i) => new Promise((r) => { i.onload = i.onerror = r; }));
-          return Promise.all([document.fonts ? document.fonts.ready : null, ...waits]).then(() => true);
+        // Resolves when the page's fonts and pictures are in, or after `ms` (a picture on a server
+        // that never answers must not hold up a PDF).
+        ready(ms) {
+          const waits = [...document.images].filter((i) => !i.complete).map((i) => new Promise((r) => { i.addEventListener('load', r); i.addEventListener('error', r); }));
+          const all = Promise.all([document.fonts ? document.fonts.ready : null, ...waits]).then(() => true);
+          return Promise.race([all, new Promise((r) => setTimeout(() => r(false), ms || 10000))]);
         },
         replaceBody(html, total) {
           const el = main();
@@ -452,14 +608,28 @@ enum PreviewScripts {
           const x = window.scrollX, y = window.scrollY;
           const t = document.createElement('template');
           t.innerHTML = html;
-          fixImages(t.content);
+          route(t.content);
           el.replaceChildren(t.content);
+          source = html;
           totalLines = total;
           anchors = null;
           window.scrollTo(x, y);
           return true;
         },
-        prepare(total) { totalLines = total; fixImages(document); anchors = null; return true; },
+        // The body by a `BodyPatch` (see the app): false when the page does not hold what the
+        // patch was made from (the app then sends the whole body).
+        patchBody(start, oldEnd, insert, delta, total, oldLength, newLength) {
+          if (source === null || source.length !== oldLength) return false;
+          let tail = source.slice(oldEnd);
+          if (delta) tail = tail.replace(/data-line="(\d+)"/g, (m, n) => 'data-line="' + (parseInt(n, 10) + delta) + '"');
+          const html = source.slice(0, start) + insert + tail;
+          if (html.length !== newLength) return false;
+          return this.replaceBody(html, total);
+        },
+        source() { return source; },
+        // Tests: what the page's body would hold for `html` sent whole (routed, parsed).
+        parsed(html) { const t = document.createElement('template'); t.innerHTML = html; route(t.content); const d = document.createElement('div'); d.append(t.content); return d.innerHTML; },
+        prepare(total) { totalLines = total; route(document); anchors = null; return true; },
         setStyle(css) {
           const s = document.head.querySelector('style');
           if (s) s.textContent = css;
@@ -479,7 +649,8 @@ enum PreviewScripts {
           return true;
         },
         scrollToLine(line, onlyIfDrifted) {
-          const target = line <= 0.0001 ? 0 : Math.min(Math.max(yForLine(line), 0), maxScroll());
+          readingLine = line;
+          const target = topForLine(line);
           if (onlyIfDrifted && Math.abs(target - window.scrollY) < 3) return window.scrollY;
           return setTop(target);
         },
@@ -489,15 +660,19 @@ enum PreviewScripts {
           const y = yForLine(line) - window.scrollY;
           if (y >= 0 && y < window.innerHeight - 80) return false;
           setTop(yForLine(line) - window.innerHeight / 3);
+          readingLine = lineForY(window.scrollY);
           return true;
         },
         scrollToId(id) {
           const el = document.getElementById(id);
           if (!el) return false;
           el.scrollIntoView({ block: 'start' });
+          readingLine = lineForY(window.scrollY);
           return true;
         },
         scrollTop() { return window.scrollY; },
+        readingLine() { return readingLine; },
+        scrollLog() { return scrollLog.slice(); },
         metrics() { return { height: document.documentElement.scrollHeight, viewport: window.innerHeight, top: window.scrollY, chromeTop }; },
         table() { return table(); },
         yForLine, lineForY,
@@ -505,19 +680,29 @@ enum PreviewScripts {
 
       let observer = null;
       addEventListener('DOMContentLoaded', () => {
-        fixImages(document);
+        route(document);
         if (typeof ResizeObserver === 'function' && main()) {
-          observer = new ResizeObserver(() => { anchors = null; });
+          observer = new ResizeObserver(relayout);
           observer.observe(main());
         }
       });
       addEventListener('resize', () => { anchors = null; });
       addEventListener('scroll', () => {
-        if (lastSet !== null && Math.abs(window.scrollY - lastSet) < 1.5) return;
+        // The event for a scroll the app made (one per frame): used up by it, so the reader
+        // scrolling back to the same place later is still the reader.
+        scrollLog.push([Math.round(window.scrollY), lastSet === null ? null : Math.round(lastSet)]);
+        if (scrollLog.length > 50) scrollLog.shift();
+        if (lastSet !== null && Math.abs(window.scrollY - lastSet) < 1.5) { lastSet = null; return; }
         lastSet = null;
+        // The reader moved: this is now the position to keep.
+        readingLine = window.scrollY < 1 ? 0 : lineForY(window.scrollY);
         // At once when quiet (a timer in a page that is not frontmost can wait a second), and a
         // trailing report when scrolling continues.
-        const send = () => { lastPost = performance.now(); post({ kind: 'scroll', line: lineForY(window.scrollY), top: window.scrollY }); };
+        const send = () => {
+          lastPost = performance.now();
+          const top = window.scrollY, max = maxScroll();
+          post({ kind: 'scroll', line: top < 1 ? 0 : lineForY(top), top, atEnd: max > 0 && top >= max - 1 });
+        };
         const since = performance.now() - lastPost;
         if (since >= 16) { send(); return; }
         if (ticking) return;

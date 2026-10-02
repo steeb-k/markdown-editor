@@ -106,7 +106,8 @@
   "measurePreview": {
    "count": 20,
    "interval": 0.05,
-   "rounds": 3
+   "rounds": 3,
+   "maxMainThreadMs": 16
   }
  },
  {
