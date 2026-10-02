@@ -3,8 +3,8 @@ import MarkdownCore
 
 /// What paints a stretch of text on top of its stored colour.
 public enum OverlayPaint: Hashable {
-    /// Authorship colouring (M5). Reserved: nothing produces it yet, but the layer exists, is
-    /// composed and is tested, so the milestone only has to fill it (`setAuthorship`).
+    /// Authorship colouring: borrowed text (AI, Reference). Filled by the session from the
+    /// core's `Authorship` runs (`setAuthorship`).
     case authorship(AuthorSource)
     /// A part-of-speech colour.
     case pos(PosClass)
@@ -26,7 +26,7 @@ public struct OverlayRun: Equatable {
 
 /// The inputs of the overlay, one list per layer. Lists are sorted and disjoint.
 public struct OverlayLayers: Equatable {
-    /// Layer 1 (above the stored colour). M5 fills it.
+    /// Layer 1 (above the stored colour): borrowed text.
     public var authorship: [OverlayRun] = []
     /// Layer 2: part-of-speech colours.
     public var pos: [OverlayRun] = []
@@ -100,10 +100,23 @@ public final class OverlayCompositor {
         layersChanged = true
     }
 
-    /// The hook for authorship colouring (M5): runs for the text that is not the user's.
+    /// Authorship colouring: runs for the text that is not the user's.
     public func setAuthorship(_ runs: [OverlayRun]) {
         guard runs != layers.authorship else { return }
         layers.authorship = runs
+        layersChanged = true
+    }
+
+    /// Replaces the authorship runs inside `window` only (what changed around an edit), leaving
+    /// the rest of the layer as it is: a keystroke in a document with thousands of marks does
+    /// not rebuild all of them.
+    func patchAuthorship(_ runs: [OverlayRun], in window: NSRange) {
+        var updated = Self.subtract(layers.authorship, window)
+        updated.append(contentsOf: Self.clip(runs, to: window))
+        updated.sort { $0.range.location < $1.range.location }
+        updated = Self.merged(updated)
+        guard updated != layers.authorship else { return }
+        layers.authorship = updated
         layersChanged = true
     }
 
@@ -114,6 +127,19 @@ public final class OverlayCompositor {
     public func isDimmed(_ range: NSRange) -> Bool {
         guard let keep = layers.focus else { return false }
         return !Self.intersects(keep, range)
+    }
+
+    /// The authorship colour of the text at `index` (AI, Reference), for hand-drawn things (a
+    /// bullet, a checkbox) that sit beside borrowed text. `nil` for the user's own text.
+    public func authorshipColor(at index: Int) -> NSColor? {
+        let runs = layers.authorship
+        var lo = 0, hi = runs.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if NSMaxRange(runs[mid].range) <= index { lo = mid + 1 } else { hi = mid }
+        }
+        guard lo < runs.count, runs[lo].range.location <= index else { return nil }
+        return color(for: runs[lo].paint)
     }
 
     /// Does focus keep any of `range`? (Always true while focus mode is off.)

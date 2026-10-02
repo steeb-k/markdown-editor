@@ -1,4 +1,5 @@
 import Foundation
+import MarkdownCore
 
 public enum LineEnding: Equatable, Sendable {
     case lf, crlf, cr
@@ -7,9 +8,25 @@ public enum LineEnding: Equatable, Sendable {
 }
 
 public struct DecodedText: Equatable {
+    /// What the editor holds: line endings normalized to `\n` (unless the file mixes them).
     public var text: String
     public var hasBOM: Bool
     public var lineEnding: LineEnding
+    /// The file's text as it is on disk (BOM removed, line endings untouched): what the
+    /// annotation block's hash covers.
+    public var raw: String
+}
+
+extension LineEnding {
+    /// How the core's annotation block writes (and hashes) line endings for this file.
+    var annotationEnding: AnnotationLineEnding {
+        switch self {
+        case .lf: return .lf
+        case .crlf: return .crLf
+        case .cr: return .cr
+        case .mixed: return .preserve
+        }
+    }
 }
 
 /// Bytes on disk <-> the string the editor holds. A file opened and saved without edits must
@@ -48,7 +65,16 @@ public enum TextCodec {
             normalized = text.replacingOccurrences(of: "\r", with: "\n")
         default: ending = .mixed
         }
-        return DecodedText(text: normalized, hasBOM: hasBOM, lineEnding: ending)
+        return DecodedText(text: normalized, hasBOM: hasBOM, lineEnding: ending, raw: text)
+    }
+
+    /// `text` from a file with `ending` line endings, as the editor holds it.
+    public static func normalize(_ text: String, _ ending: LineEnding) -> String {
+        switch ending {
+        case .crlf: return text.replacingOccurrences(of: "\r\n", with: "\n")
+        case .cr: return text.replacingOccurrences(of: "\r", with: "\n")
+        case .lf, .mixed: return text
+        }
     }
 
     public static func encode(_ text: String, hasBOM: Bool, lineEnding: LineEnding) -> Data {

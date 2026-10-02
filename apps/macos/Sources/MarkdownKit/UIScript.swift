@@ -392,6 +392,71 @@ final class UIScriptRunner {
             }
             record(["sheet": sheet], ok: true)
             done()
+        } else if let text = str("setPasteboard") {
+            // The window's private pasteboard (never the user's): what Paste and Paste As read.
+            let pb = scriptPasteboard()
+            pb?.clearContents()
+            pb?.setString(text, forType: .string)
+            record(["setPasteboard": (text as NSString).length], ok: pb != nil)
+            done()
+        } else if let which = str("copyOrCut") {
+            let tv = textView
+            asEvent { if which == "cut" { tv?.cut(nil) } else { tv?.copy(nil) } }
+            record(["copyOrCut": which, "authorshipOnPasteboard": scriptPasteboard()?.data(forType: AuthorshipPasteboard.type) != nil], ok: tv != nil)
+            done()
+        } else if let on = step["authorshipDisplay"] as? Bool {
+            session?.setAuthorshipDisplay(on)
+            record(["authorshipDisplay": on], ok: session != nil)
+            done()
+        } else if let d = str("authorshipDecision") {
+            // The keep-or-discard sheet: shown, then answered through its buttons.
+            let ok: Bool
+            if let w = window, let c = controller {
+                c.presentAuthorshipSheetIfNeeded()
+                if let sheet = w.attachedSheet {
+                    w.endSheet(sheet, returnCode: d == "keep" ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+                    ok = true
+                } else { ok = false }
+            } else { ok = false }
+            record(["authorshipDecision": d], ok: ok)
+            later(0.2, done)
+        } else if step["save"] != nil {
+            // Writes the document to its (scratch) file, through the same path Save uses.
+            guard let doc = document, let url = doc.fileURL else { record(["save": "no file"], ok: false); done(); return }
+            doc.save(to: url, ofType: "net.daringfireball.markdown", for: .saveOperation) { error in
+                self.record(["save": url.lastPathComponent, "error": error.map { "\($0)" } ?? ""], ok: error == nil)
+                done()
+            }
+        } else if step["reopen"] != nil {
+            // Closes the document and opens its file afresh: what quitting and opening again does.
+            guard let doc = document, let url = doc.fileURL else { record(["reopen": "no file"], ok: false); done(); return }
+            document = nil
+            doc.updateChangeCount(.changeCleared)
+            doc.close()
+            later(0.3) {
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { d, _, error in
+                    self.document = d as? MarkdownDocument
+                    self.record(["reopen": url.lastPathComponent, "error": error.map { "\($0)" } ?? ""], ok: self.document != nil)
+                    self.window?.makeKeyAndOrderFront(nil)
+                    done()
+                }
+            }
+        } else if let needle = str("undoUntilLacks") {
+            // Undo steps (typing may take several) until the text no longer holds `needle`.
+            var n = 0
+            while (session?.text ?? "").contains(needle), document?.undoManager?.canUndo == true, n < 60 { document?.undoManager?.undo(); n += 1 }
+            record(["undoUntilLacks": needle, "steps": n], ok: !(session?.text ?? "").contains(needle))
+            done()
+        } else if let needle = str("undoUntilContains") {
+            var n = 0
+            while !(session?.text ?? "").contains(needle), document?.undoManager?.canUndo == true, n < 60 { document?.undoManager?.undo(); n += 1 }
+            record(["undoUntilContains": needle, "steps": n], ok: (session?.text ?? "").contains(needle))
+            done()
+        } else if let needle = str("redoUntilContains") {
+            var n = 0
+            while !(session?.text ?? "").contains(needle), document?.undoManager?.canRedo == true, n < 60 { document?.undoManager?.redo(); n += 1 }
+            record(["redoUntilContains": needle, "steps": n], ok: (session?.text ?? "").contains(needle))
+            done()
         } else if step["undo"] != nil {
             document?.undoManager?.undo()
             record(["undo": true], ok: true)
@@ -542,6 +607,15 @@ final class UIScriptRunner {
         }
     }
 
+    /// A private pasteboard for the current window, so scripts never touch the user's clipboard.
+    private func scriptPasteboard() -> NSPasteboard? {
+        guard let tv = textView else { return nil }
+        if tv.pasteboard === NSPasteboard.general {
+            tv.pasteboard = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
+        }
+        return tv.pasteboard
+    }
+
     private func applySettings(_ s: [String: Any]) {
         let st = Settings.shared
         if let v = s["theme"] as? String, let t = ThemeChoice(rawValue: v) { st.theme = t }
@@ -556,6 +630,8 @@ final class UIScriptRunner {
         if let v = s["focusMode"] as? Bool { st.focusMode = v }
         if let v = s["focusScope"] as? String, let m = FocusScopeChoice(rawValue: v) { st.focusScope = m }
         if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
+        if let v = s["authorshipDisplay"] as? Bool { st.authorshipDisplay = v }
+        if let v = s["authorName"] as? String { st.authorNameSetting = v }
     }
 
     // MARK: input
@@ -1022,6 +1098,42 @@ final class UIScriptRunner {
             record(["overlay": ["applications": s.overlay.applications, "operations": s.overlay.operations, "characters": s.overlay.charactersTouched,
                                 "tagger_invocations": s.pos.taggerInvocations, "cache_hits": s.pos.cacheHits, "cache_misses": s.pos.cacheMisses,
                                 "state_queries": s.stateQueries]], ok: true)
+        }
+        if let v = a["authorship"] as? [String: Any], let s = session {
+            // `runs`: [[needle, "me"|"ai"|"reference"|"none"]]: whose every character of the needle is.
+            if let runs = v["runs"] as? [[String]] {
+                let ns = text as NSString
+                let authors = s.authorship.authors()
+                var bad: [String] = []
+                for pair in runs where pair.count == 2 {
+                    let r = ns.range(of: pair[0])
+                    guard r.location != NSNotFound else { bad.append("\(pair[0]): not found"); continue }
+                    var seen = Set<String>()
+                    for i in r.location..<NSMaxRange(r) {
+                        if let idx = s.authorship.authorAt(position: UInt32(i)) {
+                            seen.insert(idx == 0 ? "me" : (authors[Int(idx)].kind == .ai ? "ai" : "reference"))
+                        } else { seen.insert("none") }
+                    }
+                    if seen != [pair[1]] { bad.append("\(pair[0]): \(seen.sorted()), wanted \(pair[1])") }
+                }
+                check("authorship runs \(runs)", bad.isEmpty, "\(bad)")
+            }
+            if let marks = v["marks"] as? Bool { check("authorship has marks \(marks)", s.authorship.hasMarks() == marks) }
+            if let on = v["display"] as? Bool { check("authorship display \(on)", s.authorshipDisplay == on) }
+            if let count = v["markRuns"] as? Int {
+                let n = s.authorship.runs(within: nil).filter { $0.authorIndex != 0 }.count
+                check("authorship mark runs \(count)", n == count, "\(n)")
+            }
+            if let sheet = v["sheet"] as? Bool { check("authorship sheet \(sheet)", (window?.attachedSheet != nil) == sheet) }
+            if let pending = v["pendingDecision"] as? Bool { check("authorship decision pending \(pending)", (s.pendingAuthorshipDecision != nil) == pending) }
+            if let editable = v["editable"] as? Bool { check("text editable \(editable)", textView?.isEditable == editable) }
+        }
+        if let v = a["file"] as? [String: Any], let url = document?.fileURL {
+            // What is on disk: `contains` / `lacks` / `suffix` (strings).
+            let disk = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            if let c = v["contains"] as? String { check("file contains \(c.debugDescription)", disk.contains(c), String(disk.suffix(400))) }
+            if let c = v["lacks"] as? String { check("file lacks \(c.debugDescription)", !disk.contains(c), String(disk.suffix(400))) }
+            if let c = v["suffix"] as? String { check("file ends with \(c.debugDescription)", disk.hasSuffix(c), String(disk.suffix(120))) }
         }
         if let v = a["viewMode"] as? String { check("viewMode \(v)", session?.viewMode.rawValue == v, session?.viewMode.rawValue ?? "nil") }
         if let v = a["hidden"] as? [String], let s = session {

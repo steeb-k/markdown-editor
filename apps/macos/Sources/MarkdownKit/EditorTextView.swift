@@ -14,6 +14,8 @@ public final class EditorTextView: NSTextView {
     public weak var documentUndoManager: UndoManager?
     /// Called when the user starts typing (not for shortcuts or navigation): chrome fades out.
     public var onTyping: (() -> Void)?
+    /// Where copy, cut and paste go. The general pasteboard, except in tests and UI scripts.
+    public var pasteboard: NSPasteboard = .general
     /// The key binding command being performed (`moveLeft:`...), while it runs.
     public internal(set) var currentCommand: Selector?
     /// The selection Live mode last extended from the keyboard, and its anchor.
@@ -117,6 +119,24 @@ public final class EditorTextView: NSTextView {
         guard let lm = layoutManager, let tc = textContainer else { return NSRange(location: 0, length: 0) }
         let g = lm.glyphRange(forBoundingRect: visibleRect, in: tc)
         return lm.characterRange(forGlyphRange: g, actualGlyphRange: nil)
+    }
+
+    /// Remembers the exact edit for attribution (the storage's edited range can be wider).
+    public override func shouldChangeText(inRanges affectedRanges: [NSValue], replacementStrings: [String]?) -> Bool {
+        // An edit that starts an undo step (not one the text system folds into the typing it
+        // is coalescing) registers the attribution before it, *before* the text system registers
+        // its own action: anything registered after the text system's would stop it coalescing.
+        let changesSomething = affectedRanges.contains { $0.rangeValue.length > 0 } || (replacementStrings ?? []).contains { !$0.isEmpty }
+        if changesSomething, !isCoalescingUndo, undoManager?.isUndoing != true, undoManager?.isRedoing != true {
+            session?.registerAuthorshipUndo()
+        }
+        let ok = super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings)
+        if ok, affectedRanges.count == 1, let strings = replacementStrings, strings.count == 1 {
+            session?.pendingEdit = (affectedRanges[0].rangeValue, (strings[0] as NSString).length)
+        } else {
+            session?.pendingEdit = nil
+        }
+        return ok
     }
 
     // MARK: plain text only
@@ -227,8 +247,15 @@ public final class EditorTextView: NSTextView {
     }
 
     /// The normal editing path: ask permission, change, announce. Registers undo.
-    func replaceThroughUndo(range: NSRange, with replacement: String) -> Bool {
+    ///
+    /// `origin` says who made the edit (see `EditOrigin`); everything that is not the user typing
+    /// is a command's edit by default, whose inserted text takes its neighbour's author.
+    func replaceThroughUndo(range: NSRange, with replacement: String, origin: EditOrigin? = nil) -> Bool {
         guard shouldChangeText(inRanges: [NSValue(range: range)], replacementStrings: [replacement]) else { return false }
+        if let session {
+            session.editOrigin = origin ?? .inherit(old: (session.storage.string as NSString).substring(with: range))
+        }
+        defer { session?.editOrigin = .typed }
         textStorage?.replaceCharacters(in: range, with: replacement)
         didChangeText()
         return true

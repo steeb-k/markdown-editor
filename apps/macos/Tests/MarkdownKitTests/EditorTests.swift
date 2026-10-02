@@ -13,10 +13,14 @@ final class DocumentRoundTripTests: XCTestCase {
     }
 
     func testEveryFixtureIsByteIdentical() throws {
-        let names = try FileManager.default.contentsOfDirectory(atPath: Fixtures.fixtureDir.path)
+        // (The authorship fixtures, with their annotation blocks, come back byte for byte too.)
+        let names = try FileManager.default.subpathsOfDirectory(atPath: Fixtures.fixtureDir.path)
         XCTAssertGreaterThanOrEqual(names.count, 5)
-        for n in names where n != ".DS_Store" {
-            try roundTrip(Data(contentsOf: Fixtures.fixtureDir.appendingPathComponent(n)))
+        for n in names where !n.hasSuffix(".DS_Store") {
+            let url = Fixtures.fixtureDir.appendingPathComponent(n)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else { continue }
+            try roundTrip(Data(contentsOf: url))
         }
     }
 

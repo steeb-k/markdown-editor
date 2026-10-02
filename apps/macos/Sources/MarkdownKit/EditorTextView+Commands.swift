@@ -159,6 +159,7 @@ extension EditorTextView {
     /// Shared by menu items and toolbar buttons. Returns nil for actions that are not ours.
     func validateEditorAction(_ action: Selector?, tag: Int) -> (enabled: Bool, on: Bool)? {
         guard let action else { return nil }
+        if let r = validateAuthorshipAction(action) { return r }
         if action == #selector(showSourceMode(_:)) { return (true, session?.viewMode == .source) }
         if action == #selector(showLiveMode(_:)) { return (true, session?.viewMode == .live) }
         if action == #selector(toggleFocusMode(_:)) { return (true, session?.focusEnabled == true) }
@@ -197,7 +198,7 @@ extension EditorTextView {
 
     public override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(NSText.paste(_:)) {
-            let pb = NSPasteboard.general
+            let pb = pasteboard
             if isEditable, pasteboardHasOnlyImage(pb) || pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return true }
         }
         if let r = validateEditorAction(item.action, tag: item.tag) {

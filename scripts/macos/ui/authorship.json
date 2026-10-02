@@ -1,0 +1,969 @@
+[
+ {
+  "log": "--- Authorship: Paste As, Mark As, typing inside borrowed text, bold, undo, save and reopen"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "authorName": "Steve",
+   "authorshipDisplay": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/authorship.md"
+ },
+ {
+  "resize": [
+   900,
+   1000
+  ]
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "authorship": {
+    "marks": false,
+    "display": true,
+    "markRuns": 0
+   },
+   "edited": false
+  }
+ },
+ {
+  "selectText": "PASTE_AI_HERE"
+ },
+ {
+  "setPasteboard": "The Fresnel lens concentrates the light of a lamp into a narrow beam, which is why a lighthouse can be seen from many miles away. It was invented in 1822."
+ },
+ {
+  "action": "pasteAsAI:"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "Fresnel lens",
+      "ai"
+     ],
+     [
+      "It was invented in 1822",
+      "ai"
+     ],
+     [
+      "I wrote this paragraph myself",
+      "none"
+     ]
+    ],
+    "marks": true,
+    "markRuns": 1
+   },
+   "colors": {
+    "Fresnel lens": "author-ai",
+    "I wrote this paragraph myself": "none"
+   },
+   "overlayConsistent": true,
+   "edited": true
+  }
+ },
+ {
+  "snapshot": "01-paste-as-ai",
+  "bitmap": true
+ },
+ {
+  "selectText": "PASTE_REFERENCE_HERE"
+ },
+ {
+  "setPasteboard": "A lighthouse is a tower, building, or other type of physical structure designed to emit light from a system of lamps and lenses."
+ },
+ {
+  "action": "pasteAsReference:"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "physical structure",
+      "reference"
+     ],
+     [
+      "Fresnel lens",
+      "ai"
+     ]
+    ],
+    "markRuns": 2
+   },
+   "colors": {
+    "physical structure": "author-reference"
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "02-paste-as-reference",
+  "bitmap": true
+ },
+ {
+  "selectText": "A sentence of my own"
+ },
+ {
+  "action": "markAsAI:"
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A sentence of my own",
+      "ai"
+     ]
+    ],
+    "markRuns": 3
+   },
+   "colors": {
+    "A sentence of my own": "author-ai"
+   }
+  }
+ },
+ {
+  "snapshot": "03-mark-as-ai",
+  "bitmap": true
+ },
+ {
+  "undo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A sentence of my own",
+      "none"
+     ]
+    ],
+    "markRuns": 2
+   },
+   "colors": {
+    "A sentence of my own": "none"
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "redo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A sentence of my own",
+      "ai"
+     ]
+    ],
+    "markRuns": 3
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "selectText": "A sentence of my own"
+ },
+ {
+  "action": "markAsMe:"
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A sentence of my own",
+      "me"
+     ]
+    ],
+    "markRuns": 2
+   },
+   "colors": {
+    "A sentence of my own": "none"
+   }
+  }
+ },
+ {
+  "selectText": "narrow beam",
+  "offset": 7,
+  "length": 0
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "type": "[typed by me] ",
+  "interval": 0.02
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "[typed by me] ",
+      "me"
+     ],
+     [
+      "narrow ",
+      "ai"
+     ],
+     [
+      "beam, which",
+      "ai"
+     ]
+    ],
+    "markRuns": 3
+   },
+   "colors": {
+    "[typed by me] ": "none",
+    "narrow ": "author-ai",
+    "beam, which": "author-ai"
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "04-typed-inside-ai",
+  "bitmap": true
+ },
+ {
+  "selectText": "Fresnel lens"
+ },
+ {
+  "action": "toggleStrong:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "textContains": "**Fresnel lens**",
+   "authorship": {
+    "runs": [
+     [
+      "**Fresnel lens**",
+      "ai"
+     ]
+    ]
+   },
+   "colors": {
+    "**Fresnel lens**": "author-ai"
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "05-bold-inside-ai",
+  "bitmap": true
+ },
+ {
+  "undo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "textLacks": "**Fresnel",
+   "authorship": {
+    "runs": [
+     [
+      "Fresnel lens",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "redo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "textContains": "**Fresnel lens**",
+   "authorship": {
+    "runs": [
+     [
+      "**Fresnel lens**",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "undoUntilContains": "narrow beam"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "narrow beam",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "redoUntilContains": "[typed by me] beam"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "[typed by me] ",
+      "me"
+     ],
+     [
+      "beam, which",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "\n---\nAnnotations: 0,",
+    "suffix": "...\n"
+   }
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "&AI: "
+   }
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "*Reference: "
+   }
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "@Steve: "
+   }
+  }
+ },
+ {
+  "assert": {
+   "edited": false
+  }
+ },
+ {
+  "reopen": true
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "resize": [
+   900,
+   1000
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "textLacks": "SHA-256",
+   "authorship": {
+    "runs": [
+     [
+      "physical structure",
+      "reference"
+     ],
+     [
+      "[typed by me] ",
+      "me"
+     ],
+     [
+      "beam, which",
+      "ai"
+     ],
+     [
+      "I wrote this paragraph myself",
+      "none"
+     ]
+    ],
+    "markRuns": 3
+   },
+   "colors": {
+    "physical structure": "author-reference",
+    "beam, which": "author-ai"
+   },
+   "overlayConsistent": true,
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "06-reopened",
+  "bitmap": true
+ },
+ {
+  "action": "toggleAuthorshipDisplay:",
+  "edits": false
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "display": false,
+    "markRuns": 3
+   },
+   "colors": {
+    "physical structure": "none",
+    "beam, which": "none"
+   },
+   "overlayConsistent": true,
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "07-display-off",
+  "bitmap": true
+ },
+ {
+  "action": "toggleAuthorshipDisplay:",
+  "edits": false
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "display": true
+   },
+   "colors": {
+    "physical structure": "author-reference"
+   },
+   "edited": false
+  }
+ },
+ {
+  "selectText": "beam, which is why a lighthouse"
+ },
+ {
+  "copyOrCut": "copy"
+ },
+ {
+  "selectText": "Nothing here is borrowed yet.",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "action": "paste:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "beam, which is why a lighthouse can be seen",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-light-source",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-light-live",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-dark-source",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-dark-live",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-sepia-source",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "10-sepia-live",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-light-source-focus",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-light-live-focus",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-dark-source-focus",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-dark-live-focus",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-sepia-source-focus",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "concentrates the light",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "20-sepia-live-focus",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "sentence"
+  }
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "physical structure",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "21-light-live-sentence-reference",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "syntax": {
+   "on": true
+  }
+ },
+ {
+  "waitSyntax": 30
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "A sentence of my own",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "11-light-live-syntax",
+  "bitmap": true
+ },
+ {
+  "syntax": {
+   "on": false
+  }
+ },
+ {
+  "close": true
+ }
+]

@@ -385,10 +385,11 @@ extension EditorTextView {
     /// Pasting: image data becomes a PNG in `<document>.assets` and an image reference, files
     /// are handled like a drop, anything else is plain text as before.
     public override func paste(_ sender: Any?) {
-        let pb = NSPasteboard.general
+        let pb = pasteboard
         if isEditable, session != nil {
             if handleDrop(pb, at: selectedRange().location) { return }
             if pasteboardHasOnlyImage(pb) { pasteImage(from: pb); return }
+            if !hasMarkedText(), pb.string(forType: .string) != nil { pasteText(from: pb); return }
         }
         pasteAsPlainText(sender)
     }

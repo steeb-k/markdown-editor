@@ -75,6 +75,18 @@ enum MainMenu {
             _ = item(m, "Copy", #selector(NSText.copy(_:)), "c")
             _ = item(m, "Paste", #selector(NSText.paste(_:)), "v")
             _ = item(m, "Paste as Plain Text", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift])
+            nested(m, "Paste As") { p in
+                _ = item(p, "Me", #selector(EditorTextView.pasteAsMe(_:)), "v", [.command, .option])
+                _ = item(p, "AI", #selector(EditorTextView.pasteAsAI(_:)), "v", [.command, .shift])
+                _ = item(p, "Reference", #selector(EditorTextView.pasteAsReference(_:)), "v", [.command, .control])
+            }
+            nested(m, "Mark As") { a in
+                _ = item(a, "Me", #selector(EditorTextView.markAsMe(_:)), "1", [.command, .control])
+                _ = item(a, "AI", #selector(EditorTextView.markAsAI(_:)), "2", [.command, .control])
+                _ = item(a, "Reference", #selector(EditorTextView.markAsReference(_:)), "3", [.command, .control])
+                a.addItem(.separator())
+                _ = item(a, "No Author", #selector(EditorTextView.markAsNoAuthor(_:)), "0", [.command, .control])
+            }
             _ = item(m, "Delete", #selector(NSText.delete(_:)))
             _ = item(m, "Select All", #selector(NSText.selectAll(_:)), "a")
             m.addItem(.separator())
@@ -156,6 +168,7 @@ enum MainMenu {
                     _ = item(h, c.title, #selector(EditorTextView.toggleSyntaxClass(_:)), tag: i)
                 }
             }
+            _ = item(m, "Show Authorship", #selector(EditorTextView.toggleAuthorshipDisplay(_:)), "a", [.command, .option])
             m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
             m.addItem(.separator())

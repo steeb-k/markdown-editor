@@ -38,6 +38,25 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public internal(set) var focusEnabled: Bool
     public internal(set) var syntaxEnabled: Bool
     public var onFocusToolsChange: (() -> Void)?
+    // Authorship (see EditorSession+Authorship.swift).
+    /// Which author each character belongs to. Main thread only, next to the text: undo has to
+    /// be synchronous, which is why it is not part of the analysis queue's `Document`.
+    public internal(set) var authorship: Authorship
+    /// Whether borrowed text is coloured in this window (a view toggle: no data changes).
+    public internal(set) var authorshipDisplay: Bool
+    public var onAuthorshipChange: (() -> Void)?
+    /// What the next text edit is, for attributing it (see `EditOrigin`).
+    var editOrigin: EditOrigin = .typed
+    var isLoading = false
+    var authorshipUndo = AuthorshipUndoState()
+    /// The edit the text view last announced (`shouldChangeText`): exact, unlike the storage's
+    /// edited range. Consumed by the next storage edit.
+    var pendingEdit: (range: NSRange, length: Int)?
+    /// A file whose marks might be misplaced: editing waits for Keep or Discard.
+    public internal(set) var pendingAuthorshipDecision: AnnotationStatus?
+    public var onAuthorshipDecisionNeeded: (() -> Void)?
+    /// Told when Discard changed the document (it becomes edited).
+    public var onAuthorshipDiscarded: (() -> Void)?
     /// Instrumentation: queries to the analysis queue made for the selection (see `refreshState`).
     var stateQueries = 0
     /// Instrumentation: main-thread time spent asking and applying (seconds).
@@ -91,6 +110,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         viewMode = settings.defaultViewMode
         focusEnabled = settings.focusMode
         syntaxEnabled = settings.syntaxHighlight
+        authorship = Authorship(me: settings.authorName)
+        authorshipDisplay = settings.authorshipDisplay
         appliedFocusScope = settings.focusScope
         appliedSyntaxClasses = settings.syntaxClasses
         styler.liveMode = viewMode == .live
@@ -111,6 +132,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
 
     deinit {
         observers.forEach(NotificationCenter.default.removeObserver)
+        authorshipUndo.observers.forEach(NotificationCenter.default.removeObserver)
         // AppKit can keep a closed window's text view alive for a while; it must not call back
         // into a session that is gone (the delegate reference is unowned).
         textView?.delegate = nil
@@ -126,6 +148,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         // back. If AppKit holds on to the view after the session is gone, the view must still
         // have a whole text system, so it keeps the storage alive too.
         tv.textSystem = storage
+        tv.isEditable = pendingAuthorshipDecision == nil
         textView = tv
         visibleRange = { [weak tv] in tv?.visibleCharacterRange() ?? NSRange(location: 0, length: 0) }
         isComposing = { [weak tv] in tv?.hasMarkedText() ?? false }
@@ -139,15 +162,22 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
 
     /// Replaces the whole text (document load, revert). Not undoable; the coordinator learns
     /// of it as an ordinary edit and styling is owed for the whole text.
-    public func load(_ text: String) {
+    public func load(_ text: String, authorship loaded: Authorship? = nil) {
         let attributed = NSAttributedString(string: text, attributes: appearance.baseAttributes())
+        isLoading = true
         storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: attributed)
+        isLoading = false
         textView?.undoManager?.removeAllActions()
+        authorshipUndo.reset()
+        authorship = loaded ?? Authorship(me: settings.authorName)
+        pendingAuthorshipDecision = nil
+        textView?.isEditable = true
         activeTable = nil
         formatState = Self.emptyFormatState
         liveWindow = NSRange(location: 0, length: 0)
         layoutManager.setLive(LiveState())
         overlay.reset()
+        refreshAuthorshipOverlay()
         if syntaxEnabled { pos.reset() }
         if focusEnabled { refreshState() }
     }
@@ -180,6 +210,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         } else if let e = lastUserEdit {
             lastUserEdit = RangeMath.shift(e, through: change)
         }
+        if !isLoading { trackAuthorship(change, replacement: replacement) }
         let seq = coordinator.submit(range: change.old, replacement: replacement)
         log.append((seq, change))
         inDelegate = true
@@ -283,6 +314,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance())
         applyAppearance(new)
         applyFocusToolSettings()
+        authorship.setMeName(name: settings.authorName)
     }
 
     /// Re-reads settings and the effective appearance (System theme follows the OS live).

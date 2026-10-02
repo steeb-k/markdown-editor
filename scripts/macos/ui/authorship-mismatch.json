@@ -1,0 +1,235 @@
+[
+ {
+  "log": "--- Authorship: a file whose marks may be misplaced (hash mismatch, malformed): Keep and Discard"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "authorName": "Steve",
+   "authorshipDisplay": true
+  }
+ },
+ {
+  "open": "fixtures/authorship/mismatch.md"
+ },
+ {
+  "resize": [
+   900,
+   900
+  ]
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": true,
+    "sheet": true,
+    "editable": false,
+    "markRuns": 2
+   },
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "01-mismatch-sheet",
+  "window": "sheet"
+ },
+ {
+  "snapshot": "02-mismatch-behind",
+  "bitmap": true
+ },
+ {
+  "authorshipDecision": "keep"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": false,
+    "sheet": false,
+    "editable": true,
+    "markRuns": 2
+   },
+   "edited": false,
+   "colors": {
+    "concentrates": "author-ai"
+   }
+  }
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "on a bus"
+   }
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "fixtures/authorship/mismatch.md"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": true,
+    "sheet": true,
+    "editable": false
+   }
+  }
+ },
+ {
+  "authorshipDecision": "discard"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": false,
+    "sheet": false,
+    "editable": true,
+    "marks": false,
+    "markRuns": 0
+   },
+   "edited": true,
+   "colors": {
+    "concentrates": "none"
+   }
+  }
+ },
+ {
+  "snapshot": "03-after-discard",
+  "bitmap": true
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "file": {
+    "lacks": "SHA-256",
+    "suffix": "lovely.\n"
+   }
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "fixtures/authorship/malformed.md"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": true,
+    "sheet": true,
+    "editable": false
+   }
+  }
+ },
+ {
+  "snapshot": "04-malformed-sheet",
+  "window": "sheet"
+ },
+ {
+  "authorshipDecision": "keep"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": false,
+    "editable": true
+   }
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "fixtures/authorship/ai-draft.md"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": false,
+    "sheet": false,
+    "editable": true,
+    "markRuns": 2
+   },
+   "textLacks": "SHA-256",
+   "edited": false,
+   "colors": {
+    "The Fresnel lens": "author-ai",
+    "A lighthouse is a tower": "author-reference",
+    "I wrote this paragraph": "none"
+   }
+  }
+ },
+ {
+  "snapshot": "05-valid-file-no-sheet",
+  "bitmap": true
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "file": {
+    "contains": "@Steve: 0,78",
+    "suffix": "...\n"
+   }
+  }
+ },
+ {
+  "close": true
+ }
+]

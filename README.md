@@ -7,7 +7,8 @@ Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-a
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
 # an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes,
-# Live-mode concealment, focus ranges and part-of-speech units)
+# Live-mode concealment, focus ranges, part-of-speech units, and authorship: run arithmetic and the
+# Markdown Annotations format)
 cargo test --workspace
 # Heavier fuzzing: the `fuzz` profile is optimized but keeps debug assertions, so the span
 # sanitizer's "nothing was dropped" check stays armed.
@@ -39,6 +40,8 @@ scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour
 scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by eye: pictures, selections, drop/paste
 scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
 scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
+scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As, typing in borrowed text, undo, save and reopen; three themes
+scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep-or-discard sheet for marks that may be misplaced
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-focus.json  # 1 MB: focus and syntax off vs on
 ```

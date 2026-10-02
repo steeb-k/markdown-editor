@@ -88,7 +88,7 @@ extension EditorLayoutManager {
         let diameter = max(4, (a.font.pointSize * 0.3).rounded())
         let x = a.glyphs.minX + a.font.pointSize * 0.06
         let y = a.baseline - a.font.xHeight * 0.5 - diameter / 2
-        (dimmed ? palette.focusDim : palette.text.withAlphaComponent(0.85)).setFill()
+        (dimmed ? palette.focusDim : (overlay?.authorshipColor(at: d.range.location) ?? palette.text).withAlphaComponent(0.85)).setFill()
         NSBezierPath(ovalIn: NSRect(x: x + origin.x, y: y + origin.y, width: diameter, height: diameter)).fill()
     }
 
@@ -110,7 +110,7 @@ extension EditorLayoutManager {
             check.stroke()
         } else {
             box.lineWidth = 1.25
-            (dimmed ? palette.focusDim : palette.markup).setStroke()
+            (dimmed ? palette.focusDim : (overlay?.authorshipColor(at: d.range.location) ?? palette.markup)).setStroke()
             box.stroke()
         }
     }

@@ -72,6 +72,9 @@ struct SettingsView: View {
             ForEach(SyntaxClass.allCases, id: \.self) { c in
                 Toggle("Highlight \(c.title.lowercased())", isOn: Binding(get: { s.syntaxClass(c) }, set: { s.setSyntaxClass(c, $0) }))
             }
+            Toggle("Show authorship colours in new windows", isOn: Binding(get: { s.authorshipDisplay }, set: { s.authorshipDisplay = $0 }))
+            TextField("Name for my text", text: Binding(get: { s.authorNameSetting }, set: { s.authorNameSetting = $0 }),
+                      prompt: Text(s.authorName))
             Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
             Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
             Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))

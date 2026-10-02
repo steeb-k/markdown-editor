@@ -16,6 +16,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
     /// Focus mode and syntax highlighting for this window, beside the mode switch.
     let focusButton = NSButton()
     let syntaxButton = NSButton()
+    /// Shows or hides the colouring of borrowed text (AI, Reference) in this window.
+    let authorshipButton = NSButton()
     private var modeAccessory: NSTitlebarAccessoryViewController?
     private var fadeHeight: NSLayoutConstraint!
     private let root = EditorRootView()
@@ -118,6 +120,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         for (button, title, action, label) in [
             (focusButton, "Focus", #selector(focusButtonPressed(_:)), "Focus mode"),
             (syntaxButton, "Syntax", #selector(syntaxButtonPressed(_:)), "Syntax highlighting"),
+            (authorshipButton, "Authorship", #selector(authorshipButtonPressed(_:)), "Authorship colours"),
         ] {
             button.title = title
             button.setButtonType(.pushOnPushOff)
@@ -130,14 +133,16 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
             button.sizeToFit()
         }
         let gap: CGFloat = 6
-        let buttonsWidth = focusButton.frame.width + syntaxButton.frame.width + 2 * gap
+        let buttonsWidth = focusButton.frame.width + syntaxButton.frame.width + authorshipButton.frame.width + 3 * gap
         let height = max(modeSwitch.frame.height, focusButton.frame.height)
         let holder = NSView(frame: NSRect(x: 0, y: 0, width: buttonsWidth + modeSwitch.frame.width + 20, height: height + 8))
         focusButton.frame.origin = NSPoint(x: 8, y: (holder.frame.height - focusButton.frame.height) / 2)
         syntaxButton.frame.origin = NSPoint(x: focusButton.frame.maxX + gap, y: (holder.frame.height - syntaxButton.frame.height) / 2)
-        modeSwitch.frame.origin = NSPoint(x: syntaxButton.frame.maxX + gap, y: (holder.frame.height - modeSwitch.frame.height) / 2)
+        authorshipButton.frame.origin = NSPoint(x: syntaxButton.frame.maxX + gap, y: (holder.frame.height - authorshipButton.frame.height) / 2)
+        modeSwitch.frame.origin = NSPoint(x: authorshipButton.frame.maxX + gap, y: (holder.frame.height - modeSwitch.frame.height) / 2)
         holder.addSubview(focusButton)
         holder.addSubview(syntaxButton)
+        holder.addSubview(authorshipButton)
         holder.addSubview(modeSwitch)
         let accessory = NSTitlebarAccessoryViewController()
         accessory.view = holder
@@ -147,6 +152,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         chrome.extraTitlebarViews = [holder]
         session.onViewModeChange = { [weak self] in self?.syncModeSwitch() }
         session.onFocusToolsChange = { [weak self] in self?.syncFocusButtons() }
+        session.onAuthorshipChange = { [weak self] in self?.syncFocusButtons() }
+        session.onAuthorshipDecisionNeeded = { [weak self] in
+            DispatchQueue.main.async { self?.presentAuthorshipSheetIfNeeded() }
+        }
         syncModeSwitch()
         syncFocusButtons()
     }
@@ -161,9 +170,33 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         window?.makeFirstResponder(textView)
     }
 
+    @objc private func authorshipButtonPressed(_ sender: NSButton) {
+        session.setAuthorshipDisplay(sender.state == .on)
+        window?.makeFirstResponder(textView)
+    }
+
     private func syncFocusButtons() {
         focusButton.state = session.focusEnabled ? .on : .off
         syntaxButton.state = session.syntaxEnabled ? .on : .off
+        authorshipButton.state = session.authorshipDisplay ? .on : .off
+    }
+
+    /// The file's marks may not line up with its text (it was changed elsewhere): ask, once,
+    /// whether to keep or discard them. Editing waits for the answer.
+    func presentAuthorshipSheetIfNeeded() {
+        guard let status = session.pendingAuthorshipDecision, let window, window.attachedSheet == nil else { return }
+        var detail = "The text no longer matches the check value saved with the marks, so they may be on the wrong words. Keep them to see where they land, or discard them."
+        if case .malformed(let reason) = status {
+            detail = "The marks at the end of this file are not usable as written (\(reason)), so they may be on the wrong words. Keep them to see where they land, or discard them."
+        }
+        let alert = NSAlert()
+        alert.messageText = "This file\u{2019}s authorship marks may be misplaced because it was changed outside the app"
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Keep")
+        alert.addButton(withTitle: "Discard")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.session.resolveAuthorshipDecision(keep: response != .alertSecondButtonReturn)
+        }
     }
 
     @objc private func modeSwitchChanged(_ sender: NSSegmentedControl) {
@@ -229,6 +262,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
     public override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         window?.makeFirstResponder(textView)
+        DispatchQueue.main.async { [weak self] in self?.presentAuthorshipSheetIfNeeded() }
     }
 
     /// The "+" in the tab bar and File > New Tab.

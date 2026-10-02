@@ -26,4 +26,17 @@ What a GTK shell writes for the focus tools, given what the core already does:
   (names included), `.verb`, `.adjective`, `.adverb`, `.conjunction` and leaves pronouns,
   determiners, prepositions, particles, numbers, interjections and everything else uncoloured.
 
+- **Authorship** is its own small type, `markdown_core::authorship::Authorship`: pure range arithmetic
+  in the buffer's unit (`Utf32` for GTK), no parsing, cheap enough to live on the main thread next
+  to the `GtkTextBuffer` so undo is synchronous. Keep it in step from the buffer's
+  `insert-text` / `delete-range` signals with `edit(range, inserted_len, attribution)` (`Typed(me)`
+  for typing and plain paste, `As(author)` for Paste As, `Inherit` or `edit_replacing(range, old,
+  new, Inherit)` for edits the core's commands compute) and take an `AuthorshipSnapshot` before each
+  undoable change. Colour AI and Reference runs (`runs(None)`) with `GtkTextTag`s using the theme's
+  `author_ai` / `author_reference`, below focus dimming and parts of speech. On open, call
+  `split_annotations(file_text)` (the file as read, line endings untouched), show `body`, build the
+  attribution with `Authorship::from_annotations(body_with_lf, annotations, encoding, name)`, call
+  `set_origin(body, raw_tail, ending)`, and on `HashMismatch` / `Malformed` ask Keep or Discard
+  before the buffer is editable. On save write `body` then `file_tail(text, ending)`.
+
 Open question: which part-of-speech tagger Linux uses (macOS uses NLTagger).

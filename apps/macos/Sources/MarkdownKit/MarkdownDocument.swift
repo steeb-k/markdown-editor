@@ -1,4 +1,5 @@
 import AppKit
+import MarkdownCore
 
 public final class MarkdownDocument: NSDocument {
     public let session: EditorSession
@@ -41,6 +42,7 @@ public final class MarkdownDocument: NSDocument {
 
     public override func makeWindowControllers() {
         session.requestSave = { [weak self] done in self?.saveForAssets(done) ?? done(false) }
+        session.onAuthorshipDiscarded = { [weak self] in self?.updateChangeCount(.changeDone) }
         addWindowController(EditorWindowController(document: self))
     }
 
@@ -54,12 +56,34 @@ public final class MarkdownDocument: NSDocument {
         let decoded = try TextCodec.decode(data)
         hasBOM = decoded.hasBOM
         lineEnding = decoded.lineEnding
-        session.load(decoded.text)
+        // The annotation block (authorship) is split off here: the editor never shows it and
+        // it is not part of the text the core analyses. The core decides what is a block.
+        let split = splitAnnotations(fileText: decoded.raw)
+        let body = split.annotations == nil ? decoded.text : TextCodec.normalize(split.body, decoded.lineEnding)
+        let authorship: Authorship
+        if let annotations = split.annotations {
+            authorship = Authorship.fromAnnotations(body: body, annotations: annotations, me: session.settings.authorName)
+        } else {
+            authorship = Authorship(me: session.settings.authorName)
+        }
+        // Remembered so that a file nobody changed is written back byte for byte.
+        authorship.setOrigin(body: body, rawTail: split.rawTail ?? "", ending: decoded.lineEnding.annotationEnding)
+        session.load(body, authorship: authorship)
         undoManager?.removeAllActions()
+        switch split.status {
+        case .hashMismatch, .malformed: session.requireAuthorshipDecision(split.status)
+        case .absent, .valid: break
+        }
     }
 
     public override func data(ofType typeName: String) throws -> Data {
-        TextCodec.encode(session.text, hasBOM: hasBOM, lineEnding: lineEnding)
+        let text = session.text
+        var data = TextCodec.encode(text, hasBOM: hasBOM, lineEnding: lineEnding)
+        // The annotation block, when some text belongs to someone other than the user (or the
+        // original block, if neither the text nor the marks changed).
+        let tail = session.authorship.fileTail(text: text, ending: lineEnding.annotationEnding)
+        if !tail.isEmpty { data.append(Data(tail.utf8)) }
+        return data
     }
 
     public override func write(to url: URL, ofType typeName: String) throws {

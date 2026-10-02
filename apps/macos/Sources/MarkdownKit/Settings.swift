@@ -85,6 +85,8 @@ public final class Settings: NSObject {
         static let focusMode = "focusMode"
         static let focusScope = "focusScope"
         static let syntaxHighlight = "syntaxHighlight"
+        static let authorshipDisplay = "authorshipDisplay"
+        static let authorName = "authorName"
         static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
@@ -104,6 +106,8 @@ public final class Settings: NSObject {
             Key.focusMode: false,
             Key.focusScope: FocusScopeChoice.sentence.rawValue,
             Key.syntaxHighlight: false,
+            Key.authorshipDisplay: true,
+            Key.authorName: "",
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -183,6 +187,28 @@ public final class Settings: NSObject {
     public var syntaxHighlight: Bool {
         get { defaults.bool(forKey: Key.syntaxHighlight) }
         set { defaults.set(newValue, forKey: Key.syntaxHighlight); changed() }
+    }
+
+    /// Whether new windows colour borrowed text (AI, Reference). Each window toggles its own;
+    /// the colouring never touches the text or the file.
+    public var authorshipDisplay: Bool {
+        get { defaults.bool(forKey: Key.authorshipDisplay) }
+        set { defaults.set(newValue, forKey: Key.authorshipDisplay); changed() }
+    }
+
+    /// The name written for the user's own text in an annotation block (`@Name: ...`). Empty
+    /// means the macOS full user name.
+    public var authorNameSetting: String {
+        get { defaults.string(forKey: Key.authorName) ?? "" }
+        set { defaults.set(newValue, forKey: Key.authorName); changed() }
+    }
+
+    /// The name that is in effect: the setting, else the full user name, else "Me".
+    public var authorName: String {
+        let chosen = authorNameSetting.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !chosen.isEmpty { return chosen }
+        let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
+        return full.isEmpty ? "Me" : full
     }
 
     /// The classes of words that are coloured, in every window.
