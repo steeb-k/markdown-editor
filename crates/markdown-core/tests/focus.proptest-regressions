@@ -7,3 +7,4 @@
 cc e4b0000b8f681de3ea4e8c42290d3aa87be1227f48483b89c63af4d887233ef2 # shrinks to text = "\r\n"
 cc 459ddaf3bd353e954c19d44b3b67db8fdb9ad66fd003a9bbbd3990b269947cc2 # shrinks to text = "Word \r\n\nWord "
 cc 311db2324022a49f11e3c2cb4edaf1237318170af524181b52bbd50abf41839d # shrinks to text = "](http://a.b/c) *Dr. ```\nhttp://a.b/c. ****## Word  `c. d` 🎉 ***===\n`c. d` **\r\n", a = 158, b = 0
+cc b86552defc03d9ad9237af3eb676b2386635c183c3ff367ef1514a97582d7e2e # shrinks to text = " ```\n\r\n===\n```\n*`c. d` Word *🎉 **http://a.b/c. ***\n\n1. - [ ] ===\n   http://a.b/c. 1. ![```\nDr. \n\n", a = 104, b = 7, w0 = 7, w1 = 7

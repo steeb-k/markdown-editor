@@ -92,40 +92,149 @@ fn spec_example_is_written_back_byte_for_byte() {
     assert_eq!(a.runs(None).len(), 8);
 }
 
+/// The text of the graphemes `[start, start + length)` of `body`, for checking what a range covers.
+fn graphemes_of(body: &str, start: u32, length: u32) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    body.graphemes(true).skip(start as usize).take(length as usize).collect()
+}
+
 #[test]
-fn spec_readme_ends_with_a_valid_block() {
-    let file = fixture("spec-readme.md");
+fn harbour_lights_has_every_feature_of_the_format_and_a_valid_block() {
+    // Written for this project by an independent Swift generator (Swift's grapheme clusters
+    // and CryptoKit): several authors of each kind, an indented block, range lists wrapped onto
+    // continuation lines, bare length-1 ranges, a translated hash key with a full 64-digit
+    // hash and runs of spaces, unknown annotations, an author annotation with content, an
+    // escaped colon in a name, emoji, CJK and combining marks in a body of ~4 KB.
+    let file = fixture("harbour-lights.md");
     let s = split_annotations(&file);
     assert_eq!(s.status, AnnotationStatus::Valid, "{:?}", s.status);
     let p = s.annotations.as_ref().unwrap();
-    assert_eq!((p.hash_range.start, p.hash_range.length), (0, 6349));
-    assert_eq!(p.hash, "b87e11a942cef68aaae6");
-    assert_eq!(p.authors.len(), 3);
-    assert_eq!(p.authors[0].name, "Anton Sotkov");
-    assert_eq!(p.authors[1].name, "Oliver Reichenstein");
-    assert_eq!(p.authors[2].name, "Iain Humm");
-    assert_eq!(ranges(&p.authors[1]), vec![(314, 176)]);
-    assert_eq!(ranges(&p.authors[2])[..3], [(2194, 3), (2226, 1), (2245, 22)]);
-    // The body is the whole README text, front matter included, and the file is its body
-    // plus the tail.
-    assert!(s.body.starts_with("---\nVersion: 0.2\n---\n"));
-    assert!(s.body.ends_with("available.\n"));
+    assert_eq!(p.hash_key, "Anmerkungen");
+    assert_eq!(p.hash.len(), 64);
+    assert_eq!((p.hash_range.start, p.hash_range.length), (0, 4127));
+    // The body keeps its front matter and its last newline; the blank line is the separator.
+    assert!(s.body.starts_with("---\ntitle: Harbour lights\n"));
+    assert!(s.body.ends_with("ours. \u{1F469}\u{1F3FD}\u{200D}\u{1F52C}\u{1F468}\u{1F3FB}\u{200D}\u{1F527}\n"));
     assert_eq!(format!("{}{}", s.body, s.raw_tail.as_ref().unwrap()), file);
-    // Every encoding, and writing the canonical form back (same ranges, longer hash).
+    let names: Vec<(AuthorKind, &str)> = p.authors.iter().map(|a| (a.kind, a.name.as_str())).collect();
+    assert_eq!(
+        names,
+        vec![
+            (AuthorKind::Human, "Steve Kaznak"),
+            (AuthorKind::Ai, "Assistant"),
+            (AuthorKind::Ai, "Draft Bot <bot@example.org>"),
+            (AuthorKind::Reference, "Harbour Archive"),
+            (AuthorKind::Reference, "Keeper's Log"),
+            (AuthorKind::Human, "Ada: Lovelace"),
+        ]
+    );
+    // Wrapped lists: Steve's ranges continue over three more lines, with a bare range among them.
+    assert_eq!(p.authors[0].ranges.len(), 13);
+    assert_eq!(ranges(&p.authors[0])[4], (1100, 1));
+    assert_eq!(ranges(&p.authors[4]), vec![(60, 1), (847, 128)]);
+    // What does not describe authorship is kept verbatim, author-with-content included.
+    assert_eq!(
+        p.unknown,
+        vec![
+            "Source: field guide, second edition  ".to_string(),
+            "&Summariser: 12,3 tone=dry".to_string(),
+            "Review\\: status: pending".to_string(),
+            "  and continued here".to_string(),
+        ]
+    );
+    // The ranges cover the words the generator was told to attribute, in grapheme clusters.
+    let covered = |a: usize, i: usize| {
+        let r = p.authors[a].ranges[i];
+        graphemes_of(&s.body, r.start, r.length)
+    };
+    assert_eq!(covered(1, 0), "A Fresnel lens is a flat lens cut into rings.");
+    assert_eq!(covered(2, 0), "| \u{1F1EF}\u{1F1F5} \u{6A2A}\u{6D5C} | Oc G 4s | occulting green |");
+    assert_eq!(covered(3, 1), "\u{706F}\u{53F0}\u{5B88}\u{306E}\u{65E5}\u{8A18}");
+    assert_eq!(covered(4, 0), "\u{1F5FC}");
+    assert_eq!(covered(5, 0), "\u{2693}\u{FE0F}");
+    assert_eq!(covered(5, 1), "Some keepers wrote poems.");
+    assert_eq!(covered(5, 2), "\u{1F408}");
+    // Every encoding lands on the same text, and the canonical writer reproduces the authors
+    // (32-digit hash, the key kept, one line per author, unknown lines after them).
+    for enc in ENCODINGS {
+        let a = Authorship::from_annotations(&s.body, p, enc, "Steve Kaznak");
+        let authors = a.authors();
+        let ai_text: Vec<String> = a
+            .runs(None)
+            .iter()
+            .filter(|r| authors[r.author_index as usize].name == "Assistant")
+            .map(|r| {
+                let (lo, hi) = (r.range.start as usize, r.range.end as usize);
+                match enc {
+                    OffsetEncoding::Utf8 => s.body[lo..hi].to_string(),
+                    OffsetEncoding::Utf16 => {
+                        let t: Vec<u16> = s.body.encode_utf16().collect();
+                        String::from_utf16(&t[lo..hi]).unwrap()
+                    }
+                    OffsetEncoding::Utf32 => s.body.chars().skip(lo).take(hi - lo).collect(),
+                }
+            })
+            .collect();
+        assert_eq!(ai_text.len(), 3, "{enc:?}");
+        assert_eq!(ai_text[0], "A Fresnel lens is a flat lens cut into rings.", "{enc:?}");
+        assert!(ai_text[1].starts_with("Each ring") && ai_text[1].ends_with("in the glass."), "{enc:?}");
+        let block = a.annotation_block(&s.body, LineEnding::Lf).unwrap();
+        assert!(block.starts_with("\n---\nAnmerkungen: 0,4127 SHA-256 7d2441b932e5109ad130d30a26199b6f  \n"), "{block}");
+        let again = split_annotations(&format!("{}{}", s.body, block));
+        assert_eq!(again.status, AnnotationStatus::Valid);
+        assert_eq!(again.body, s.body);
+        let q = again.annotations.unwrap();
+        assert_eq!(q.unknown, p.unknown);
+        let b = Authorship::from_annotations(&again.body, &q, enc, "Steve Kaznak");
+        assert_eq!(runs_of(&a), runs_of(&b), "{enc:?}");
+    }
+    // Untouched: the original bytes.
+    let mut a = Authorship::from_annotations(&s.body, p, OffsetEncoding::Utf16, "Steve Kaznak");
+    a.set_origin(&s.body, s.raw_tail.as_ref().unwrap(), LineEnding::Lf);
+    assert_eq!(format!("{}{}", s.body, a.file_tail(&s.body, LineEnding::Lf)), file);
+}
+
+/// Interoperability check against the spec's own README, whose tail is an annotation block
+/// written by iA. Not vendored (the repository has no license): fetched at run time.
+///
+///     cargo test -p markdown-core --test authorship -- --ignored spec_readme
+#[test]
+#[ignore = "fetches https://github.com/iainc/Markdown-Annotations at run time"]
+fn spec_readme_fetched_from_github_ends_with_a_valid_block() {
+    let out = std::process::Command::new("curl")
+        .args(["-fsSL", "https://raw.githubusercontent.com/iainc/Markdown-Annotations/develop/README.md"])
+        .output()
+        .expect("curl");
+    assert!(out.status.success(), "fetch failed: {}", String::from_utf8_lossy(&out.stderr));
+    let file = String::from_utf8(out.stdout).unwrap();
+    let s = split_annotations(&file);
+    assert_eq!(s.status, AnnotationStatus::Valid, "{:?}", s.status);
+    let p = s.annotations.as_ref().unwrap();
+    // As of version 0.2 of the spec (2025-11-05): the range stops before the text's last
+    // newline and a blank line separates the text from the block.
+    assert_eq!(p.hash_key, "Annotations");
+    assert!(!p.authors.is_empty());
+    assert_eq!(format!("{}{}", s.body, s.raw_tail.as_ref().unwrap()), file);
+    assert_eq!(
+        grapheme_count(&s.body),
+        p.hash_range.length as usize + 1,
+        "the hashed range is the body without its last newline"
+    );
     for enc in ENCODINGS {
         let a = Authorship::from_annotations(&s.body, p, enc, "Me");
         let block = a.annotation_block(&s.body, LineEnding::Lf).unwrap();
         let again = split_annotations(&format!("{}{}", s.body, block));
         assert_eq!(again.status, AnnotationStatus::Valid);
-        assert_eq!(again.body, s.body);
-        let q = again.annotations.unwrap();
-        assert_eq!(q.authors, p.authors, "{enc:?}");
-        assert!(q.hash.starts_with(&p.hash));
+        assert_eq!(again.annotations.unwrap().authors, p.authors, "{enc:?}");
     }
-    // Untouched: the original bytes, whatever this app would have written.
     let mut a = Authorship::from_annotations(&s.body, p, OffsetEncoding::Utf16, "Me");
     a.set_origin(&s.body, s.raw_tail.as_ref().unwrap(), LineEnding::Lf);
     assert_eq!(format!("{}{}", s.body, a.file_tail(&s.body, LineEnding::Lf)), file);
+}
+
+fn grapheme_count(s: &str) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+    s.graphemes(true).count()
 }
 
 // ----- the structure of a block --------------------------------------------------------------
@@ -287,6 +396,104 @@ fn front_matter_lookalike_at_the_start_is_not_a_block_unless_valid() {
     assert_eq!(split_annotations(t).status, AnnotationStatus::Absent);
 }
 
+/// Every shape at the end of a document that could be mistaken for a block, and what it is.
+/// A wrong "block" hides the end of someone's document from the editor (and Discard deletes
+/// it), so everything that is not plainly a block must read as text.
+#[test]
+fn block_recognition_matrix() {
+    let valid = file_with("Body text.\n", LineEnding::Lf, &[(0, 4, ai())]);
+    let block = &valid["Body text.\n".len()..];
+    let h = hash32(b"x");
+    let absent: &[(&str, String)] = &[
+        ("front matter only", "---\ntitle: x\n---\n".into()),
+        ("front matter closed by dots", "---\ntitle: a b c\n...\n".into()),
+        ("front matter with a hash-like line", format!("---\nAnnotations: 0,1 SHA-256 {h}\n...\n")),
+        ("thematic break at the end", "Text.\n\n---\n".into()),
+        ("dots at the end, no dashes", "Text.\n\n...\n".into()),
+        ("dots after a thematic break, blank first", "Text.\n\n---\n\nNote: 1 2 3\n...\n".into()),
+        ("pandoc metadata at the end", "Text.\n\n---\ndate: 2024 10 01\n...\n".into()),
+        ("pandoc metadata, several keys", "Text.\n\n---\nversion: 1 2 3\nauthor: Ann\n...\n".into()),
+        ("text after the dots", format!("{valid}More text.\n")),
+        ("closed fence holding a block", format!("Text.\n\n```\n{}```\n", &block[1..])),
+        ("indented dashes", format!("Text.\n\n ---\nAnnotations: 0,1 SHA-256 {h}\n...\n")),
+        ("no annotation line", "Text.\n\n---\n...\n".into()),
+        ("two tokens", format!("Text.\n\n---\nAnnotations: SHA-256 {h}\n...\n")),
+        ("non-hex hash", "Text.\n\n---\nAnnotations: 0,1 SHA-256 zzzzzzzzzzzzzzzzzzzzzzzz\n...\n".into()),
+        ("author first", format!("Text.\n\n---\n&AI: 0,1\nAnnotations: 0,1 SHA-256 {h}\n...\n")),
+        ("empty file", String::new()),
+        ("just dots", "...\n".into()),
+        ("YAML stream", "---\na: 1\n---\nb: 2\n...\n".into()),
+        ("a block at the start whose hash is wrong", block[1..].to_string()),
+    ];
+    for (name, f) in absent {
+        let s = split_annotations(f);
+        assert_eq!(s.status, AnnotationStatus::Absent, "{name}");
+        assert_eq!(&s.body, f, "{name}");
+        assert!(s.raw_tail.is_none(), "{name}");
+    }
+    type Case = (&'static str, String, fn(&AnnotationStatus) -> bool);
+    let present: &[Case] = &[
+        ("valid", valid.clone(), |s| *s == AnnotationStatus::Valid),
+        ("valid, CRLF", file_with("Body text.\n", LineEnding::CrLf, &[(0, 4, ai())]), |s| *s == AnnotationStatus::Valid),
+        ("valid, no final newline after dots", valid.trim_end().to_string(), |s| *s == AnnotationStatus::Valid),
+        ("valid, trailing blank lines", format!("{valid}\n\n  \n"), |s| *s == AnnotationStatus::Valid),
+        ("front matter and a block", format!("---\ntitle: x\n---\n{valid}"), |s| *s == AnnotationStatus::HashMismatch),
+        ("text changed", valid.replacen("Body", "Bode", 1), |s| *s == AnnotationStatus::HashMismatch),
+        ("MD5 with authors", valid.replace("SHA-256", "MD5"), |s| matches!(s, AnnotationStatus::Malformed(_))),
+        ("short hash with authors", valid.replace(&hash32(b"Body text."), "abcdef0123"), |s| matches!(s, AnnotationStatus::Malformed(_))),
+        ("an empty body and a block", format!("---\nAnnotations: 0,0 SHA-256 {}\n...\n", hash32(b"")), |s| *s == AnnotationStatus::Valid),
+    ];
+    for (name, f, ok) in present {
+        let s = split_annotations(f);
+        assert!(ok(&s.status), "{name}: {:?}", s.status);
+        assert_eq!(format!("{}{}", s.body, s.raw_tail.as_deref().unwrap()), *f, "{name}");
+        assert!(!s.body.contains("---\nAnnotations"), "{name}");
+    }
+    // Front matter, then a valid block: only the block is split off.
+    let fm = file_with("---\ntitle: x\n---\n\nBody.\n", LineEnding::Lf, &[(20, 24, ai())]);
+    let s = split_annotations(&fm);
+    assert_eq!(s.status, AnnotationStatus::Valid);
+    assert_eq!(s.body, "---\ntitle: x\n---\n\nBody.\n");
+}
+
+/// A block whose keys are indented, with an annotation this app does not know after the
+/// authors: written back unindented, the unknown line must not become a continuation of the
+/// last author (which would turn that author's ranges into "content" and lose them).
+#[test]
+fn unknown_annotations_from_an_indented_block_stay_separate_when_rewritten() {
+    let hash = hash32(b"abcdefghij");
+    let f = format!("abcdefghij\n\n---\n  Annotations: 0,10 SHA-256 {hash}  \n  &AI: 0,2  \n  @Ann: 4,2  \n  Note: kept\n    two lines\n...\n");
+    let s = split_annotations(&f);
+    assert_eq!(s.status, AnnotationStatus::Valid);
+    let mut a = Authorship::from_annotations(&s.body, s.annotations.as_ref().unwrap(), OffsetEncoding::Utf16, "Me");
+    // An edit, so the canonical block is written.
+    a.edit(r(10, 10), 1, Attribution::Typed(a.me().clone()));
+    let text = "abcdefghijk\n";
+    let again = split_annotations(&format!("{text}{}", a.file_tail(text, LineEnding::Lf)));
+    assert_eq!(again.status, AnnotationStatus::Valid);
+    let q = again.annotations.unwrap();
+    let names: Vec<&str> = q.authors.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, vec!["Me", "AI", "Ann"]);
+    assert_eq!(ranges(&q.authors[2]), vec![(4, 2)]);
+    assert_eq!(q.unknown, vec!["Note: kept".to_string(), "  two lines".to_string()]);
+}
+
+#[test]
+fn a_name_with_a_line_break_cannot_break_the_block() {
+    let mut a = Authorship::with_me(OffsetEncoding::Utf16, "Ann\nLee");
+    a.mark(r(0, 3), Some(&Author::new(AuthorKind::Ai, "Bot\r\n...\n---")));
+    a.edit(r(3, 3), 2, Attribution::Typed(a.me().clone()));
+    let text = "abcde\n";
+    let file = format!("{text}{}", a.file_tail(text, LineEnding::Lf));
+    let s = split_annotations(&file);
+    assert_eq!(s.status, AnnotationStatus::Valid, "{file}");
+    assert_eq!(s.body, text);
+    let p = s.annotations.unwrap();
+    let names: Vec<&str> = p.authors.iter().map(|x| x.name.as_str()).collect();
+    assert_eq!(names, vec!["Ann Lee", "Bot  ... ---"]);
+    assert!(p.unknown.is_empty());
+}
+
 #[test]
 fn a_block_inside_a_closed_code_fence_is_text() {
     let t = "```\n---\nAnnotations: 0,4 SHA-256 aaaaaaaaaaaaaaaaaaaa\n&AI: 0,2\n...\n```\n";
@@ -296,11 +503,28 @@ fn a_block_inside_a_closed_code_fence_is_text() {
 }
 
 #[test]
-fn a_lookalike_at_the_end_of_an_unclosed_fence_is_taken_for_a_block() {
-    // Decision: the core does not parse Markdown; a well-formed block at the end of the
-    // file is a block, and a wrong hash puts the keep-or-discard question to the user.
-    let t = "```\ncode\n\n---\nAnnotations: 0,4 SHA-256 aaaaaaaaaaaaaaaaaaaa\n...\n";
-    assert_eq!(split_annotations(t).status, AnnotationStatus::HashMismatch);
+fn a_lookalike_in_a_fence_left_open_is_text_unless_its_hash_is_right() {
+    // Someone writing about the format, the closing fence not typed yet: taking the example
+    // for a block would hide it, and Discard would delete it.
+    let t = "```\ncode\n\n---\nAnnotations: 0,4 SHA-256 aaaaaaaaaaaaaaaaaaaa\n&AI: 0,2\n...\n";
+    let s = split_annotations(t);
+    assert_eq!(s.status, AnnotationStatus::Absent);
+    assert_eq!(s.body, t);
+    for open in ["~~~~ yaml\n", "  ```md\n", "```\n```\n````\n", "> x\n```\n"] {
+        let t = format!("{open}Example\n\n---\nAnnotations: 0,4 SHA-256 aaaaaaaaaaaaaaaaaaaa\n&AI: 0,2\n...\n");
+        assert_eq!(split_annotations(&t).status, AnnotationStatus::Absent, "{open:?}");
+    }
+    // Closed fences, a fence-like line with backticks in its info string, a fence indented as
+    // code, or a short run: no open fence, so a look-alike is a block (with a wrong hash, the
+    // question is put to the user).
+    for closed in ["```\nx\n```\n", "~~~\nx\n~~~~~\n", "``` a`b\n", "    ```\n", "``\n"] {
+        let t = format!("{closed}\n---\nAnnotations: 0,4 SHA-256 aaaaaaaaaaaaaaaaaaaa\n&AI: 0,2\n...\n");
+        assert_eq!(split_annotations(&t).status, AnnotationStatus::HashMismatch, "{closed:?}");
+    }
+    // A real block whose text ends inside an open fence (the writer forgot to close it): the
+    // hash is right, so it is a block.
+    let f = file_with("```\nlet x = 1;\n", LineEnding::Lf, &[(4, 8, ai())]);
+    assert_eq!(split_annotations(&f).status, AnnotationStatus::Valid);
 }
 
 #[test]
@@ -587,6 +811,11 @@ const ALPHABET: [&str; 8] = ["a", "é", "\u{1F600}", "\u{301}", "\n", "\u{200D}"
 enum Op {
     Edit { a: u8, b: u8, ins: Vec<u8>, kind: u8 },
     Mark { a: u8, b: u8, who: u8 },
+    /// An edit placed at a run's edge (adversarial): `edge` picks the edge, `shift` moves it
+    /// by -1, 0 or +1 characters, `del` characters are deleted from there (often none).
+    EdgeEdit { edge: u8, shift: u8, del: u8, ins: Vec<u8>, kind: u8 },
+    /// An edit at exactly `[s, e)` characters (what an `EdgeEdit` becomes).
+    At { s: usize, e: usize, ins: Vec<u8>, kind: u8 },
 }
 
 fn op_strategy() -> impl Strategy<Value = Op> {
@@ -594,7 +823,14 @@ fn op_strategy() -> impl Strategy<Value = Op> {
         3 => (any::<u8>(), any::<u8>(), proptest::collection::vec(0u8..8, 0..6), 0u8..6)
             .prop_map(|(a, b, ins, kind)| Op::Edit { a, b, ins, kind }),
         2 => (any::<u8>(), any::<u8>(), 0u8..4).prop_map(|(a, b, who)| Op::Mark { a, b, who }),
+        3 => (any::<u8>(), 0u8..3, prop_oneof![2 => Just(0u8), 1 => 1u8..4, 1 => 4u8..40], proptest::collection::vec(0u8..8, 0..4), 0u8..6)
+            .prop_map(|(edge, shift, del, ins, kind)| Op::EdgeEdit { edge, shift, del, ins, kind }),
     ]
+}
+
+/// Cases for the properties below: `PROPTEST_CASES` overrides the default.
+fn cases(default: u32) -> u32 {
+    std::env::var("PROPTEST_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
 fn who(i: u8) -> Option<Author> {
@@ -624,13 +860,36 @@ fn run_history(enc: OffsetEncoding, init: Vec<u8>, ops: Vec<Op>) {
     let mut model: Vec<Option<Author>> = vec![None; chars.len()];
     let mut a = Authorship::new(enc);
     for op in ops {
-        match op {
+        // An edge edit is an ordinary edit whose place is a run edge (in characters).
+        let op = match op {
+            Op::EdgeEdit { edge, shift, del, ins, kind } => {
+                let runs = a.runs(None);
+                let mut edges: Vec<usize> = vec![0, chars.len()];
+                for run in &runs {
+                    for u in [run.range.start, run.range.end] {
+                        if let Some(i) = (0..=chars.len()).find(|&i| unit_pos(&chars, i, enc) == u) {
+                            edges.push(i);
+                        }
+                    }
+                }
+                let at = edges[edge as usize % edges.len()];
+                let at = match shift {
+                    0 => at.saturating_sub(1),
+                    1 => at,
+                    _ => (at + 1).min(chars.len()),
+                };
+                let end = (at + del as usize).min(chars.len());
+                Op::At { s: at, e: end, ins, kind }
+            }
             Op::Edit { a: x, b: y, ins, kind } => {
                 let n = chars.len();
-                let (mut s, mut e) = (x as usize % (n + 1), y as usize % (n + 1));
-                if s > e {
-                    std::mem::swap(&mut s, &mut e);
-                }
+                let (s, e) = (x as usize % (n + 1), y as usize % (n + 1));
+                Op::At { s: s.min(e), e: s.max(e), ins, kind }
+            }
+            other => other,
+        };
+        match op {
+            Op::At { s, e, ins, kind } => {
                 let new: Vec<char> = ins.iter().flat_map(|&i| ALPHABET[i as usize % 8].chars()).collect();
                 let range = r(unit_pos(&chars, s, enc), unit_pos(&chars, e, enc));
                 let new_units = unit_pos(&new, new.len(), enc);
@@ -666,6 +925,7 @@ fn run_history(enc: OffsetEncoding, init: Vec<u8>, ops: Vec<Op>) {
                     *m = au.clone();
                 }
             }
+            Op::Edit { .. } | Op::EdgeEdit { .. } => unreachable!(),
         }
         // Invariants.
         let total = unit_pos(&chars, chars.len(), enc);
@@ -698,7 +958,7 @@ fn run_history(enc: OffsetEncoding, init: Vec<u8>, ops: Vec<Op>) {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(300))]
+    #![proptest_config(ProptestConfig::with_cases(cases(1000)))]
 
     #[test]
     fn edits_agree_with_the_reference_model(enc in 0usize..3, init in proptest::collection::vec(0u8..8, 0..12), ops in proptest::collection::vec(op_strategy(), 1..40)) {
@@ -770,6 +1030,7 @@ proptest! {
                 if s > e { std::mem::swap(&mut s, &mut e); }
                 a.mark(r(s, e), who(*w).as_ref());
             }
+            Op::EdgeEdit { .. } | Op::At { .. } => {}
         };
         for op in &ops { apply(&mut a, &mut chars_len, op); }
         let snap = a.snapshot();
@@ -803,6 +1064,117 @@ proptest! {
         // Every attributed character of `new` that is a kept character of `old` stays: at
         // least, the number of AI characters never exceeds what was there plus inserted.
     }
+
+    /// `edit_replacing` with Inherit on texts full of repeated substrings, in every encoding:
+    /// the common prefix and suffix keep their attribution character for character, runs stay
+    /// valid and on code point boundaries, and the result is what applying its hunks one by
+    /// one as plain Inherit edits gives.
+    #[test]
+    fn edit_replacing_keeps_prefix_and_suffix_exactly(
+        enc in 0usize..3,
+        old in proptest::collection::vec(0u8..4, 0..24),
+        new in proptest::collection::vec(0u8..4, 0..24),
+        marks in proptest::collection::vec((any::<u8>(), any::<u8>(), 0u8..4), 0..5),
+        lead in proptest::collection::vec(0u8..4, 0..4),
+    ) {
+        let enc = ENCODINGS[enc];
+        let alpha = ["ab", "\u{1F600}", "a", "\r\n"];
+        let old: String = old.iter().map(|&i| alpha[i as usize]).collect();
+        let new: String = new.iter().map(|&i| alpha[i as usize]).collect();
+        let lead: String = lead.iter().map(|&i| alpha[i as usize]).collect();
+        let doc_old = format!("{lead}{old}!");
+        let chars: Vec<char> = doc_old.chars().collect();
+        let mut a = Authorship::new(enc);
+        for (x, y, w) in marks {
+            let n = chars.len();
+            let (s, e) = ((x as usize % (n + 1)).min(y as usize % (n + 1)), (x as usize % (n + 1)).max(y as usize % (n + 1)));
+            a.mark(r(unit_pos(&chars, s, enc), unit_pos(&chars, e, enc)), who(w).as_ref());
+        }
+        let before: Vec<Option<u32>> = (0..chars.len()).map(|i| a.author_at(unit_pos(&chars, i, enc))).collect();
+        let start = units(&lead, enc);
+        let mut b = a.clone();
+        a.edit_replacing(r(start, start + units(&old, enc)), &old, &new, Attribution::Inherit);
+        let doc_new = format!("{lead}{new}!");
+        let nchars: Vec<char> = doc_new.chars().collect();
+        let total = units(&doc_new, enc);
+        let mut prev = 0;
+        for run in a.runs(None) {
+            prop_assert!(run.range.start >= prev && run.range.start < run.range.end && run.range.end <= total);
+            prop_assert!((0..=nchars.len()).any(|i| unit_pos(&nchars, i, enc) == run.range.start));
+            prop_assert!((0..=nchars.len()).any(|i| unit_pos(&nchars, i, enc) == run.range.end));
+            prev = run.range.end;
+        }
+        let oc: Vec<char> = old.chars().collect();
+        let nc: Vec<char> = new.chars().collect();
+        let mut pre = 0;
+        while pre < oc.len() && pre < nc.len() && oc[pre] == nc[pre] { pre += 1; }
+        let mut suf = 0;
+        while suf < oc.len() - pre && suf < nc.len() - pre && oc[oc.len() - 1 - suf] == nc[nc.len() - 1 - suf] { suf += 1; }
+        let l = lead.chars().count();
+        // The lead, the common prefix, the common suffix and the final "!" keep their author.
+        for (i, &was) in before.iter().enumerate().take(l + pre) {
+            prop_assert_eq!(a.author_at(unit_pos(&nchars, i, enc)), was, "prefix char {}", i);
+        }
+        for k in 0..=suf {
+            let (i_new, i_old) = (nchars.len() - 1 - k, chars.len() - 1 - k);
+            prop_assert_eq!(a.author_at(unit_pos(&nchars, i_new, enc)), before[i_old], "suffix char {}", k);
+        }
+        // Applying the same replacement as one plain Inherit edit attributes no more than the
+        // diff does to anyone new (the diff only keeps or inherits).
+        b.edit(r(start, start + units(&old, enc)), units(&new, enc), Attribution::Inherit);
+        let authors_a: std::collections::BTreeSet<u32> = a.runs(None).iter().map(|x| x.author_index).collect();
+        let mut allowed: std::collections::BTreeSet<u32> = before.iter().flatten().copied().collect();
+        allowed.extend(b.runs(None).iter().map(|x| x.author_index));
+        prop_assert!(authors_a.is_subset(&allowed));
+    }
+
+    /// Runs that start or end inside a grapheme cluster (an edit split a cluster or a CRLF
+    /// pair) are written on cluster boundaries: each cluster goes to the author of its first
+    /// unit, and the file reads back valid with exactly that attribution.
+    #[test]
+    fn runs_inside_clusters_are_written_whole(
+        enc in 0usize..3,
+        preserve in any::<bool>(),
+        text in proptest::collection::vec(0u8..6, 1..30),
+        marks in proptest::collection::vec((any::<u16>(), any::<u16>(), 1u8..4), 1..6),
+    ) {
+        use unicode_segmentation::UnicodeSegmentation;
+        let enc = ENCODINGS[enc];
+        let alpha = ["e\u{301}", "\r\n", "\u{1F468}\u{200D}\u{1F469}", "a", "\n", "\u{1F1E9}\u{1F1EA}"];
+        let mut text: String = text.iter().map(|&i| alpha[i as usize]).collect();
+        // `\r\n` is only kept in the editor's text for a file of mixed endings.
+        if !preserve { text = text.replace("\r\n", "\n"); }
+        text.push('\n');
+        let total = units(&text, enc);
+        // Every code point boundary, in units.
+        let mut cps = vec![0u32];
+        let mut acc = 0;
+        for c in text.chars() { acc += units(&c.to_string(), enc); cps.push(acc); }
+        let mut a = Authorship::new(enc);
+        for (x, y, w) in marks {
+            let (s, e) = (cps[x as usize % cps.len()], cps[y as usize % cps.len()]);
+            a.mark(r(s.min(e), s.max(e)), who(w).as_ref());
+        }
+        let ending = if preserve { LineEnding::Preserve } else { LineEnding::Lf };
+        let tail = a.file_tail(&text, ending);
+        let file = format!("{text}{tail}");
+        let s = split_annotations(&file);
+        if !a.has_marks() { prop_assert!(tail.is_empty()); return Ok(()); }
+        prop_assert_eq!(&s.status, &AnnotationStatus::Valid);
+        prop_assert_eq!(&s.body, &text);
+        let b = Authorship::from_annotations(&s.body, s.annotations.as_ref().unwrap(), enc, "Me");
+        let (aa, ba) = (a.authors(), b.authors());
+        let mut at = 0u32;
+        for g in text.graphemes(true) {
+            let want = a.author_at(at).map(|i| aa[i as usize].clone());
+            let width = units(g, enc);
+            for u in at..at + width {
+                prop_assert_eq!(b.author_at(u).map(|i| ba[i as usize].clone()), want.clone(), "cluster {:?} at {}", g, at);
+            }
+            at += width;
+        }
+        prop_assert_eq!(at, total);
+    }
 }
 
 // ----- the fixture files ---------------------------------------------------------------------
@@ -826,14 +1198,20 @@ fn fixtures_with_valid_blocks_round_trip_exactly() {
         ("emoji.md", LineEnding::Lf),
         ("unknown-keys.md", LineEnding::Lf),
         ("spec-example.md", LineEnding::Lf),
-        ("spec-readme.md", LineEnding::Lf),
+        ("harbour-lights.md", LineEnding::Lf),
     ] {
         let file = String::from_utf8(fixture_bytes(name)).unwrap();
         let s = split_annotations(&file);
         assert_eq!(s.status, AnnotationStatus::Valid, "{name}");
         let body = editor_text(&s, ending);
         for enc in ENCODINGS {
-            let me = if name.starts_with("spec") { "Human" } else { "Steve" };
+            let me = if name.starts_with("spec") {
+                "Human"
+            } else if name.starts_with("harbour") {
+                "Steve Kaznak"
+            } else {
+                "Steve"
+            };
             let mut a = Authorship::from_annotations(&body, s.annotations.as_ref().unwrap(), enc, me);
             a.set_origin(&body, s.raw_tail.as_ref().unwrap(), ending);
             assert_eq!(format!("{}{}", s.body, a.file_tail(&body, ending)), file, "{name} {enc:?}");

@@ -18,3 +18,5 @@ unicode-width = "0.2.2"
 insta = "1.48.0"
 proptest = "1.11.0"
 serde_json = "1.0.151"
+# The sentence oracle in tests/focus.rs segments plain prose independently of the core.
+unicode-segmentation = "1.13.3"

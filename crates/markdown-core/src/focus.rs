@@ -39,7 +39,8 @@
 //! # Selections
 //!
 //! A non-empty selection lights up every unit it overlaps, and the selection itself; touching
-//! ranges are merged. A caret on a blank line, or between blocks, lights up nothing.
+//! ranges are merged. A caret on a blank line (or one holding only quote markers) lights up
+//! nothing. Text outside every block (link reference definitions) is lit by its lines.
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -47,11 +48,20 @@ use crate::analysis::Analysis;
 use crate::document::Document;
 use crate::types::*;
 
-/// A block longer than this is segmented only around the caret (and the sentence there ends
-/// at the edge of that window if it reaches it): a paragraph of a megabyte must not cost
-/// milliseconds on every caret move.
+/// A block longer than this is segmented only around the selection: a paragraph of a megabyte
+/// must not cost milliseconds on every caret move. The window reaches `GIANT_REACH` either side
+/// of the selection and grows (doubling, up to `GIANT_MAX_REACH`) until the sentences at the
+/// selection have real boundaries on both sides, so the window does not show: the answer is
+/// the one the whole block would give, the same for every caret in the sentence. Only a
+/// sentence longer than the largest window (no terminator for tens of kilobytes) ends at a
+/// window edge; the edges lie on a fixed grid, so that range changes in steps of
+/// `GIANT_REACH` as the caret travels, not with every move.
 const GIANT_BLOCK: usize = 48 * 1024;
-const GIANT_REACH: usize = 16 * 1024;
+const GIANT_REACH: usize = 4 * 1024;
+const GIANT_MAX_REACH: usize = 32 * 1024;
+/// A cut this close to an artificial window edge is not trusted (UAX #29 looks a little way
+/// back, `U.S.A` style, so the first cut after an edge can be one the whole text lacks).
+const EDGE_MARGIN: usize = 256;
 
 /// A leaf block's lines: from the start of its first line to the end of its last.
 fn extent(a: &Analysis, b: &[u8], i: usize) -> (usize, usize) {
@@ -92,14 +102,9 @@ pub(crate) fn focus_ranges(doc: &Document, selection: TextRange, scope: FocusSco
             found.push((es, ee));
             return;
         }
-        let (mut bs, mut be) = (es, ee);
-        if empty && be - bs > GIANT_BLOCK {
-            let lo = sel_a.saturating_sub(GIANT_REACH).max(bs);
-            let hi = (sel_a + GIANT_REACH).min(be);
-            bs = a.lines.line_start(lo);
-            be = a.lines.line_range(a.lines.line_of(hi.min(be)), b).1.max(sel_a.min(be));
-        }
-        let cuts = sentence_cuts(doc, bs, be);
+        let lo = sel_a.clamp(es, ee);
+        let hi = sel_b.clamp(es, ee);
+        let cuts = sentence_cuts_around(doc, es, ee, lo, hi);
         let sentences = cuts.len() - 1;
         if empty {
             let j = cuts[..sentences].partition_point(|&c| c <= sel_a).saturating_sub(1);
@@ -117,14 +122,19 @@ pub(crate) fn focus_ranges(doc: &Document, selection: TextRange, scope: FocusSco
         let i = partition(n, |i| extent(a, b, i).1 < sel_a);
         if i < n && extent(a, b, i).0 <= sel_a {
             unit(i, &mut found);
+        } else if let Some(r) = loose_lines(a, b, sel_a) {
+            found.push(r);
         }
     } else {
+        // The units the selection meets inside the window. A selection that does not meet the
+        // window at all (made before a scroll brings it into view) lights only itself; it is
+        // asked about again once it is on screen.
         let lo = window.map_or(sel_a, |w| w.0.max(sel_a));
         let hi = window.map_or(sel_b, |w| w.1.min(sel_b));
-        let mut i = partition(n, |i| extent(a, b, i).1 <= lo);
+        let mut i = if lo < hi { partition(n, |i| extent(a, b, i).1 <= lo) } else { n };
         while i < n {
             let (es, _) = extent(a, b, i);
-            if es >= hi.max(lo + 1) {
+            if es >= hi {
                 break;
             }
             unit(i, &mut found);
@@ -142,6 +152,80 @@ pub(crate) fn focus_ranges(doc: &Document, selection: TextRange, scope: FocusSco
         }
     }
     doc.convert_nested(&merged).into_iter().map(|(s, e)| TextRange::new(s, e)).collect()
+}
+
+/// The caret is outside every block. If its line still has text (a link reference definition,
+/// which the block model leaves out), the lines of text around it that are outside every block
+/// are its unit: whoever types there sees what they type. Blank lines (container prefixes
+/// only) give nothing.
+fn loose_lines(a: &Analysis, b: &[u8], caret: usize) -> Option<(usize, usize)> {
+    let blank = |line: usize| {
+        let (s, e) = a.lines.line_range(line, b);
+        b[s..e].iter().all(|&c| matches!(c, b' ' | b'\t' | b'>'))
+    };
+    let n = a.blocks.len();
+    let in_block = |line: usize| {
+        let (s, _) = a.lines.line_range(line, b);
+        let i = partition(n, |i| extent(a, b, i).1 < s);
+        i < n && extent(a, b, i).0 <= s
+    };
+    let line = a.lines.line_of(caret);
+    if blank(line) {
+        return None;
+    }
+    let (mut first, mut last) = (line, line);
+    while first > 0 && !blank(first - 1) && !in_block(first - 1) {
+        first -= 1;
+    }
+    while last + 1 < a.lines.count() && !blank(last + 1) && !in_block(last + 1) {
+        last += 1;
+    }
+    Some((a.lines.line_range(first, b).0, a.lines.line_range(last, b).1))
+}
+
+/// Sentence cuts of the block `es..ee` that are right (the whole block's) for the sentences
+/// holding `lo..hi`. For an ordinary block these are all of its cuts. For a giant one they are
+/// the cuts of a window around `lo..hi`, whose first and last entries may be the window's own
+/// edges; the sentences holding `lo` and `hi` never touch those.
+fn sentence_cuts_around(doc: &Document, es: usize, ee: usize, lo: usize, hi: usize) -> Vec<usize> {
+    if ee - es <= GIANT_BLOCK {
+        return sentence_cuts(doc, es, ee);
+    }
+    let text = doc.text();
+    let b = text.as_bytes();
+    // A window edge: on a character, never between the CR and the LF of a line break.
+    let snap = |x: usize| {
+        let mut x = x.clamp(es, ee);
+        while !text.is_char_boundary(x) {
+            x -= 1;
+        }
+        if x > es && b.get(x) == Some(&b'\n') && b[x - 1] == b'\r' {
+            x -= 1;
+        }
+        x
+    };
+    // Window edges on a grid from the block start, so carets near each other share a window.
+    let grid_down = |x: usize| es + (x - es) / GIANT_REACH * GIANT_REACH;
+    let (mut back, mut ahead) = (GIANT_REACH, GIANT_REACH);
+    loop {
+        let ws = if lo.saturating_sub(back) <= es { es } else { snap(grid_down(lo - back)) };
+        let we = if hi.saturating_add(ahead) >= ee { ee } else { snap(grid_down(hi + ahead) + GIANT_REACH) };
+        let cuts = sentence_cuts(doc, ws, we);
+        let n = cuts.len() - 1;
+        let first = cuts[..n].partition_point(|&c| c <= lo).saturating_sub(1);
+        let last = if hi > lo { cuts[..n].partition_point(|&c| c < hi).saturating_sub(1).max(first) } else { first };
+        let start_ok = ws == es || cuts[first] >= ws + EDGE_MARGIN || back >= GIANT_MAX_REACH;
+        let end_ok = we == ee || cuts[last + 1] + EDGE_MARGIN <= we || ahead >= GIANT_MAX_REACH;
+        if start_ok && end_ok {
+            return cuts;
+        }
+        if !start_ok {
+            back *= 2;
+        }
+        if !end_ok {
+            ahead *= 2;
+        }
+    }
 }
 
 enum Item {

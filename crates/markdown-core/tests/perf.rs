@@ -177,3 +177,58 @@ fn focus_queries_on_one_megabyte() {
     let r = g.focus_range(TextRange::new(200_000, 200_000), FocusScope::Sentence);
     println!("one {} KB paragraph, sentence: {:.1} us {:?}", giant.len() / 1024, t.elapsed().as_secs_f64() * 1e6, r);
 }
+
+#[test]
+#[ignore]
+fn focus_and_pos_units_in_one_giant_paragraph() {
+    // A megabyte in one paragraph: many lines, one line, and no sentence terminator at all.
+    let mut x: u64 = 0x2545_F491;
+    let mut words = |n: usize, stop: bool, newline_every: usize| {
+        let mut out = String::from("A");
+        let mut k: usize = 0;
+        while out.len() < n {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            k += 1;
+            out.push(if k.is_multiple_of(newline_every) { '\n' } else { ' ' });
+            let capital = out.trim_end().ends_with('.');
+            for i in 0..2 + x % 8 {
+                let c = (b'a' + ((x >> (i * 5)) % 26) as u8) as char;
+                out.push(if capital && i == 0 { c.to_ascii_uppercase() } else { c });
+            }
+            if stop && x.is_multiple_of(11) {
+                out.push('.');
+            }
+        }
+        out
+    };
+    let cases = [
+        ("many lines", words(1 << 20, true, 12)),
+        ("one line", words(1 << 20, true, usize::MAX)),
+        ("no terminators", words(1 << 20, false, 12)),
+    ];
+    for (name, giant) in cases {
+        let g = Document::new(&giant, OffsetEncoding::Utf16);
+        let len = g.len();
+        let t = Instant::now();
+        let r = g.focus_range(TextRange::new(len / 2, len / 2), FocusScope::Sentence);
+        let caret = t.elapsed().as_secs_f64() * 1e6;
+        let t = Instant::now();
+        let _ = g.focus_range(TextRange::new(len / 2, len / 2 + 3), FocusScope::Sentence);
+        let sel = t.elapsed().as_secs_f64() * 1e6;
+        let t = Instant::now();
+        let all = g.pos_units(None);
+        let units = t.elapsed().as_secs_f64() * 1e3;
+        let t = Instant::now();
+        let some = g.pos_units(Some(TextRange::new(len / 2, len / 2 + 30_000)));
+        let window = t.elapsed().as_secs_f64() * 1e3;
+        println!(
+            "{name} ({} KB): sentence at caret {caret:.0} us ({} units long), small selection {sel:.0} us; pos_units {} units in {units:.1} ms, 30k window {} units in {window:.1} ms",
+            giant.len() / 1024,
+            r[0].end - r[0].start,
+            all.len(),
+            some.len()
+        );
+    }
+}

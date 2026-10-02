@@ -58,6 +58,94 @@ impl PosUnit {
 /// A block (or lone piece of prose), its pieces and where each is set off from the one before.
 type Group = ((usize, usize), Vec<(usize, usize)>, Vec<bool>);
 
+/// A block with more prose than this (bytes) comes as several units.
+const LONG_UNIT: usize = 12 * 1024;
+
+/// Cuts of a long block are at least this far apart (bytes), even in text so regular that
+/// every word start qualifies.
+const MIN_UNIT: usize = 512;
+
+/// Where a long block is cut into units: at the start of a word (a prose position after
+/// whitespace), chosen by a hash of the sixteen bytes before it, so the cuts depend only on
+/// the text right there (the bytes before it, and the candidates within [`MIN_UNIT`] before
+/// it): an edit moves no cut more than about `MIN_UNIT` after it, and the units elsewhere keep
+/// their text (and the shell's cache of their tags). After a sentence's
+/// end about one word start in sixteen qualifies (units of a dozen sentences or so); elsewhere
+/// one in a thousand (text without terminators still comes in pieces of a few kilobytes).
+fn is_cut(b: &[u8], p: usize) -> bool {
+    let ws = |c: u8| matches!(c, b' ' | b'\t' | b'\n' | b'\r');
+    if p == 0 || p >= b.len() || ws(b[p]) || (0x80..0xC0).contains(&b[p]) {
+        return false;
+    }
+    let cjk_stop = |end: usize| ["\u{3002}", "\u{FF01}", "\u{FF1F}"].iter().any(|t| b[..end].ends_with(t.as_bytes()));
+    let terminated = if ws(b[p - 1]) {
+        let mut q = p - 1;
+        while q > 0 && ws(b[q]) {
+            q -= 1;
+        }
+        matches!(b[q], b'.' | b'!' | b'?') || cjk_stop(q + 1)
+    } else if cjk_stop(p) {
+        true
+    } else {
+        return false;
+    };
+    // FNV-1a.
+    let mut h: u32 = 0x811c_9dc5;
+    for &c in &b[p.saturating_sub(16)..p] {
+        h = (h ^ c as u32).wrapping_mul(0x0100_0193);
+    }
+    h ^= h >> 13;
+    h.is_multiple_of(if terminated { 16 } else { 1024 })
+}
+
+/// Cuts a long block's group into units at [`is_cut`] positions; a piece holding a cut is
+/// split there (the pieces of all units still cover exactly the block's prose).
+fn split_long(b: &[u8], (range, pieces, separated): Group) -> Vec<Group> {
+    let mut out: Vec<Group> = Vec::new();
+    let mut cur: Group = ((range.0, range.1), Vec::new(), Vec::new());
+    let cut_at = |p: usize, cur: &mut Group, out: &mut Vec<Group>| {
+        if cur.1.is_empty() {
+            return;
+        }
+        let done = std::mem::replace(cur, ((p, range.1), Vec::new(), Vec::new()));
+        out.push(((done.0.0, p), done.1, done.2));
+    };
+    // A candidate is a cut unless another candidate lies less than MIN_UNIT before it: a rule
+    // that looks only at the text just before, so an edit cannot move cuts further on.
+    let mut last_candidate: Option<usize> = None;
+    let mut cut_here = |p: usize| {
+        if !is_cut(b, p) {
+            return false;
+        }
+        let spaced = last_candidate.is_none_or(|c| p - c >= MIN_UNIT);
+        last_candidate = Some(p);
+        spaced
+    };
+    for (i, &(s, e)) in pieces.iter().enumerate() {
+        let mut start = s;
+        let mut sep = separated[i];
+        if cut_here(s) {
+            cut_at(s, &mut cur, &mut out);
+            sep = false;
+        }
+        for p in s + 1..e {
+            if cut_here(p) {
+                cur.2.push(if cur.1.is_empty() { false } else { sep });
+                cur.1.push((start, p));
+                cut_at(p, &mut cur, &mut out);
+                start = p;
+                sep = false;
+            }
+        }
+        cur.2.push(if cur.1.is_empty() { false } else { sep });
+        cur.1.push((start, e));
+    }
+    if !cur.1.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
 pub(crate) fn pos_units(doc: &Document, within: Option<TextRange>) -> Vec<PosUnit> {
     let a = doc.analysis();
     let b = doc.text().as_bytes();
@@ -107,6 +195,22 @@ pub(crate) fn pos_units(doc: &Document, within: Option<TextRange>) -> Vec<PosUni
             }
         }
     }
+    // A very long block is tagged in pieces, so an edit re-tags a few kilobytes, not all of it.
+    let window = doc.within_bytes(within);
+    let groups: Vec<Group> = groups
+        .into_iter()
+        .flat_map(|g| {
+            let long = g.1.iter().map(|p| p.1 - p.0).sum::<usize>() > LONG_UNIT;
+            if !long {
+                return vec![g];
+            }
+            let mut subs = split_long(b, g);
+            if let Some((ws, we)) = window {
+                subs.retain(|g| g.1.iter().any(|p| p.1 > ws && p.0 < we.max(ws + 1)));
+            }
+            subs
+        })
+        .collect();
     let ranges: Vec<(usize, usize)> = groups.iter().map(|g| g.0).collect();
     let pieces: Vec<(usize, usize)> = groups.iter().flat_map(|g| g.1.iter().copied()).collect();
     let unit_ranges = doc.convert_nested(&ranges);

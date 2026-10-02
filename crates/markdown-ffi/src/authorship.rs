@@ -251,6 +251,12 @@ impl Authorship {
         }
     }
 
+    /// An independent copy, the remembered file included: what a save writes from while the
+    /// text view goes on changing the original.
+    pub fn copy(&self) -> Arc<Authorship> {
+        Arc::new(Self { inner: Mutex::new(self.with(|a| a.clone())) })
+    }
+
     pub fn me(&self) -> Author {
         self.with(|a| a.me().clone().into())
     }
@@ -342,6 +348,11 @@ mod tests {
         assert_eq!(s.status, AnnotationStatus::Valid);
         let b = Authorship::from_annotations(s.body, s.annotations.unwrap(), "Me".into());
         assert_eq!(a.runs(None), b.runs(None));
+        // A copy is independent of the original and keeps the remembered file.
+        let c = a.copy();
+        a.mark(Utf16Range { start: 0, end: 6 }, None);
+        assert_ne!(a.runs(None), c.runs(None));
+        a.restore(c.snapshot());
         let snap = a.snapshot();
         a.mark(Utf16Range { start: 0, end: 6 }, None);
         a.restore(snap.clone());

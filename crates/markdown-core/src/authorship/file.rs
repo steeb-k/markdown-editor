@@ -25,10 +25,11 @@
 //!
 //! **Reading** recognises a block only at the very end of the file (trailing blank lines are
 //! allowed): the last non-blank line is `...`, the nearest unindented `---` line above it is
-//! followed immediately by a hash annotation whose value is `range algorithm hex`. Anything
+//! followed immediately by a hash annotation whose value is `range algorithm hex`, and either
+//! that is SHA-256 with 20 to 64 hex digits or author annotations follow it. Anything
 //! else is just text. A look-alike inside a closed code fence is not at the end of the file,
-//! so it is text; one in an unclosed fence at the end is taken for a block (the core does
-//! not parse Markdown here, and neither does iA).
+//! so it is text. One in a fence left open at the end of the file is text too unless its hash
+//! is right (fences are the only Markdown looked at here); likewise one at the very start.
 
 use sha2::{Digest, Sha256};
 use unicode_segmentation::UnicodeSegmentation;
@@ -205,6 +206,12 @@ struct Annotation<'a> {
     lines: Vec<&'a str>,
 }
 
+/// `line` without up to `n` bytes of leading spaces and tabs.
+fn dedent(line: &str, n: usize) -> &str {
+    let k = indent_of(line).min(n);
+    &line[k..]
+}
+
 fn indent_of(line: &str) -> usize {
     line.len() - line.trim_start_matches([' ', '\t']).len()
 }
@@ -335,6 +342,7 @@ fn try_split(file: &str) -> Option<SplitFile> {
     }
     let raw: Vec<&str> = (open + 1..dots).map(|i| &file[all[i].start..all[i].end]).collect();
     let anns = group_annotations(&raw)?;
+    let base = indent_of(raw[0]);
     let (hash_key, hash_range, algorithm, hash) = parse_hash_annotation(&anns[0])?;
 
     let pre = &file[..all[open].start];
@@ -350,8 +358,19 @@ fn try_split(file: &str) -> Option<SplitFile> {
     for a in &anns[1..] {
         match parse_author(a) {
             Some(p) => authors.push(p),
-            None => unknown.extend(a.lines.iter().map(|l| l.to_string())),
+            // Kept relative to the block's indentation: the block is written back unindented,
+            // and a line still indented by the block's own indentation would then read as a
+            // continuation of the annotation before it.
+            None => unknown.extend(a.lines.iter().map(|l| dedent(l, base).to_string())),
         }
+    }
+
+    // A hash line that is not SHA-256 with 20 to 64 hex digits is only taken for a block's
+    // when author annotations follow it: `date: 2024 10 01` in a YAML metadata block closed by
+    // `...` at the end of a document (Pandoc allows them anywhere) has the same shape.
+    let well_formed_hash = algorithm.eq_ignore_ascii_case("SHA-256") && (20..=64).contains(&hash.len());
+    if !well_formed_hash && authors.is_empty() {
+        return None;
     }
 
     // Validate.
@@ -381,8 +400,10 @@ fn try_split(file: &str) -> Option<SplitFile> {
         }
     }
     // A block at the very start of a file is only taken for one when its hash is right:
-    // otherwise it is much more likely YAML front matter.
-    if open == 0 && status != AnnotationStatus::Valid {
+    // otherwise it is much more likely YAML front matter. Likewise a look-alike inside a code
+    // fence that is still open (an example of the format being written): taking it for a block
+    // would hide it from the editor, and Discard would delete it. A right hash settles it.
+    if status != AnnotationStatus::Valid && (open == 0 || inside_open_fence(pre)) {
         return None;
     }
 
@@ -392,6 +413,43 @@ fn try_split(file: &str) -> Option<SplitFile> {
         status,
         raw_tail: Some(file[body_end..].to_string()),
     })
+}
+
+/// Does `text` end inside a fenced code block (a ```` ``` ```` or `~~~` fence opened and not
+/// closed)? CommonMark's fence rules, without container prefixes (a fence in a list item or a
+/// quote is still seen when its marker is indented by at most three spaces).
+fn inside_open_fence(text: &str) -> bool {
+    let mut open: Option<(u8, usize)> = None;
+    for l in lines(text) {
+        let line = &text[l.start..l.end];
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        if indent > 3 {
+            continue;
+        }
+        let rest = &line[indent..];
+        let Some(&c) = rest.as_bytes().first() else { continue };
+        if c != b'`' && c != b'~' {
+            continue;
+        }
+        let run = rest.bytes().take_while(|&b| b == c).count();
+        if run < 3 {
+            continue;
+        }
+        match open {
+            None => {
+                // A backtick fence's info string may not hold backticks.
+                if c == b'~' || !rest[run..].contains('`') {
+                    open = Some((c, run));
+                }
+            }
+            Some((oc, olen)) => {
+                if c == oc && run >= olen && rest[run..].trim().is_empty() {
+                    open = None;
+                }
+            }
+        }
+    }
+    open.is_some()
 }
 
 // ----- Authorship from and to annotations ---------------------------------------------------
@@ -431,8 +489,13 @@ fn eol(ending: LineEnding) -> &'static str {
     }
 }
 
+/// An author's name as an annotation key: colons escaped, and anything that would end the line
+/// (a name pasted into a settings field can hold a line break) turned into a space.
 fn escape_key(name: &str) -> String {
-    name.replace(':', "\\:")
+    name.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .replace(':', "\\:")
 }
 
 impl Authorship {

@@ -411,7 +411,8 @@ pub struct PosTag {
     pub class: PosClass,
 }
 
-/// The prose of one leaf block, which a shell tags as one text.
+/// The prose of one leaf block (or of a stretch of a very long one), which a shell tags as one
+/// text.
 ///
 /// The text to tag is the pieces of `prose` joined: a piece directly follows the one before
 /// it, except where `separated[i]` is true, which puts one space (one offset unit) between
@@ -420,7 +421,8 @@ pub struct PosTag {
 /// one word. Offsets in the joined text count the same units as the document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PosUnit {
-    /// The block (or, for prose outside any block, the prose itself).
+    /// The block (or, for prose outside any block, the prose itself; for a stretch of a long
+    /// block, from its first piece, or the block's start, to the next stretch).
     pub range: TextRange,
     /// Ranges of the document, sorted and disjoint, free of markup, code, URLs and front matter.
     pub prose: Vec<TextRange>,

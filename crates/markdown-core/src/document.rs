@@ -221,8 +221,11 @@ impl Document {
     }
 
     /// The prose of every leaf block that intersects `within` (`None`: all of them), one unit
-    /// per block, for a platform tagger. The pieces of all units are exactly
-    /// [`Document::prose_ranges`] of the same text. See [`PosUnit`].
+    /// per block, for a platform tagger. A block with more than 12 KB of prose comes as several
+    /// units, cut at word starts chosen by the text around them (so an edit changes only the
+    /// units near it), and only those meeting `within` are returned. The pieces of all units
+    /// tile [`Document::prose_ranges`] of the same text exactly; they *are* those ranges except
+    /// where a long block's piece is cut between two units. See [`PosUnit`].
     pub fn pos_units(&self, within: Option<TextRange>) -> Vec<PosUnit> {
         crate::pos::pos_units(self, within)
     }
