@@ -227,10 +227,26 @@ class LiveCaretTests: XCTestCase {
             if ns.substring(with: para).trimmingCharacters(in: .newlines) == row { columns.append(loc - para.location) }
         }
         XCTAssertEqual(columns.count, 5, "every plain row below visited: \(path)")
-        // The column is kept up to the picture; moving down into a picture's line puts the caret at the
-        // start of its source, which starts the column over for the rows below it.
-        XCTAssertTrue(columns.prefix(2).allSatisfy { abs($0 - 5) <= 1 }, "the column is kept: \(columns) along \(path)")
-        XCTAssertTrue(columns.dropFirst(2).allSatisfy { $0 <= 1 }, "after the picture it starts again: \(columns) along \(path)")
+        // The column is kept all the way down, through the picture's line as through any other.
+        XCTAssertTrue(columns.allSatisfy { abs($0 - 5) <= 1 }, "the column is kept: \(columns) along \(path)")
+
+        // And all the way back up, from the last row's sixth character.
+        e.tv.setSelectedRange(NSRange(location: ns.length - row.count + 5, length: 0))
+        e.settle()
+        var upColumns: [Int] = []
+        var upPath: [Int] = [e.tv.selectedRange().location]
+        for _ in 0..<40 {
+            e.tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+            e.settle()
+            let loc = e.tv.selectedRange().location
+            if loc == upPath.last { break }
+            upPath.append(loc)
+            let para = ns.paragraphRange(for: NSRange(location: min(loc, ns.length - 1), length: 0))
+            if ns.substring(with: para).trimmingCharacters(in: .newlines) == row { upColumns.append(loc - para.location) }
+            if loc == 0 || para.location == 0 { break }
+        }
+        XCTAssertGreaterThanOrEqual(upColumns.count, 5, "every plain row above visited: \(upPath)")
+        XCTAssertTrue(upColumns.allSatisfy { abs($0 - 5) <= 1 }, "the column is kept going up: \(upColumns) along \(upPath)")
     }
 
     // MARK: deleting

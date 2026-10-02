@@ -1,0 +1,546 @@
+[
+ {
+  "log": "Edge cases no milestone owned: the smallest window in every layout; documents that are only front matter, only a table, only a picture, or empty, in Live and Split, exported; tabs in different modes and a setting changed with several open; a window closed with the keep-or-discard sheet unanswered; Live, focus, syntax, authorship and the preview all on while typing, pasting as AI, undoing and switching themes and layouts."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "source",
+   "authorshipDisplay": true
+  }
+ },
+ {
+  "new": true
+ },
+ {
+  "resize": [
+   360,
+   280
+  ]
+ },
+ {
+  "load": "# Small\n\n- a list item that wraps in a small window\n- [ ] a task\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n```\ncode that is wider than the window can show\n```\n"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "snapshot": "small-live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "snapshot": "small-split"
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "small-preview"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "type": "Typed small.",
+  "interval": 0.01
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "textContains": "Typed small."
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "only-front-matter.md",
+   "text": "---\ntitle: Nothing else\ntags: [a, b]\n---\n"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "snapshot": "only-front-matter"
+ },
+ {
+  "exportPDF": "only-front-matter.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "only-front-matter.pdf",
+    "minPages": 1
+   }
+  }
+ },
+ {
+  "type": "x",
+  "interval": 0
+ },
+ {
+  "undoUntilLacks": "x"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "textEquals": "---\ntitle: Nothing else\ntags: [a, b]\n---\n",
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "only-table.md",
+   "text": "| a | b |\n| :- | -: |\n| 1 | 2 |\n"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "snapshot": "only-table"
+ },
+ {
+  "exportPDF": "only-table.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "only-table.pdf",
+    "minPages": 1
+   }
+  }
+ },
+ {
+  "type": "x",
+  "interval": 0
+ },
+ {
+  "undoUntilLacks": "x"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "textEquals": "| a | b |\n| :- | -: |\n| 1 | 2 |\n",
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "empty.md",
+   "text": ""
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "snapshot": "empty"
+ },
+ {
+  "exportPDF": "empty.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "empty.pdf",
+    "minPages": 1
+   }
+  }
+ },
+ {
+  "type": "x",
+  "interval": 0
+ },
+ {
+  "undoUntilLacks": "x"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "textEquals": "",
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/polish/only-image.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "log": "(the caret below the picture's line, so the picture is drawn)"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "assert": {
+   "images": {
+    "loaded": 1
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "preview": {
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "snapshot": "only-image"
+ },
+ {
+  "exportPDF": "only-image.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "only-image.pdf",
+    "minPages": 1,
+    "images": 1
+   }
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "new": true
+ },
+ {
+  "load": "# Tab one\n\n**bold** text\n"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "newTab": true
+ },
+ {
+  "load": "# Tab two\n\n*emphasis* text\n"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "switchTo": 0
+ },
+ {
+  "assert": {
+   "viewMode": "source",
+   "layout": "editor"
+  }
+ },
+ {
+  "switchTo": 1
+ },
+ {
+  "assert": {
+   "viewMode": "live",
+   "layout": "split"
+  }
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "theme": "dark",
+   "preview": {
+    "styleContains": "background"
+   }
+  }
+ },
+ {
+  "switchTo": 0
+ },
+ {
+  "assert": {
+   "theme": "dark",
+   "viewMode": "source"
+  }
+ },
+ {
+  "snapshot": "tabs-dark"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "fixtures/authorship/mismatch.md"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "authorship": {
+    "pendingDecision": true,
+    "sheet": true
+   }
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "sentence"
+  }
+ },
+ {
+  "syntax": {
+   "on": true
+  }
+ },
+ {
+  "authorshipDisplay": true
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "command": "moveToEndOfParagraph:",
+  "edits": false
+ },
+ {
+  "type": " Typed with everything on.",
+  "interval": 0.02
+ },
+ {
+  "setPasteboard": "Pasted as AI with everything on."
+ },
+ {
+  "action": "pasteAsAI:"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "waitSyntax": 30
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "overlayConsistent": true,
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true,
+    "contains": "Pasted as AI with everything on."
+   },
+   "authorship": {
+    "runs": [
+     [
+      "Pasted as AI with everything on.",
+      "ai"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "undoUntilLacks": "Pasted as AI"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "overlayConsistent": true,
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true,
+    "lacks": "Pasted as AI"
+   }
+  }
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "everything-on",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "close": true
+ }
+]

@@ -64,8 +64,10 @@ public final class EditorLayoutManager: NSLayoutManager {
     /// The height of the panel of a fenced block with nothing in it (its fences are concealed).
     static let emptyBlockHeight: CGFloat = 14
 
-    /// How far in a block's panel starts: the blanks before its opening fence (a code block inside
-    /// a list item is indented to the item's text), measured in the block's own font.
+    /// How far in a block's panel starts: the container prefix before its opening fence (blanks,
+    /// quote markers, a list marker), so a code block in a list item or a quote starts at the item's
+    /// or the quote's text, as the preview's does. Measured in the block's own (monospaced) font,
+    /// the font its lines' prefixes are laid out in.
     private func blockIndent(of run: NSRange, in storage: NSTextStorage) -> CGFloat {
         let ns = storage.mutableString as NSString
         guard run.location < ns.length else { return 0 }
@@ -73,7 +75,7 @@ public final class EditorLayoutManager: NSLayoutManager {
         var columns = 0
         while i < ns.length {
             let c = ns.character(at: i)
-            if c == 0x20 { columns += 1 } else if c == 0x09 { columns += 4 } else { break }
+            if c == 0x09 { columns += 4 } else if c == 0x20 || c == 0x3E || c == 0x2D || c == 0x2A || c == 0x2B || c == 0x2E || c == 0x29 || (0x30...0x39).contains(c) { columns += 1 } else { break }
             i += 1
         }
         // Only a fenced block: an indented one has its indentation as code.

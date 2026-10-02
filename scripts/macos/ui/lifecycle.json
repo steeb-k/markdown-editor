@@ -1,0 +1,1370 @@
+[
+ {
+  "log": "Lifecycle: 50 documents opened and closed, each with the preview shown (a web view), pictures loaded in Live mode, every fifth one exported to PDF (an offscreen print window). After each close the document, its window controller, session, coordinator, preview controller and picture cache must be freed; the print renderers must all be gone; the memory footprint may not keep growing (at most 120 MB over the footprint after the first five, which warm up WebKit and the caches)."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "source"
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 0. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 1. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 2. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 3. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-4.pdf"
+ },
+ {
+  "type": "Cycle 4. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "wait": 1
+ },
+ {
+  "memory": "after 5 (baseline)"
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 5. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 6. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 7. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 8. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-9.pdf"
+ },
+ {
+  "type": "Cycle 9. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "memory": "after 10"
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 10. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 11. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 12. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 13. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-14.pdf"
+ },
+ {
+  "type": "Cycle 14. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 15. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 16. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 17. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 18. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-19.pdf"
+ },
+ {
+  "type": "Cycle 19. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "memory": "after 20"
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 20. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 21. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 22. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 23. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-24.pdf"
+ },
+ {
+  "type": "Cycle 24. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 25. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 26. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 27. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 28. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-29.pdf"
+ },
+ {
+  "type": "Cycle 29. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "memory": "after 30"
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 30. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 31. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 32. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 33. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-34.pdf"
+ },
+ {
+  "type": "Cycle 34. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 35. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 36. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 37. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 38. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-39.pdf"
+ },
+ {
+  "type": "Cycle 39. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "memory": "after 40"
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 40. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 41. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 42. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 43. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-44.pdf"
+ },
+ {
+  "type": "Cycle 44. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 45. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 46. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 47. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Cycle 48. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "cycle-49.pdf"
+ },
+ {
+  "type": "Cycle 49. ",
+  "interval": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "close": true
+ },
+ {
+  "wait": 2
+ },
+ {
+  "memory": "after 50",
+  "maxGrowthMB": 120,
+  "maxPrintRenderers": 0
+ }
+]

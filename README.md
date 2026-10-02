@@ -44,6 +44,9 @@ open build/Markdown.app
 # What is inside a bundle (exact file list, both slices, minimum OS, no harness code, hardened runtime):
 scripts/macos/verify-bundle.sh build/Markdown.app --universal --no-harness
 
+# The release script's control flow without Apple: dry run, refusals, stubbed notary verdicts (see "Releasing")
+scripts/macos/tests/release-pipeline.sh
+
 # Regenerate the icons (CoreGraphics; Markdown.icns and MarkdownDocument.icns in apps/macos/Resources)
 swift scripts/macos/make-icons.swift build/icons --icns && cp build/icons/*.icns apps/macos/Resources/
 # Regenerate Acknowledgements.md from the dependency graph (cargo metadata); --check says whether it is current
@@ -69,6 +72,14 @@ RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB 
 scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/drift.json  # a long Live session at 1 MB: cost per key and per jump must not grow (about 9 minutes)
 scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
+scripts/macos/ui-script.sh scripts/macos/ui/acceptance.json     # 1.0 end to end: a document made with menus and typing, saved, exported, copied, reopened
+scripts/macos/ui-script.sh scripts/macos/ui/pictures.json       # pictures at their declared resolution; Up and Down keep their column through one
+scripts/macos/ui-script.sh scripts/macos/ui/polish.json         # code panels in lists and quotes, pictures at every resolution in editor, preview and PDF
+scripts/macos/ui-script.sh scripts/macos/ui/first-run.json      # the first window, the scroll limit, Help and Acknowledgements
+scripts/macos/ui-script.sh scripts/macos/ui/lifecycle.json      # 50 documents opened and closed: everything freed, memory flat
+scripts/macos/ui-script.sh scripts/macos/ui/robust.json         # 10 MB, a 5 MB line, binary, changed on disk, read-only, odd names, empty, mixed endings
+scripts/macos/ui-script.sh scripts/macos/ui/edge.json           # tiny window, documents of only front matter/table/picture/nothing, tabs, everything on at once
+scripts/macos/ui-script.sh scripts/macos/ui/scroll-limits.json  # the editor's scroll limits in every layout, resized, with the find bar
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
@@ -91,6 +102,21 @@ and prints the notary log if it is not Accepted, staples and validates the ticke
 the app inside a read-only mount of it, and prints paths, sizes, SHA-256 and the verdicts. Without `NOTARIZE_PROFILE`
 the image is signed but not notarized, and says so. `NOTARIZE_PROFILE` is a `xcrun notarytool store-credentials`
 profile name; nothing secret is printed.
+
+Before the real run, `security find-identity -v -p codesigning` must list exactly one `Developer ID Application`
+identity of that name (otherwise pass its SHA-1 hash as `CODESIGN_IDENTITY`), and the notary profile must exist
+(`xcrun notarytool history --keychain-profile notary` lists past submissions). The script refuses a shallow clone
+(the build number would be wrong), waits at most `NOTARIZE_TIMEOUT` seconds (default 7200) for the verdict and then
+prints how to finish by hand (`notarytool wait`, `stapler staple`), and accepts the Gatekeeper assessments only when
+they say `source=Notarized Developer ID`.
+
+`scripts/macos/tests/release-pipeline.sh` tests that control flow without Apple (about 15 minutes): it copies the
+working tree to a folder whose path has spaces, runs a real dry run there from another directory, and then the
+real path with stand-ins on `PATH` (`scripts/macos/tests/stubs`: a fake identity that signs ad-hoc, a notary
+service that answers Accepted, Invalid with exit status 0, malformed or empty output, an error, "In Progress", or
+never; a stapler that fails; Gatekeeper rejecting the image or accepting it without its notarization). Only
+Accepted with a notarized assessment may succeed, nothing may be stapled otherwise, and no image may stay mounted.
+Dirty trees, shallow clones and missing, ambiguous or wrong identities must be refused before anything is built.
 
 `scripts/macos/release.sh --dry-run --allow-dirty --skip-tests` runs everything except Developer ID signing and
 notarization: it signs ad-hoc, contacts no one, skips the Gatekeeper assessments (an ad-hoc build fails them by

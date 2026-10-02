@@ -1,0 +1,302 @@
+[
+ {
+  "log": "Robustness: a 10 MB document, one 5 MB line, binary data named .md, a file changed on disk while open (by a coordinated writer: read again at once; by an uncoordinated one: logged only, NSDocument looks again when the app becomes active), a read-only file, a path with unusual characters, a zero-byte file, mixed line endings with a BOM. Nothing may crash or hang; the core must agree with the text after edits; untouched files must save byte for byte."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "source"
+  }
+ },
+ {
+  "makeFile": {
+   "name": "ten-megabytes.md",
+   "text": "## Section\n\nSome *emphasis*, **strong** text and a [link](https://example.com) with `code`.\n\n- item one\n- [ ] a task\n\n> a quote\n\n```\nlet x = 1\n```\n\n",
+   "repeat": 67568
+  }
+ },
+ {
+  "waitStyled": 180
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "type": "Typed at the top. ",
+  "interval": 0.02
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 600
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "textContains": "Typed at the top. "
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 180
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "memory": "10 MB open"
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "one-line.md",
+   "text": "word ",
+   "repeat": 1000000
+  }
+ },
+ {
+  "waitStyled": 120
+ },
+ {
+  "assert": {
+   "textLength": 5000000
+  }
+ },
+ {
+  "select": [
+   2500000,
+   0
+  ]
+ },
+ {
+  "type": "MIDDLE",
+  "interval": 0.02
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "textLength": 5000006
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "noise.md",
+   "binary": 300000,
+   "expectOpen": false
+  }
+ },
+ {
+  "makeFile": {
+   "name": "changes-uncoordinated.md",
+   "text": "First line.\n"
+  }
+ },
+ {
+  "modifyOnDisk": {
+   "append": "Added without a file coordinator.\n"
+  }
+ },
+ {
+  "wait": 3
+ },
+ {
+  "dump": true
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "changes.md",
+   "text": "First line.\n"
+  }
+ },
+ {
+  "modifyOnDisk": {
+   "append": "Added by another program.\n",
+   "coordinated": true
+  }
+ },
+ {
+  "wait": 4
+ },
+ {
+  "assert": {
+   "textContains": "Added by another program."
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "read-only.md",
+   "text": "You may read this.\n",
+   "readOnly": true
+  }
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "type": "Edited. ",
+  "interval": 0.02
+ },
+ {
+  "wait": 2
+ },
+ {
+  "snapshot": "read-only",
+  "window": "sheet"
+ },
+ {
+  "sheet": "end"
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "we ird #%? 名前 [1] (copy) 😀 ü.md",
+   "text": "# Odd name\n\nText.\n"
+  }
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "type": "Saved. ",
+  "interval": 0.02
+ },
+ {
+  "save": true
+ },
+ {
+  "reopen": true
+ },
+ {
+  "assert": {
+   "textContains": "Saved. # Odd name"
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "empty.md",
+   "text": ""
+  }
+ },
+ {
+  "assert": {
+   "textLength": 0,
+   "coreMatchesText": true
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "type": "Now there is text.",
+  "interval": 0.02
+ },
+ {
+  "save": true
+ },
+ {
+  "reopen": true
+ },
+ {
+  "assert": {
+   "textEquals": "Now there is text."
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "makeFile": {
+   "name": "mixed-endings.md",
+   "bom": true,
+   "lineEndings": "mixed",
+   "text": "# One\n\n- two\n- three\n\nfour\n",
+   "repeat": 3
+  }
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "fileEqualsMade": "mixed-endings.md",
+   "coreMatchesText": true
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ }
+]

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Test stand-in for security (scripts/macos/tests/release-pipeline.sh): `find-identity` lists the
+# identities in STUB_IDENTITIES (one common name per line, `none` for none); nothing else is allowed.
+set -u
+if [ "${1:-}" = find-identity ]; then
+  n=0
+  if [ "${STUB_IDENTITIES:-none}" != none ]; then
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      n=$((n + 1))
+      printf '  %d) %040X "%s"\n' "$n" "$n" "$name"
+    done <<< "$STUB_IDENTITIES"
+  fi
+  echo "     $n valid identities found"
+  exit 0
+fi
+echo "security stub: unexpected call: $*" >&2
+exit 97

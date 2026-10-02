@@ -1,6 +1,6 @@
 [
  {
-  "log": "Pictures at the size their resolution says (a retina screenshot is half its pixels in points; a wider one is fitted to the column) in the editor and in the preview, where the <img> carries width and height; moving down into a picture puts the caret at the start of its source."
+  "log": "Pictures at the size their resolution says (a retina screenshot is half its pixels in points; a wider one is fitted to the column) in the editor and in the preview, where the <img> carries width and height; moving down into a picture puts the caret in its source at the column it came from (the fourth character, as on the line above)."
  },
  {
   "setting": {
@@ -98,7 +98,7 @@
  {
   "assert": {
    "selection": [
-    43,
+    46,
     0
    ]
   }

@@ -99,13 +99,44 @@
 				<array>
 					<string>md</string>
 					<string>markdown</string>
-					<string>mdown</string>
-					<string>mkd</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>text/markdown</string>
 					<string>text/x-markdown</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<!--
+	  macOS declares net.daringfireball.markdown itself, for .md and .markdown only, and its declaration
+	  wins over the import above: .mdown and .mkd files would get a dynamic type that nothing opens. This
+	  type of the app's own claims those extensions and is a kind of Markdown, so the Markdown document
+	  type covers them by conformance (it is not listed there itself, or Save As would offer "Markdown
+	  Document" twice).
+	-->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.steeb-k.markdown.extensions</string>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeIconFile</key>
+			<string>MarkdownDocument</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mdown</string>
+					<string>mkd</string>
+					<string>mkdn</string>
+					<string>mdwn</string>
 				</array>
 			</dict>
 		</dict>

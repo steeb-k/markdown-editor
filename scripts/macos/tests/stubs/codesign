@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Test stand-in for codesign (scripts/macos/tests/release-pipeline.sh). Signing with the fake identity
+# STUB_IDENTITY signs ad-hoc instead (no secure timestamp: that needs a real certificate), and a verbose
+# display of a signature (-dv, -dvv) reports what a Developer ID signature would: the authority chain,
+# a team, a timestamp, no adhoc flag. Every other use is the real codesign. The real Developer ID is
+# never used: STUB_IDENTITY is a name no keychain holds.
+set -u
+REAL=/usr/bin/codesign
+fake="${STUB_IDENTITY:-Developer ID Application: Test Stub (TESTSTUB00)}"
+args=()
+display=0
+verbose=0
+for a in "$@"; do
+  case "$a" in
+    "$fake") args+=("-"); continue ;;
+    --timestamp) args+=("--timestamp=none"); continue ;;
+  esac
+  case "$a" in -d*|--display) display=1 ;; esac
+  case "$a" in -dv*|-v*|--verbose*) verbose=1 ;; esac
+  args+=("$a")
+done
+if [ "$display" = 1 ] && [ "$verbose" = 1 ]; then
+  err="$(mktemp)"
+  "$REAL" "${args[@]}" 2> "$err"
+  status=$?
+  sed -e 's/^Signature=adhoc$/Authority=Developer ID Application: Test Stub (TESTSTUB00)\
+Authority=Developer ID Certification Authority\
+Authority=Apple Root CA\
+Timestamp=2 Oct 2026 at 12:00:00/' \
+      -e 's/(adhoc,runtime)/(runtime)/' -e 's/(adhoc)/(none)/' \
+      -e 's/^TeamIdentifier=not set$/TeamIdentifier=TESTSTUB00/' "$err" >&2
+  rm -f "$err"
+  exit $status
+fi
+exec "$REAL" "${args[@]}"

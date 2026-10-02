@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Test stand-in for spctl (scripts/macos/tests/release-pipeline.sh): an assessment answers as STUB_SPCTL says.
+#   notarized (default) | developer-id (accepted, but not as notarized) | rejected
+set -u
+target="${*: -1}"
+echo "spctl $*" >> "${STUB_CALLS:-/dev/null}"
+case "${STUB_SPCTL:-notarized}" in
+  notarized) printf '%s: accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Test Stub (TESTSTUB00)\n' "$target" >&2 ;;
+  developer-id) printf '%s: accepted\nsource=Developer ID\norigin=Developer ID Application: Test Stub (TESTSTUB00)\n' "$target" >&2 ;;
+  rejected) printf '%s: rejected\nsource=Unnotarized Developer ID\n' "$target" >&2; exit 3 ;;
+esac

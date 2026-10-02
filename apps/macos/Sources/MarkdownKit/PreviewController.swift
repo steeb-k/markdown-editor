@@ -41,7 +41,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     private var jsInFlight = 0
     private var lineTable: (seq: Int, table: LineTable)?
     /// The sizes of the pictures the page refers to, read from their files' headers (cached).
-    private let pictureSizes = PictureSizes()
+    let pictureSizes = PictureSizes()
 
     // Instrumentation.
     /// Renders started (the core ran), applied to the page, and thrown away because a newer text had arrived.
@@ -184,9 +184,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         let base = first ? nil : pageBody
         session.coordinator.async({ doc -> (String, BodyPatch?) in
             // The pictures' sizes go into the page, so it reserves their room before they load.
-            var options = options
-            options.imageSizes = sizes.sizes(for: Set(doc.images().map(\.destination)), documentURL: documentURL)
-            let html = doc.renderHtml(options: options)
+            let html = doc.renderHtml(options: Self.withPictureSizes(options, sizes: sizes, doc: doc, documentURL: documentURL))
             return (html, base.flatMap { BodyPatch.make(from: $0, to: html) })
         }) { [weak self] rendered, processedSeq in
             guard let self else { return }
@@ -211,6 +209,14 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     func renderOptions(standalone: Bool) -> RenderOptions {
         RenderOptions(sourceLines: true, standalone: standalone, sanitize: false, highlight: true,
                       fallbackTitle: "Untitled", style: standalone ? previewStyle() : nil)
+    }
+
+    /// `options` with the sizes of the pictures `doc` refers to (on the analysis queue, where `doc`
+    /// lives): what every render for the page is made with, and what a check of the page must use.
+    static func withPictureSizes(_ options: RenderOptions, sizes: PictureSizes, doc: Document, documentURL: URL?) -> RenderOptions {
+        var options = options
+        options.imageSizes = sizes.sizes(for: Set(doc.images().map(\.destination)), documentURL: documentURL)
+        return options
     }
 
     /// The editor's theme and type, as the preview's stylesheet wants them.

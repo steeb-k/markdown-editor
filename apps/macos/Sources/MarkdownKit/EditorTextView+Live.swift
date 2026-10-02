@@ -173,6 +173,82 @@ extension EditorTextView {
         return true
     }
 
+    /// Up and Down in Live mode keep their column through a picture's paragraph as through any line.
+    ///
+    /// AppKit picks the place in the next line while the picture is still drawn there, so Down lands
+    /// at the end of the picture's source (the picture is as wide as the column) and Up likewise. Here
+    /// the caret goes into the source at the column the run of presses started from, once the source
+    /// is shown; and since setting the selection by hand makes AppKit forget that column, the rest of
+    /// the run is placed here too, until the caret is moved any other way. Returns false when there
+    /// is nothing for it to do (Source mode, a selection, no pictures, no run through a picture).
+    func moveVerticallyThroughPictures(_ selector: Selector) -> Bool {
+        guard let session, session.viewMode == .live, let lm = layoutManager as? EditorLayoutManager,
+              selectedRange().length == 0 else { verticalGoal = nil; return false }
+        let before = selectedRange()
+        let continuing = verticalGoal.map { $0.selection == before } ?? false
+        guard !lm.imageDecorations.isEmpty || (continuing && verticalGoal?.placed == true) else { verticalGoal = nil; return false }
+        let goalX = continuing ? verticalGoal!.x : caretX(at: before.location)
+        let placedBefore = continuing && verticalGoal!.placed
+        let down = selector == #selector(NSResponder.moveDown(_:))
+        let ns = string as NSString
+        let pictures = lm.imageDecorations.map { ns.paragraphRange(for: NSRange(location: min($0.range.location, max(0, ns.length - 1)), length: 0)) }
+        super.doCommand(by: selector)
+        let after = selectedRange()
+        guard after.length == 0 else { verticalGoal = nil; return true }
+        var placed = placedBefore
+        // A picture's paragraph entered from above or below: the source line, without its line break.
+        if let para = pictures.first(where: { $0.location <= after.location && after.location < NSMaxRange($0) }),
+           down ? before.location < para.location : before.location >= NSMaxRange(para) {
+            // Shown first (the caret is in it), then measured.
+            setSelectedRange(NSRange(location: para.location, length: 0))
+            var end = NSMaxRange(para)
+            while end > para.location, [0x0A, 0x0D].contains(ns.character(at: end - 1)) { end -= 1 }
+            let line = down ? para.location : max(para.location, end - 1)
+            if !lm.live.isHidden(para.location) {
+                setSelectedRange(NSRange(location: characterIndex(atX: goalX, onLineOf: line, within: NSRange(location: para.location, length: end - para.location)), length: 0))
+            }
+            placed = true
+        } else if placedBefore {
+            // AppKit went to the right line from the column the caret was put at: the run's column instead.
+            setSelectedRange(NSRange(location: characterIndex(atX: goalX, onLineOf: after.location, within: nil), length: 0))
+        }
+        scrollRangeToVisible(selectedRange())
+        verticalGoal = (selectedRange(), goalX, placed)
+        return true
+    }
+
+    /// The caret's x in the text container at `location`.
+    func caretX(at location: Int) -> CGFloat {
+        // (No `ensureLayout(for:)`: that lays out the whole document; asking for one glyph's line
+        // fragment lays out what that needs, noncontiguous layout being on.)
+        guard let lm = layoutManager, textContainer != nil else { return 0 }
+        let n = lm.numberOfGlyphs
+        guard n > 0 else { return 0 }
+        let g = lm.glyphIndexForCharacter(at: location)
+        if g >= n { return lm.extraLineFragmentRect.isEmpty ? lm.lineFragmentRect(forGlyphAt: n - 1, effectiveRange: nil).maxX : lm.extraLineFragmentRect.minX }
+        return lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil).minX + lm.location(forGlyphAt: g).x
+    }
+
+    /// The caret position nearest `x` on the line fragment that holds `location` (kept `within` a
+    /// range when given), never past the line's end or onto its line break.
+    func characterIndex(atX x: CGFloat, onLineOf location: Int, within: NSRange?) -> Int {
+        guard let lm = layoutManager, let tc = textContainer else { return location }
+        let ns = string as NSString
+        guard location < ns.length, lm.numberOfGlyphs > 0 else { return location }
+        var lineGlyphs = NSRange()
+        let rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: location), effectiveRange: &lineGlyphs)
+        let chars = lm.characterRange(forGlyphRange: lineGlyphs, actualGlyphRange: nil)
+        var end = NSMaxRange(chars)
+        while end > chars.location, [0x0A, 0x0D].contains(ns.character(at: end - 1)) { end -= 1 }
+        var fraction: CGFloat = 0
+        let g = lm.glyphIndex(for: NSPoint(x: x, y: rect.midY), in: tc, fractionOfDistanceThroughGlyph: &fraction)
+        var i = lm.characterIndexForGlyph(at: g)
+        if fraction > 0.5, i < ns.length { i = NSMaxRange(ns.rangeOfComposedCharacterSequence(at: i)) }
+        var lo = chars.location, hi = end
+        if let w = within { lo = max(lo, w.location); hi = min(hi, NSMaxRange(w)) }
+        return min(max(i, lo), max(lo, hi))
+    }
+
     /// The character at `i` as a caret steps over it: a composed character sequence, with a
     /// CRLF line break as one.
     static func character(in ns: NSString, at i: Int) -> NSRange {

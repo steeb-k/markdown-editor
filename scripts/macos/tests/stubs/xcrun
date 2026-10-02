@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Test stand-in for xcrun (scripts/macos/tests/release-pipeline.sh): `notarytool` and `stapler` answer as
+# STUB_NOTARY says and record their calls in STUB_CALLS; everything else goes to the real xcrun.
+#
+#   STUB_NOTARY   accepted | invalid (Invalid JSON, exit 0) | malformed | empty | error (exit 1) |
+#                 in-progress (the wait ran out: In Progress JSON, exit 1) | hang (never answers)
+#   STUB_STAPLE   ok (default) | fail
+set -u
+calls="${STUB_CALLS:-/dev/null}"
+id="0a1b2c3d-1111-2222-3333-444455556666"
+case "${1:-} ${2:-}" in
+  "notarytool submit")
+    echo "notarytool submit ${*:3}" >> "$calls"
+    case "${STUB_NOTARY:-unset}" in
+      accepted) printf '{"id":"%s","message":"Processing complete","status":"Accepted"}\n' "$id" ;;
+      invalid) printf '{"id":"%s","message":"Processing complete","status":"Invalid"}\n' "$id" ;;
+      malformed) printf 'Conducting pre-submission checks for Markdown.dmg and initiating connection...\n{"id": "%s", "stat' "$id" ;;
+      empty) : ;;
+      error) echo "Error: HTTP status code: 401. Unable to authenticate. Invalid credentials." >&2; exit 1 ;;
+      in-progress) printf '{"id":"%s","message":"Timeout","status":"In Progress"}\n' "$id"; exit 1 ;;
+      hang) exec sleep 3600 ;;
+      *) echo "xcrun stub: STUB_NOTARY is not set: notarytool must not be called here" >&2; exit 99 ;;
+    esac ;;
+  "notarytool log")
+    echo "notarytool log ${*:3}" >> "$calls"
+    echo '{"status": "Invalid", "issues": [{"severity": "error", "message": "The signature does not include a secure timestamp."}]}' ;;
+  "notarytool "*)
+    echo "notarytool ${*:2}" >> "$calls"; echo "xcrun stub: unexpected notarytool call: $*" >&2; exit 98 ;;
+  "stapler staple"|"stapler validate")
+    echo "stapler $2 ${*:3}" >> "$calls"
+    if [ "${STUB_STAPLE:-ok}" = fail ]; then echo "CloudKit query for Markdown.dmg failed due to \"Record not found\"." >&2; exit 65; fi
+    echo "The staple and validate action worked!" ;;
+  *) exec /usr/bin/xcrun "$@" ;;
+esac

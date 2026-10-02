@@ -79,10 +79,12 @@ else
 fi
 
 if [ "$NO_HARNESS" = 1 ]; then
-  if strings -a "$BIN" | grep -q -E 'UIScriptRunner|--ui-script|MARKDOWN_UI_SCRIPT|UI_SCRIPT_ALLOW_NAP'; then
-    fail "the binary contains UI-harness code"
-  fi
-  if nm "$BIN" 2>/dev/null | grep -q 'UIScript'; then fail "the binary has UIScript symbols"; fi
+  # Counted, not `grep -q`: under pipefail, grep -q stops reading at the first match, `strings` dies
+  # of SIGPIPE and the pipeline "fails", which turned every match into a pass.
+  HITS="$(strings -a "$BIN" | grep -c -E 'UIScriptRunner|--ui-script|MARKDOWN_UI_SCRIPT|UI_SCRIPT_ALLOW_NAP' || true)"
+  [ "${HITS:-0}" = 0 ] || fail "the binary contains UI-harness code ($HITS strings)"
+  SYMS="$(nm "$BIN" 2>/dev/null | grep -c 'UIScript' || true)"
+  [ "${SYMS:-0}" = 0 ] || fail "the binary has UIScript symbols ($SYMS)"
   ok "no UI-harness strings or symbols in the binary"
 fi
 
@@ -90,4 +92,9 @@ fi
 codesign --verify --strict --verbose=2 "$APP" 2>&1 | sed 's/^/      /'
 FLAGS="$(codesign -dv "$APP" 2>&1 | grep -E '^CodeDirectory' || true)"
 case "$FLAGS" in *runtime*) ok "signature valid, hardened runtime on ($FLAGS)" ;; *) fail "hardened runtime flag missing: $FLAGS" ;; esac
+# The signed entitlements are the file's (none): in particular no get-task-allow, which a debug
+# signature carries and the notary service rejects.
+ENTS="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null || true)"
+case "$ENTS" in *"<key>"*) fail "the signature carries entitlements: $ENTS" ;; esac
+ok "no entitlements in the signature"
 echo "==> bundle OK"

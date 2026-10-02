@@ -55,6 +55,19 @@ final class UIScriptRunner {
     }
 
     private static var running: UIScriptRunner?
+    static let started = Date()
+    /// The first `memory` step's footprint, in MB.
+    private var memoryBaseline: Double?
+
+    /// The process's physical footprint in MB (task_vm_info), as Activity Monitor's Memory column.
+    static func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
     private static var activity: NSObjectProtocol?
 
     /// Any Objective-C exception ends the script as a failure, at the point it is thrown: it is
@@ -170,6 +183,8 @@ final class UIScriptRunner {
         var e = entry
         e["step"] = index
         e["ok"] = ok
+        // Seconds since the script started, to the millisecond.
+        e["t"] = (Date().timeIntervalSince(Self.started) * 1000).rounded() / 1000
         if !ok { failures += 1 }
         log.append(e)
         let line = (try? JSONSerialization.data(withJSONObject: e, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "\(e)"
@@ -198,6 +213,67 @@ final class UIScriptRunner {
 
         if let path = str("open") {
             open(path, folder: step["folder"] as? Bool ?? false, then: done)
+        } else if let m = step["makeFile"] as? [String: Any], let name = m["name"] as? String {
+            // A file made here and opened: `prefix` + `text` x `repeat` + `suffix` (UTF-8), or
+            // `binary` bytes of noise; `bom`, `lineEndings: "mixed"` (LF, CRLF and CR in turn),
+            // `readOnly`. For inputs too big or too odd to keep in the repository.
+            let dir = outDir.appendingPathComponent("made", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(name)
+            var data = Data()
+            if let n = m["binary"] as? Int {
+                var x: UInt64 = 0x9E37_79B9_7F4A_7C15
+                data.reserveCapacity(n)
+                for _ in 0..<n { x ^= x << 13; x ^= x >> 7; x ^= x << 17; data.append(UInt8(truncatingIfNeeded: x)) }
+            } else {
+                var text = (m["prefix"] as? String ?? "") + String(repeating: m["text"] as? String ?? "", count: m["repeat"] as? Int ?? 1) + (m["suffix"] as? String ?? "")
+                if m["lineEndings"] as? String == "mixed" {
+                    var i = 0
+                    text = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init).reduce(into: "") { out, line in
+                        if i > 0 { out += ["\n", "\r\n", "\r"][i % 3] }
+                        out += line
+                        i += 1
+                    }
+                }
+                if m["bom"] as? Bool == true { data.append(contentsOf: [0xEF, 0xBB, 0xBF]) }
+                data.append(Data(text.utf8))
+            }
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+            let ok = FileManager.default.createFile(atPath: url.path, contents: data)
+            if m["readOnly"] as? Bool == true { try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path) }
+            record(["makeFile": name, "bytes": data.count], ok: ok)
+            if m["open"] as? Bool == false {
+                done()
+            } else if m["expectOpen"] as? Bool == false {
+                // A file the app must refuse, with an error rather than a crash or a window of garbage.
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { doc, _, error in
+                    self.record(["open": name, "refused": error.map { "\($0.localizedDescription)" } ?? "opened"], ok: doc == nil && error != nil)
+                    if let doc { doc.close() }
+                    done()
+                }
+            } else {
+                open(url.path, then: done)
+            }
+        } else if let m = step["modifyOnDisk"] as? [String: Any] {
+            // Another program changes the open document's file (its text, without going through the app).
+            guard let url = document?.fileURL else { record(["modifyOnDisk": "no file"], ok: false); done(); return }
+            var text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            if let s = m["append"] as? String { text += s }
+            if let s = m["replace"] as? String { text = s }
+            var ok = false
+            if m["coordinated"] as? Bool == true {
+                // As a well-behaved editor writes (TextEdit, Xcode): through a file coordinator, which
+                // tells the document (a file presenter) at once.
+                var error: NSError?
+                NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: [], error: &error) { u in
+                    ok = (try? Data(text.utf8).write(to: u)) != nil
+                }
+            } else {
+                ok = (try? Data(text.utf8).write(to: url)) != nil
+            }
+            record(["modifyOnDisk": url.lastPathComponent, "bytes": text.utf8.count], ok: ok)
+            done()
         } else if let mode = str("layout") {
             session?.setLayout(LayoutMode(rawValue: mode) ?? .editor)
             record(["layout": mode], ok: session?.layout.rawValue == mode)
@@ -332,7 +408,8 @@ final class UIScriptRunner {
         } else if let path = str("dropFile") {
             let pb = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
             pb.clearContents()
-            pb.writeObjects([resolve(path) as NSURL])
+            // `out:work/x.png`: a file in the output directory (one `copyFile` put beside the document).
+            pb.writeObjects([(path.hasPrefix("out:") ? outDir.appendingPathComponent(String(path.dropFirst(4))) : resolve(path)) as NSURL])
             let ok = textView?.handleDrop(pb, at: textView?.selectedRange().location ?? 0) ?? false
             pb.releaseGlobally()
             record(["dropFile": path], ok: ok)
@@ -399,6 +476,9 @@ final class UIScriptRunner {
             let send = {
                 ok = NSApp.sendAction(sel, to: nil, from: sender)
                 if !ok, let tv = self.textView, tv.responds(to: sel) { ok = NSApp.sendAction(sel, to: tv, from: sender) }
+                // The window's controller (the window's delegate, next in the chain when the window
+                // is key; the app need not be active while a script runs, and then no window is).
+                if !ok, let wc = self.controller, wc.responds(to: sel) { ok = NSApp.sendAction(sel, to: wc, from: sender) }
             }
             // An action that edits runs as one undo group, like an event would. One that does not
             // (`"edits": false`: view toggles) must not: a closed empty group marks the document edited.
@@ -408,7 +488,16 @@ final class UIScriptRunner {
         } else if let command = str("command") {
             let run: () -> Void = { self.textView?.doCommand(by: Selector(command)) }
             if step["edits"] as? Bool == false { run() } else { asEvent(run) }
-            record(["command": command], ok: textView != nil)
+            // Where the caret ended up: the selection, and the caret's x in the text container.
+            var entry: [String: Any] = ["command": command]
+            if let tv = textView {
+                let sel = tv.selectedRange()
+                entry["selection"] = [sel.location, sel.length]
+                entry["caretX"] = Double(tv.caretX(at: sel.location))
+            }
+            var ok = textView != nil
+            if let want = step["expectSelection"] as? [Int], let got = entry["selection"] as? [Int] { ok = ok && want == got }
+            record(entry, ok: ok)
             done()
         } else if let s = step["setting"] as? [String: Any] {
             applySettings(s)
@@ -432,9 +521,10 @@ final class UIScriptRunner {
         } else if let size = step["resize"] as? [Double], size.count == 2, let w = window {
             var f = w.frame
             f.origin.y += f.height - size[1]
-            f.size = NSSize(width: size[0], height: size[1])
+            // No smaller than a person could make it (setFrame itself ignores the window's minimum).
+            f.size = NSSize(width: max(size[0], w.minSize.width), height: max(size[1], w.minSize.height))
             w.setFrame(f, display: true)
-            record(["resize": size], ok: true)
+            record(["resize": size, "size": [w.frame.width, w.frame.height]], ok: true)
             done()
         } else if let on = step["fullscreen"] as? Bool, let w = window, !NSApp.isActive {
             // Full screen needs an active app; a script launched while the session is locked
@@ -467,9 +557,18 @@ final class UIScriptRunner {
             let inset = textView?.enclosingScrollView?.contentInsets.top ?? 0
             // What a person could scroll to: the clip view's own constraint (clip.scroll(to:) skips it).
             let constrained = clip.map { $0.constrainBoundsRect(NSRect(x: 0, y: -2000, width: $0.bounds.width, height: $0.bounds.height)).minY } ?? 0
-            var entry: [String: Any] = ["scroll": "\(where_)", "clip_min_y": clip?.bounds.minY ?? 0, "lowest_reachable_y": constrained, "content_inset_top": inset]
+            // And the other end: how far down a person could scroll, against where the text ends.
+            let highest = clip.map { $0.constrainBoundsRect(NSRect(x: 0, y: 10_000_000, width: $0.bounds.width, height: $0.bounds.height)).minY } ?? 0
+            let docHeight = textView?.frame.height ?? 0
+            let clipHeight = clip?.bounds.height ?? 0
+            let insetBottom = textView?.enclosingScrollView?.contentInsets.bottom ?? 0
+            var entry: [String: Any] = ["scroll": "\(where_)", "clip_min_y": clip?.bounds.minY ?? 0, "lowest_reachable_y": constrained, "content_inset_top": inset,
+                                        "highest_reachable_y": highest, "beyond_end": highest + clipHeight - insetBottom - docHeight,
+                                        "find_bar_visible": textView?.enclosingScrollView?.isFindBarVisible ?? false]
             var ok = true
             if let limit = (step["notAbove"] as? NSNumber)?.doubleValue { ok = constrained >= limit - 0.5; entry["not_above"] = limit }
+            // `notBeyondEnd`: the text's end may not scroll further up than this many points above the visible bottom.
+            if let limit = (step["notBeyondEnd"] as? NSNumber)?.doubleValue { ok = ok && highest + clipHeight - insetBottom - docHeight <= limit + 0.5; entry["not_beyond_end"] = limit }
             record(entry, ok: ok)
             done()
         } else if str("pointer") != nil {
@@ -484,6 +583,10 @@ final class UIScriptRunner {
             // "end": dismiss whatever sheet is attached (Cancel).
             if sheet == "end", let w = window, let s = w.attachedSheet {
                 w.endSheet(s, returnCode: .alertSecondButtonReturn)
+            }
+            // "accept": its first button (Insert, OK).
+            if sheet == "accept", let w = window, let s = w.attachedSheet {
+                w.endSheet(s, returnCode: .alertFirstButtonReturn)
             }
             record(["sheet": sheet], ok: true)
             done()
@@ -567,6 +670,18 @@ final class UIScriptRunner {
                 self.record(["save": url.lastPathComponent, "error": error.map { "\($0)" } ?? ""], ok: error == nil)
                 done()
             }
+        } else if let name = str("saveAs") {
+            // What File > Save does for an untitled document once the save panel has its answer:
+            // the document is written to `work/<name>` in the output directory and from then on is that file.
+            guard let doc = document else { record(["saveAs": "no document"], ok: false); done(); return }
+            let url = outDir.appendingPathComponent("work", isDirectory: true).appendingPathComponent(name)
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: url)
+            doc.save(to: url, ofType: "net.daringfireball.markdown", for: .saveAsOperation) { error in
+                self.record(["saveAs": name, "error": error.map { "\($0)" } ?? "", "fileURL": doc.fileURL?.lastPathComponent ?? ""],
+                            ok: error == nil && doc.fileURL?.lastPathComponent == name)
+                done()
+            }
         } else if step["reopen"] != nil {
             // Closes the document and opens its file afresh: what quitting and opening again does.
             guard let doc = document, let url = doc.fileURL else { record(["reopen": "no file"], ok: false); done(); return }
@@ -641,6 +756,24 @@ final class UIScriptRunner {
                 self.record(["controlLeakProbe": "plain window freed \(w == nil), plain text view freed \(t == nil)"], ok: true)
                 done()
             }
+        } else if let label = str("memory") {
+            // The process's memory footprint (what Activity Monitor shows as Memory), in MB; the
+            // first one is the baseline for `memoryGrowthMB`; also the live objects of interest.
+            let mb = Self.footprintMB()
+            if memoryBaseline == nil { memoryBaseline = mb }
+            var entry: [String: Any] = ["memory": label, "footprint_mb": (mb * 10).rounded() / 10,
+                                        "growth_mb": ((mb - (memoryBaseline ?? mb)) * 10).rounded() / 10,
+                                        "documents": NSDocumentController.shared.documents.count,
+                                        "windows": NSApp.windows.count, "print_renderers": PrintRenderer.live,
+                                        "print_hosts_on_screen": PrintRenderer.hostsOnScreen]
+            var ok = true
+            if let limit = (step["maxGrowthMB"] as? NSNumber)?.doubleValue {
+                ok = mb - (memoryBaseline ?? mb) <= limit
+                entry["max_growth_mb"] = limit
+            }
+            if let n = step["maxPrintRenderers"] as? Int { ok = ok && PrintRenderer.live <= n }
+            record(entry, ok: ok)
+            done()
         } else if step["dump"] != nil {
             var d: [String: Any] = [:]
             if let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer, let s = session {
@@ -1573,6 +1706,10 @@ final class UIScriptRunner {
         weak var wc = controller
         weak var win = window
         weak var d = doc
+        // Also the preview's web view and preview controller, and the session's picture cache.
+        weak var web = controller?.previewController.webView
+        weak var pc = controller?.previewController
+        weak var images = doc.session.imageController
         document = nil
         doc.updateChangeCount(.changeCleared)
         doc.close()
@@ -1581,14 +1718,17 @@ final class UIScriptRunner {
         // the spell checker hold on to the last first responder for a moment).
         let started = Date()
         func poll() {
-            let ours = d == nil && wc == nil && s == nil && c == nil
-            let all = ours && win == nil && tv == nil
+            let ours = d == nil && wc == nil && s == nil && c == nil && pc == nil && images == nil
+            let all = ours && win == nil && tv == nil && web == nil
             if !all && Date().timeIntervalSince(started) < 10 { later(0.25, poll); return }
             let secs = String(format: "%.2f", Date().timeIntervalSince(started))
             self.check("document deallocated", d == nil)
             self.check("window controller deallocated", wc == nil)
             self.check("session deallocated", s == nil)
             self.check("coordinator (and its queue) deallocated", c == nil)
+            self.check("preview controller deallocated", pc == nil)
+            self.check("picture cache deallocated", images == nil)
+            self.record(["closed web view freed": web == nil, "print renderers alive": PrintRenderer.live], ok: true)
             // AppKit keeps a closed window (and so its text view) for a while, even a plain
             // NSWindow (see `controlLeakProbe`); reported, not judged.
             self.record(["closed window freed": win == nil, "closed text view freed": tv == nil, "after": secs], ok: true)
@@ -1612,6 +1752,13 @@ final class UIScriptRunner {
         if let v = a["textEquals"] as? String { check("textEquals", text == v, text) }
         if let v = a["textContains"] as? String { check("textContains \(v)", text.contains(v), text) }
         if let v = a["textLacks"] as? String { check("textLacks \(v)", !text.contains(v), text) }
+        if let v = a["fileEqualsMade"] as? String {
+            // The document's file, byte for byte, is the file `makeFile` made (opened and saved untouched).
+            let made = try? Data(contentsOf: outDir.appendingPathComponent("made").appendingPathComponent(v))
+            let disk = document?.fileURL.flatMap { try? Data(contentsOf: $0) }
+            check("file equals made/\(v)", made != nil && made == disk, "\(made?.count ?? -1) vs \(disk?.count ?? -1) bytes")
+        }
+        if let v = a["textLength"] as? Int { check("textLength \(v)", (text as NSString).length == v, "\((text as NSString).length)") }
         if let v = a["selection"] as? [Int], let tv = textView {
             let r = tv.selectedRange()
             check("selection \(v)", r.location == v[0] && r.length == v[1], "\(r)")
@@ -1737,8 +1884,13 @@ final class UIScriptRunner {
         if let v = a["file"] as? [String: Any], let url = document?.fileURL {
             // What is on disk: `contains` / `lacks` / `suffix` (strings).
             let disk = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            if let c = v["contains"] as? String { check("file contains \(c.debugDescription)", disk.contains(c), String(disk.suffix(400))) }
-            if let c = v["lacks"] as? String { check("file lacks \(c.debugDescription)", !disk.contains(c), String(disk.suffix(400))) }
+            // (A string, or a list of them.)
+            for c in (v["contains"] as? [String]) ?? (v["contains"] as? String).map({ [$0] }) ?? [] {
+                check("file contains \(c.debugDescription)", disk.contains(c), String(disk.suffix(400)))
+            }
+            for c in (v["lacks"] as? [String]) ?? (v["lacks"] as? String).map({ [$0] }) ?? [] {
+                check("file lacks \(c.debugDescription)", !disk.contains(c), String(disk.suffix(400)))
+            }
             if let c = v["suffix"] as? String { check("file ends with \(c.debugDescription)", disk.hasSuffix(c), String(disk.suffix(120))) }
         }
         if let v = a["layout"] as? String { check("layout \(v)", session?.layout.rawValue == v, session?.layout.rawValue ?? "nil") }
@@ -1750,7 +1902,9 @@ final class UIScriptRunner {
             if v["bodyMatchesCore"] != nil, let s = session {
                 // What the page was given is what the core renders for the text now.
                 _ = p.waitUntilSettled(timeout: 30)
-                let expected = s.coordinator.sync { $0.renderHtml(options: p.renderOptions(standalone: false)) }
+                // (With the pictures' sizes, as every render for the page is made.)
+                let base = p.renderOptions(standalone: false), sizes = p.pictureSizes, url = s.documentURL()
+                let expected = s.coordinator.sync { $0.renderHtml(options: PreviewController.withPictureSizes(base, sizes: sizes, doc: $0, documentURL: url)) }
                 check("preview body equals the core's render", p.lastBodyHTML == expected, "\(p.lastBodyHTML.count) vs \(expected.count) characters")
             }
             for (key, want) in [("contains", true), ("lacks", false)] {

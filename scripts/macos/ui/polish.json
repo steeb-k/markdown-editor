@@ -1,0 +1,238 @@
+[
+ {
+  "log": "M7 polish by eye and by assertion: an empty fenced block's panel, code-block panels in list items and quotes at three depths, the bullet beside a heading in a list item, pictures at every declared resolution (none, 72, 144, 96, 300, unbelievable 1 and 5000, 72 by 144, wider than the column) in the editor, the preview (narrow and wide) and the PDF, and the footnote. (A picture whose horizontal and vertical resolutions differ keeps its pixel proportions in the preview: CSS height:auto takes the image's own ratio. Such files are rare; the editor draws them at the declared size.)"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "live",
+   "lineWidth": 72
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/polish/polish.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1000,
+   1300
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "selectText": "and the end.",
+  "offset": 0
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "no-dpi.png",
+    "width": 400,
+    "height": 200
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-72.png",
+    "width": 400,
+    "height": 200
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-144.png",
+    "width": 200,
+    "height": 100
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-96.png",
+    "width": 300,
+    "height": 150
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-300.png",
+    "width": 96,
+    "height": 48
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-1.png",
+    "width": 400,
+    "height": 200
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-5000.png",
+    "width": 400,
+    "height": 200
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "dpi-72x144.png",
+    "width": 400,
+    "height": 100
+   }
+  }
+ },
+ {
+  "scroll": 0,
+  "notAbove": -32
+ },
+ {
+  "snapshot": "live-top"
+ },
+ {
+  "editorScroll": 0.33
+ },
+ {
+  "snapshot": "live-middle"
+ },
+ {
+  "editorScroll": 0.66
+ },
+ {
+  "snapshot": "live-lower"
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "snapshot": "live-end"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "snapshot": "source-top"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "evalPreview": "return Array.from(document.querySelectorAll('img')).map(i => i.getAttribute('src').split('src=').pop() + '=' + i.getAttribute('width') + 'x' + i.getAttribute('height')).join(' ');",
+  "expect": "no-dpi.png=400x200 dpi-72.png=400x200 dpi-144.png=200x100 dpi-96.png=300x150 dpi-300.png=96x48 dpi-1.png=400x200 dpi-5000.png=400x200 dpi-72x144.png=400x100 wide-3000.png=3000x300"
+ },
+ {
+  "evalPreview": "return Array.from(document.querySelectorAll('img')).map(i => { const r = i.getBoundingClientRect(); return i.getAttribute('src') + '=' + Math.round(r.width) + 'x' + Math.round(r.height); }).join(' ');"
+ },
+ {
+  "previewScroll": 0
+ },
+ {
+  "snapshot": "split-top"
+ },
+ {
+  "previewScroll": 0.5
+ },
+ {
+  "snapshot": "split-middle"
+ },
+ {
+  "previewScroll": 1
+ },
+ {
+  "snapshot": "split-end"
+ },
+ {
+  "resize": [
+   700,
+   900
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "evalPreview": "return Array.from(document.querySelectorAll('img')).map(i => { const r = i.getBoundingClientRect(); return i.getAttribute('src') + '=' + Math.round(r.width) + 'x' + Math.round(r.height); }).join(' ');"
+ },
+ {
+  "evalPreview": "return Array.from(document.querySelectorAll('img')).filter(i => !i.src.includes('72x144')).every(i => { const r = i.getBoundingClientRect(); const w = +i.getAttribute('width'), h = +i.getAttribute('height'); return r.width <= document.body.clientWidth + 1 && Math.abs(r.width / r.height - w / h) < 0.05; }) ? 'fits' : 'overflows';",
+  "expect": "fits"
+ },
+ {
+  "snapshot": "split-narrow"
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "previewScroll": 0.5
+ },
+ {
+  "snapshot": "preview-wide-middle"
+ },
+ {
+  "exportPDF": "polish.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "polish.pdf",
+    "minPages": 2,
+    "images": 9,
+    "contains": [
+     "An empty fenced block",
+     "two levels in",
+     "The footnote."
+    ]
+   }
+  }
+ },
+ {
+  "layout": "editor"
+ }
+]

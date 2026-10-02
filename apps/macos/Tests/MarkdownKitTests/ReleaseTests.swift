@@ -153,6 +153,23 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(EditorWindowController.defaultContentSize(for: nil), NSSize(width: 860, height: 740))
     }
 
+    @MainActor
+    func testTheSmallestWindowStillHoldsItsControls() throws {
+        _ = NSApplication.shared
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        try doc.read(from: Data("# x\n".utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        let window = try XCTUnwrap(wc.window)
+        // (The accessory holding the buttons and switches; the title bar view itself is the window's width.)
+        let controls = wc.titlebarControls.map(\.frame.width).filter { $0 < window.frame.width }.max() ?? 0
+        XCTAssertGreaterThan(controls, 200)
+        // The title-bar controls beside the three window buttons, and the formatting bar, fit the narrowest window.
+        XCTAssertGreaterThanOrEqual(window.minSize.width, controls + 150, "minimum \(window.minSize.width) for controls \(controls) wide")
+        XCTAssertGreaterThanOrEqual(window.minSize.width, wc.toolbar.fittingSize.width + 32)
+        doc.close()
+    }
+
     // MARK: Info.plist, entitlements, acknowledgements
 
     func testInfoPlist() throws {
@@ -169,6 +186,13 @@ final class ReleaseTests: XCTestCase {
         let types = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
         XCTAssertEqual(types.compactMap { $0["CFBundleTypeRole"] as? String }, ["Editor", "Editor"])
         XCTAssertEqual(types.first?["LSItemContentTypes"] as? [String], ["net.daringfireball.markdown"])
+        // The system's own net.daringfireball.markdown claims .md and .markdown only, and wins over an
+        // import: the other extensions need a type of the app's own, a kind of Markdown.
+        let exported = try XCTUnwrap(plist["UTExportedTypeDeclarations"] as? [[String: Any]])
+        XCTAssertEqual(exported.first?["UTTypeIdentifier"] as? String, "io.github.steeb-k.markdown.extensions")
+        XCTAssertEqual(exported.first?["UTTypeConformsTo"] as? [String], ["net.daringfireball.markdown", "public.plain-text"])
+        let own = try XCTUnwrap(exported.first?["UTTypeTagSpecification"] as? [String: Any])
+        XCTAssertEqual(own["public.filename-extension"] as? [String], ["mdown", "mkd", "mkdn", "mdwn"])
         XCTAssertEqual(types.first?["LSHandlerRank"] as? String, "Default")
         XCTAssertEqual(types.last?["LSItemContentTypes"] as? [String], ["public.plain-text"])
         let icon = try XCTUnwrap(types.first?["CFBundleTypeIconFile"] as? String)
@@ -177,7 +201,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(imported.first?["UTTypeIdentifier"] as? String, "net.daringfireball.markdown")
         XCTAssertEqual(imported.first?["UTTypeConformsTo"] as? [String], ["public.plain-text"])
         let tags = try XCTUnwrap(imported.first?["UTTypeTagSpecification"] as? [String: Any])
-        XCTAssertEqual(tags["public.filename-extension"] as? [String], ["md", "markdown", "mdown", "mkd"])
+        XCTAssertEqual(tags["public.filename-extension"] as? [String], ["md", "markdown"])
         // The document class every type names exists.
         XCTAssertNotNil(NSClassFromString(try XCTUnwrap(types.first?["NSDocumentClass"] as? String)))
     }

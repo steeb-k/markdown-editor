@@ -43,15 +43,21 @@ public final class Styler {
     /// Rewrites the attributes of `range` from `spans` (which must cover it: every span that
     /// overlaps it, in the core's sorted order). `insideProcessing` is true when called from
     /// `didProcessEditing`, where begin/endEditing must not be used.
-    public func style(_ storage: NSTextStorage, range requested: NSRange, spans: [Span], prose: [NSRange] = [],
+    public func style(_ textStorage: NSTextStorage, range requested: NSRange, spans: [Span], prose: [NSRange] = [],
                       insideProcessing: Bool) {
-        let range = RangeMath.clamp(requested, toLength: storage.length)
+        let range = RangeMath.clamp(requested, toLength: textStorage.length)
         guard range.length > 0 else { return }
         if recordsTouchedRanges { touchedRanges.append(range) }
-        if !insideProcessing { storage.beginEditing() }
-        defer { if !insideProcessing { storage.endEditing() } }
+        let ns = textStorage.mutableString as NSString
+        // The attributes are worked out on a copy of the range's paragraphs (everything below writes
+        // there) and written back as finished runs: see `StagedAttributes`.
+        let storage = StagedAttributes(textStorage, range: ns.paragraphRange(for: range))
+        defer {
+            if !insideProcessing { textStorage.beginEditing() }
+            storage.write(to: textStorage)
+            if !insideProcessing { textStorage.endEditing() }
+        }
 
-        let ns = storage.mutableString as NSString
         let a = appearance
         let fonts = a.fonts
         let p = a.palette
@@ -112,11 +118,28 @@ public final class Styler {
             case .codeBlock:
                 let font = fonts.variant(of: fonts.mono, size: monoSize())
                 storage.addAttribute(.font, value: font, range: r)
+                // The blanks and quote markers before the opening fence are in the code's font too, as
+                // they are on the block's other lines (which the block's range includes), so that the
+                // fences and the code line up in a list item or a quote.
+                if r.location == Int(span.range.start) {
+                    let lineStart = ns.lineRange(for: NSRange(location: r.location, length: 0)).location
+                    let prefix = NSRange(location: lineStart, length: r.location - lineStart)
+                    if prefix.length > 0, ns.substring(with: prefix).allSatisfy({ $0 == " " || $0 == "\t" || $0 == ">" }) {
+                        storage.addAttribute(.font, value: font, range: prefix)
+                    }
+                }
                 storage.addAttribute(.foregroundColor, value: p.codeText, range: r)
                 // Drawn by the layout manager as one continuous panel (a glyph background would
                 // leave stripes between lines).
                 storage.addAttribute(.markdownBlockBackground, value: p.codeBackground, range: r)
-                setParagraph(r, a.paragraphStyle(font: font, multiple: 1.4))
+                // A code line in a quote hangs under the quote's text: its `> ` keeps its width when
+                // Live mode hides it (the layout manager keeps a hidden prefix's width only in a
+                // hanging paragraph), so the code does not run into the quote's bar.
+                let plain = a.paragraphStyle(font: font, multiple: 1.4)
+                eachParagraph(r) { pr in
+                    let hang = self.quotePrefixWidth(of: ns, paragraph: pr, font: font)
+                    storage.addAttribute(.paragraphStyle, value: hang > 0 ? a.paragraphStyle(font: font, headIndent: hang, multiple: 1.4) : plain, range: pr)
+                }
             case .table:
                 let font = fonts.variant(of: fonts.mono, size: monoSize())
                 storage.addAttribute(.font, value: font, range: r)
@@ -185,7 +208,7 @@ public final class Styler {
         }
     }
 
-    private func alignWideCharacters(_ storage: NSTextStorage, _ ns: NSString, in r: NSRange, cell font: NSFont) {
+    private func alignWideCharacters(_ storage: StagedAttributes, _ ns: NSString, in r: NSRange, cell font: NSFont) {
         let cell = ("0" as NSString).size(withAttributes: [.font: font]).width
         guard cell > 0 else { return }
         ns.enumerateSubstrings(in: r, options: .byComposedCharacterSequences) { sub, sr, _, _ in
@@ -209,6 +232,25 @@ public final class Styler {
         while at(i) == 0x20 || at(i) == 0x09 { i += 1 }
         guard at(i) == 0x3E else { return 0 }
         return prefixWidth(of: ns, paragraph: paragraph, list: false)
+    }
+
+    /// Width, in `font`, of the quote markers (`>`, the blank after each, blanks before them) a line
+    /// starts with; 0 when it is not in a quote.
+    private func quotePrefixWidth(of ns: NSString, paragraph: NSRange, font: NSFont) -> CGFloat {
+        let n = min(paragraph.length, 64)
+        var i = 0
+        var quoted = false
+        func at(_ k: Int) -> unichar { k < n ? ns.character(at: paragraph.location + k) : 0 }
+        while true {
+            while at(i) == 0x20 || at(i) == 0x09 { i += 1 }
+            guard at(i) == 0x3E else { break }
+            quoted = true
+            i += 1
+            if at(i) == 0x20 { i += 1 }
+        }
+        guard quoted else { return 0 }
+        let prefix = ns.substring(with: NSRange(location: paragraph.location, length: i)).replacingOccurrences(of: "\t", with: "    ")
+        return (prefix as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
     }
 
     /// For a task item in Live mode: where wrapped lines hang (the text after the list marker, as
@@ -280,5 +322,65 @@ public final class Styler {
         let w = (prefix as NSString).size(withAttributes: [.font: appearance.fonts.body]).width.rounded(.up)
         prefixWidthCache[prefix] = w
         return w
+    }
+}
+
+/// The attributes of a range of a text storage, worked out on a copy and written back as finished
+/// runs.
+///
+/// NSTextStorage keeps its attribute runs in one array: a change that splits or merges runs moves
+/// every run after it. Styling a range in place takes dozens of overlapping changes, each paying for
+/// the whole rest of the document: restyling everything (a theme, a font, Source to Live) took 9 s of
+/// main-thread time in 12,000-character pieces of up to 190 ms at 1 MB, 36 s at 2 MB and some 15
+/// minutes at 10 MB. Written back run by run, a range whose runs keep their shape (any restyle of text
+/// already styled) costs almost nothing: 1.3 s instead of 43 s for 2 MB in a benchmark.
+/// Writes outside the staged range are ignored (the styler never makes them: it stays within the
+/// paragraphs of the range it is given).
+final class StagedAttributes {
+    private let base: Int
+    private let copy: NSMutableAttributedString
+
+    init(_ storage: NSTextStorage, range: NSRange) {
+        base = range.location
+        copy = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: range))
+    }
+
+    private func local(_ r: NSRange) -> NSRange? {
+        let l = NSIntersectionRange(NSRange(location: r.location - base, length: r.length), NSRange(location: 0, length: copy.length))
+        return l.length > 0 || (r.length == 0 && r.location - base >= 0 && r.location - base <= copy.length) ? l : nil
+    }
+
+    func setAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange) {
+        if let l = local(range) { copy.setAttributes(attrs, range: l) }
+    }
+
+    func addAttribute(_ key: NSAttributedString.Key, value: Any, range: NSRange) {
+        if let l = local(range), l.length > 0 { copy.addAttribute(key, value: value, range: l) }
+    }
+
+    func attribute(_ key: NSAttributedString.Key, at location: Int, effectiveRange: NSRangePointer?) -> Any? {
+        let i = location - base
+        guard i >= 0, i < copy.length else { return nil }
+        return copy.attribute(key, at: i, effectiveRange: nil)
+    }
+
+    func enumerateAttribute(_ key: NSAttributedString.Key, in range: NSRange, options: NSAttributedString.EnumerationOptions = [],
+                            using block: (Any?, NSRange, UnsafeMutablePointer<ObjCBool>) -> Void) {
+        guard let l = local(range), l.length > 0 else { return }
+        copy.enumerateAttribute(key, in: l, options: options) { v, sub, stop in
+            block(v, NSRange(location: sub.location + base, length: sub.length), stop)
+        }
+    }
+
+    func fixAttributes(in range: NSRange) {
+        if let l = local(range), l.length > 0 { copy.fixAttributes(in: l) }
+    }
+
+    /// Writes the runs into `storage` (the caller brackets this with begin/endEditing when it may).
+    func write(to storage: NSTextStorage) {
+        guard copy.length > 0, base + copy.length <= storage.length else { return }
+        copy.enumerateAttributes(in: NSRange(location: 0, length: copy.length), options: []) { attrs, sub, _ in
+            storage.setAttributes(attrs, range: NSRange(location: sub.location + base, length: sub.length))
+        }
     }
 }

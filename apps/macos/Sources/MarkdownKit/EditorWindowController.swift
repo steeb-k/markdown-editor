@@ -85,6 +85,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         root.addSubview(toolbar)
         titlebarFade.translatesAutoresizingMaskIntoConstraints = false
         fadeHeight = titlebarFade.heightAnchor.constraint(equalToConstant: 52)
+        let toolbarCentre = toolbar.centerXAnchor.constraint(equalTo: scroll.centerXAnchor)
+        toolbarCentre.priority = .defaultHigh
         NSLayoutConstraint.activate([
             web.leadingAnchor.constraint(equalTo: previewPane.leadingAnchor),
             web.trailingAnchor.constraint(equalTo: previewPane.trailingAnchor),
@@ -98,7 +100,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             titlebarFade.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             titlebarFade.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             fadeHeight,
-            toolbar.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            // Centred under the editor, unless the editor's pane (in Split) is narrower than the bar:
+            // then it moves over just enough to stay inside the window.
+            toolbarCentre,
+            toolbar.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: 8),
+            toolbar.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -8),
             toolbar.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Self.toolbarBottomMargin),
         ])
         window.contentView = root
@@ -203,6 +209,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         accessory.view = holder
         accessory.layoutAttribute = .trailing
         window.addTitlebarAccessoryViewController(accessory)
+        // Never narrower than the title-bar controls beside the window buttons and a little of the
+        // title, or the formatting bar: at 360 points both ran off the window and over the buttons.
+        window.minSize = NSSize(width: max(window.minSize.width, (holder.frame.width + 170).rounded(), (toolbar.fittingSize.width + 40).rounded()),
+                                height: window.minSize.height)
         modeAccessory = accessory
         chrome.extraTitlebarViews = [holder]
         session.onViewModeChange = { [weak self] in self?.syncModeSwitch() }

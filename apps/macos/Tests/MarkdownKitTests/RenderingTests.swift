@@ -102,3 +102,55 @@ extension RenderingTests {
         for h in heights { XCTAssertEqual(h, heights[0], accuracy: 0.5, "row heights \(heights)") }
     }
 }
+
+/// The styler works out a range's attributes on a copy and writes the finished runs back
+/// (`StagedAttributes`): what lands in the storage must be exactly what changing it in place gives.
+final class StagedAttributesTests: XCTestCase {
+    private func runs(_ s: NSAttributedString) -> [String] {
+        var out: [String] = []
+        s.enumerateAttributes(in: NSRange(location: 0, length: s.length), options: []) { attrs, r, _ in
+            out.append("\(r): " + attrs.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ","))
+        }
+        return out
+    }
+
+    func testStagedChangesEqualChangesInPlace() {
+        let text = String(repeating: "# Title\n\nSome *words* and **more** words.\n\n- a list\n\n", count: 30)
+        var seed: UInt64 = 42
+        func rnd(_ n: Int) -> Int { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Int((seed >> 33) % UInt64(max(1, n))) }
+        let fonts = [NSFont.systemFont(ofSize: 13), NSFont.boldSystemFont(ofSize: 15), NSFont.userFixedPitchFont(ofSize: 12)!]
+        let colors = [NSColor.red, NSColor.blue, NSColor.textColor]
+        for round in 0..<40 {
+            let direct = NSTextStorage(string: text, attributes: [.font: fonts[0]])
+            // Some runs already there, as in a styled document.
+            for _ in 0..<30 { direct.addAttribute(.foregroundColor, value: colors[rnd(3)], range: NSRange(location: rnd(text.count - 20), length: 1 + rnd(15))) }
+            let staged = NSTextStorage(attributedString: direct)
+            let ns = text as NSString
+            let range = ns.paragraphRange(for: NSRange(location: rnd(text.count - 200), length: 1 + rnd(150)))
+            let copy = StagedAttributes(staged, range: range)
+            for _ in 0..<(5 + rnd(20)) {
+                let r = NSRange(location: range.location + rnd(range.length - 1), length: 0)
+                let sub = NSRange(location: r.location, length: min(1 + rnd(40), NSMaxRange(range) - r.location))
+                switch rnd(4) {
+                case 0: let f = fonts[rnd(3)]; direct.setAttributes([.font: f], range: sub); copy.setAttributes([.font: f], range: sub)
+                case 1: let c = colors[rnd(3)]; direct.addAttribute(.foregroundColor, value: c, range: sub); copy.addAttribute(.foregroundColor, value: c, range: sub)
+                case 2: let f = fonts[rnd(3)]; direct.addAttribute(.font, value: f, range: sub); copy.addAttribute(.font, value: f, range: sub)
+                default:
+                    direct.enumerateAttribute(.font, in: sub, options: []) { v, s, _ in
+                        if let v = v as? NSFont { direct.addAttribute(.font, value: NSFontManager.shared.convert(v, toSize: v.pointSize + 1), range: s) }
+                    }
+                    copy.enumerateAttribute(.font, in: sub) { v, s, _ in
+                        if let v = v as? NSFont { copy.addAttribute(.font, value: NSFontManager.shared.convert(v, toSize: v.pointSize + 1), range: s) }
+                    }
+                }
+            }
+            staged.beginEditing()
+            copy.write(to: staged)
+            staged.endEditing()
+            XCTAssertEqual(runs(staged), runs(direct), "round \(round), range \(range)")
+            // Writes outside the staged range are ignored, never a crash.
+            copy.addAttribute(.foregroundColor, value: NSColor.red, range: NSRange(location: NSMaxRange(range) + 5, length: 3))
+            copy.addAttribute(.foregroundColor, value: NSColor.red, range: NSRange(location: max(0, range.location - 5), length: 3))
+        }
+    }
+}

@@ -109,13 +109,52 @@ final class ExportTests: XCTestCase {
             let doc = try document(longText())
             weakDoc = doc
             doc.exportPDF(to: url) { result = .some($0) }
+            // The app may not be ended (sudden or automatic termination) while the PDF is written,
+            // which matters most now: with the window closed there is nothing on screen.
+            XCTAssertEqual(MarkdownDocument.exportsInFlight, 1, "the export holds off termination")
             pumpRunLoop(0.05)
             doc.close()
         }
         XCTAssertTrue(spin(timeout: 90) { result != nil }, "the export still ends")
+        XCTAssertEqual(MarkdownDocument.exportsInFlight, 0, "and lets termination happen again")
         XCTAssertNil(result ?? nil, "and writes the PDF of the text it had")
         XCTAssertTrue(PDFInspector.text(url).contains("Section 40"))
         XCTAssertTrue(spin(timeout: 5) { weakDoc == nil }, "and lets the document go")
+    }
+
+    func testAPictureIsPrintedAtTheSizeItsResolutionDeclares() throws {
+        // Two pictures of the same 400 by 200 pixels, one declaring 72 dpi and one 144: in the editor and
+        // the preview the second is half the size of the first, and so it must be on paper (the export
+        // used to print both at their pixels). A document of nothing but a picture exports at all (it
+        // has no text layer, which the export used to take for a page not painted yet: "printFailed").
+        var widths: [String: CGFloat] = [:]
+        for name in ["dpi-72.png", "dpi-144.png"] {
+            let picture = Fixtures.root.appendingPathComponent("scripts/macos/ui/fixtures/polish/\(name)")
+            try FileManager.default.copyItem(at: picture, to: tmp.appendingPathComponent(name))
+            let doc = try document("![picture](\(name))\n", file: "doc-\(name).md")
+            let (url, error) = export(doc, to: "\(name).pdf")
+            XCTAssertNil(error, name)
+            let ink = try XCTUnwrap(PDFInspector.inkBounds(url, page: 0), name)
+            XCTAssertEqual(ink.width / ink.height, 2, accuracy: 0.05, "\(name): \(ink)")
+            widths[name] = ink.width
+            doc.close()
+        }
+        let ratio = (widths["dpi-72.png"] ?? 0) / max(1, widths["dpi-144.png"] ?? 1)
+        XCTAssertEqual(ratio, 2, accuracy: 0.05, "the 144 dpi picture is printed at half the size: \(widths)")
+    }
+
+    func testDocumentsWithoutWordsExport() throws {
+        // Only front matter (which the page leaves out), only a rule, only an empty task: no text on paper,
+        // and that is not a failure.
+        for (i, text) in ["---\ntitle: Only front matter\n---\n", "---\n", "- [ ] \n"].enumerated() {
+            let doc = try document(text, file: "wordless-\(i).md")
+            let (url, error) = export(doc, to: "wordless-\(i).pdf")
+            XCTAssertNil(error, text)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), text)
+            doc.close()
+        }
+        XCTAssertFalse(PrintRenderer.hasVisibleText("<p><img src=\"x.png\" alt=\"x\" /></p>\n<hr />\n<p>&nbsp;</p>"))
+        XCTAssertTrue(PrintRenderer.hasVisibleText("<p>a</p>"))
     }
 
     func testExportingDuringAnAsynchronousSave() throws {

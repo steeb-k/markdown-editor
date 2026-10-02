@@ -1,0 +1,507 @@
+[
+ {
+  "log": "Acceptance: a document made from nothing with menu commands and typing (headings, a list, a task list, a table built with the table helpers, a code block, a link, a dropped picture, a footnote), shown in Source and Live and in the three layouts, with focus and syntax highlighting, text pasted as AI and a selection marked as Reference; saved, exported to PDF, copied as rich text, closed and reopened. Then the bytes on disk, the marks, the PDF and the pasteboard are checked. This is what 'it works' means for 1.0."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "source",
+   "defaultLayout": "editor"
+  }
+ },
+ {
+  "log": "1. Writing: File > New, then Format > Heading, lists and typing."
+ },
+ {
+  "new": true
+ },
+ {
+  "action": "setHeadingLevel:",
+  "tag": 1
+ },
+ {
+  "type": "Trip notes\n\nPlans for the week, written here first.\n\n",
+  "interval": 0.01
+ },
+ {
+  "action": "setHeadingLevel:",
+  "tag": 2
+ },
+ {
+  "type": "Packing\n\n",
+  "interval": 0.01
+ },
+ {
+  "action": "toggleBulletList:"
+ },
+ {
+  "type": "Pack the bag\nBook the train\n\n\n",
+  "interval": 0.01
+ },
+ {
+  "action": "toggleTaskList:"
+ },
+ {
+  "type": "Water the plants\nCall home\n\n\n",
+  "interval": 0.01
+ },
+ {
+  "log": "2. Saved early (File > Save of an untitled document, the panel answered with work/trip notes.md), so a dropped picture has a folder to be relative to."
+ },
+ {
+  "saveAs": "trip notes.md"
+ },
+ {
+  "log": "3. Table > Insert Table (2 body rows, 3 columns), cells filled with Tab, Tab in the last cell adds a row, Add Column Right, Column Alignment > Right."
+ },
+ {
+  "action": "insertTable:"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "sheet": true
+  }
+ },
+ {
+  "sheet": "accept"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "inTable": true
+  }
+ },
+ {
+  "type": "Day\tPlace\tNote\tMon\tParis\tarrive\tTue\tLyon\tmarket\t",
+  "interval": 0.01
+ },
+ {
+  "type": "Wed\tNice\tsea",
+  "interval": 0.01
+ },
+ {
+  "selectText": "Note",
+  "offset": 1
+ },
+ {
+  "action": "tableAddColumnRight:"
+ },
+ {
+  "type": "Cost\t",
+  "interval": 0.01
+ },
+ {
+  "selectText": "arrive",
+  "offset": 1
+ },
+ {
+  "command": "insertTab:",
+  "edits": true
+ },
+ {
+  "type": "40",
+  "interval": 0.01
+ },
+ {
+  "action": "tableSetAlignment:",
+  "tag": 3
+ },
+ {
+  "log": "4. Format > Code Block, a link with Format > Link around a selection, a footnote, a picture dropped on the window."
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "type": "\n\n",
+  "interval": 0.01
+ },
+ {
+  "assert": {
+   "inTable": false
+  }
+ },
+ {
+  "action": "toggleCodeBlock:"
+ },
+ {
+  "type": "let total = 3",
+  "interval": 0.01
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "type": "\n\nSee the timetable for times.",
+  "interval": 0.01
+ },
+ {
+  "selectText": "timetable",
+  "offset": 0,
+  "length": 9
+ },
+ {
+  "action": "insertLink:"
+ },
+ {
+  "type": "https://example.com/timetable",
+  "interval": 0.01
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "type": " A footnote[^1] goes here.\n\n",
+  "interval": 0.01
+ },
+ {
+  "copyFile": {
+   "from": "scripts/macos/ui/fixtures/pictures/retina-144dpi.png",
+   "to": "work/photo.png"
+  }
+ },
+ {
+  "dropFile": "out:work/photo.png"
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "type": "\n\n[^1]: The note itself.\n",
+  "interval": 0.01
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "5. Paste As > AI at the end; a selection marked as Reference (Edit > Mark As)."
+ },
+ {
+  "setPasteboard": "Text written by a model."
+ },
+ {
+  "action": "pasteAsAI:"
+ },
+ {
+  "selectText": "Plans for the week",
+  "offset": 0,
+  "length": 18
+ },
+ {
+  "action": "markAsReference:"
+ },
+ {
+  "assert": {
+   "textEquals": "# Trip notes\n\nPlans for the week, written here first.\n\n## Packing\n\n- Pack the bag\n- Book the train\n\n- [ ] Water the plants\n- [ ] Call home\n\n| Day | Place | Note   | Cost |\n| --- | ----- | ------ | ---: |\n| Mon | Paris | arrive |   40 |\n| Tue | Lyon  | market |      |\n| Wed | Nice  | sea    |      |\n\n```\nlet total = 3\n```\n\nSee the [timetable](https://example.com/timetable) for times. A footnote[^1] goes here.\n\n![photo](photo.png)\n\n[^1]: The note itself.\nText written by a model.",
+   "authorship": {
+    "runs": [
+     [
+      "Text written by a model.",
+      "ai"
+     ],
+     [
+      "Plans for the week",
+      "reference"
+     ],
+     [
+      "Trip notes",
+      "me"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "log": "6. Source and Live, the three layouts (View menu), focus and syntax highlighting on."
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "action": "showLiveMode:",
+  "edits": false
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "assert": {
+   "viewMode": "live",
+   "images": {
+    "loaded": 1
+   },
+   "decorations": {
+    "bullet": 2,
+    "checkbox": 2
+   }
+  }
+ },
+ {
+  "snapshot": "01-live"
+ },
+ {
+  "action": "showSplitLayout:",
+  "edits": false
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "layout": "split",
+   "preview": {
+    "bodyMatchesCore": true,
+    "contains": "Text written by a model.",
+    "images": 1
+   }
+  }
+ },
+ {
+  "snapshot": "02-split"
+ },
+ {
+  "action": "showPreviewLayout:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "layout": "preview"
+  }
+ },
+ {
+  "snapshot": "03-preview"
+ },
+ {
+  "action": "showEditorLayout:",
+  "edits": false
+ },
+ {
+  "assert": {
+   "layout": "editor"
+  }
+ },
+ {
+  "action": "showSourceMode:",
+  "edits": false
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "viewMode": "source"
+  }
+ },
+ {
+  "action": "showLiveMode:",
+  "edits": false
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "selectText": "Book the train",
+  "offset": 2
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "action": "toggleSyntaxHighlight:",
+  "edits": false
+ },
+ {
+  "waitSyntax": 30
+ },
+ {
+  "assert": {
+   "focusing": true,
+   "syntaxing": true,
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "04-focus-syntax",
+  "bitmap": true
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "action": "toggleSyntaxHighlight:",
+  "edits": false
+ },
+ {
+  "log": "7. File > Save, File > Export > PDF, Edit > Copy As > Rich Text of the whole document."
+ },
+ {
+  "save": true
+ },
+ {
+  "assert": {
+   "edited": false,
+   "file": {
+    "contains": [
+     "# Trip notes\n",
+     "| Day | Place | Note   | Cost |\n",
+     "| --- | ----- | ------ | ---: |\n",
+     "![photo](photo.png)\n",
+     "[^1]: The note itself.\nText written by a model.",
+     "\n---\nAnnotations: ",
+     "\n&AI: ",
+     "\n*Reference: ",
+     "\n..."
+    ]
+   }
+  }
+ },
+ {
+  "exportPDF": "trip notes.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "trip notes.pdf",
+    "minPages": 1,
+    "images": 1,
+    "light": true,
+    "contains": [
+     "Trip notes",
+     "Water the plants",
+     "Paris",
+     "let total = 3",
+     "timetable",
+     "The note itself.",
+     "Text written by a model."
+    ],
+    "lacks": [
+     "Annotations:",
+     "[^1]",
+     "&AI"
+    ]
+   }
+  }
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "copyAs": "richText"
+ },
+ {
+  "assert": {
+   "pasteboard": {
+    "htmlContains": [
+     "<h1",
+     "<table",
+     "<li",
+     "type=\"checkbox\"",
+     "href=\"https://example.com/timetable\"",
+     "<code",
+     "Text written by a model."
+    ],
+    "htmlLacks": [
+     "Annotations:",
+     "&amp;AI:",
+     "data-line"
+    ],
+    "plainContains": [
+     "Trip notes",
+     "Water the plants"
+    ],
+    "plainLacks": [
+     "Annotations:"
+    ],
+    "rtf": true
+   }
+  }
+ },
+ {
+  "log": "8. Closed and opened again: the text, the marks and the file are what was saved."
+ },
+ {
+  "log": "(A body without a final newline is written with one before the annotation block, and reads back with it: see the M5 notes.)"
+ },
+ {
+  "reopen": true
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "textEquals": "# Trip notes\n\nPlans for the week, written here first.\n\n## Packing\n\n- Pack the bag\n- Book the train\n\n- [ ] Water the plants\n- [ ] Call home\n\n| Day | Place | Note   | Cost |\n| --- | ----- | ------ | ---: |\n| Mon | Paris | arrive |   40 |\n| Tue | Lyon  | market |      |\n| Wed | Nice  | sea    |      |\n\n```\nlet total = 3\n```\n\nSee the [timetable](https://example.com/timetable) for times. A footnote[^1] goes here.\n\n![photo](photo.png)\n\n[^1]: The note itself.\nText written by a model.\n",
+   "edited": false,
+   "authorship": {
+    "runs": [
+     [
+      "Text written by a model.",
+      "ai"
+     ],
+     [
+      "Plans for the week",
+      "reference"
+     ],
+     [
+      "Packing",
+      "me"
+     ]
+    ],
+    "pendingDecision": false
+   }
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "assert": {
+   "images": {
+    "loaded": 1
+   }
+  }
+ },
+ {
+  "snapshot": "05-reopened"
+ },
+ {
+  "close": true
+ }
+]

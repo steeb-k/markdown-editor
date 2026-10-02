@@ -112,10 +112,22 @@ final class PrintRenderer: NSObject, WKNavigationDelegate {
         loadTimer = timer
         let parts = PreviewController.split(page: html)
         pendingBody = parts.body
+        bodyHasText = Self.hasVisibleText(parts.body)
         webView.loadHTMLString(parts.shell, baseURL: PreviewURL.base)
     }
 
     private var pendingBody = ""
+    /// Whether the page has words on it. A PDF of a page with words but no text layer is a page that
+    /// was not painted yet (see `exportPDF`); a document of only pictures, only front matter or only a
+    /// rule makes a PDF without text that is quite right.
+    private(set) var bodyHasText = false
+
+    /// Text in `body` (HTML) once its tags are gone, non-breaking spaces counting as blanks.
+    static func hasVisibleText(_ body: String) -> Bool {
+        body.replacingOccurrences(of: "<[^>]*>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ").replacingOccurrences(of: "&#160;", with: " ")
+            .contains { !$0.isWhitespace }
+    }
 
     private func finishLoad(_ ok: Bool) {
         loadTimer?.invalidate()
@@ -205,7 +217,12 @@ extension MarkdownDocument {
         let options = RenderOptions(sourceLines: false, standalone: true, sanitize: false, highlight: true,
                                     fallbackTitle: displayName ?? "Untitled",
                                     style: PreviewStyle(theme: appearance.theme, typography: PreviewTypography.make(from: appearance)))
-        session.coordinator.async({ doc in doc.renderHtml(options: options) }) { html, _ in completion(html) }
+        // With the pictures' declared sizes, as the preview has them: a retina screenshot is printed
+        // at its size in points, not at twice it.
+        let sizes = PictureSizes(), documentURL = fileURL
+        session.coordinator.async({ doc in
+            doc.renderHtml(options: PreviewController.withPictureSizes(options, sizes: sizes, doc: doc, documentURL: documentURL))
+        }) { html, _ in completion(html) }
     }
 
     /// Loads the document into an offscreen page and gives the print operation for it (nil if the
@@ -234,8 +251,23 @@ extension MarkdownDocument {
             completion(problem)
             return
         }
-        exportPDF(to: url, attempts: 3, completion: completion)
+        // Info.plist lets the system end the app at once (sudden termination, at log-out) or when it
+        // has nothing on screen (automatic termination): fine for documents, which NSDocument guards
+        // while they have changes or are being saved, but not for a PDF half written. The window may
+        // be closed while the export runs, and the app may be behind others (App Nap would slow the
+        // pagination down to a crawl): a user-initiated activity covers all three.
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .suddenTerminationDisabled, .automaticTerminationDisabled], reason: "Exporting a PDF")
+        Self.exportsInFlight += 1
+        exportPDF(to: url, attempts: 3) { error in
+            Self.exportsInFlight -= 1
+            ProcessInfo.processInfo.endActivity(activity)
+            completion(error)
+        }
     }
+
+    /// PDF exports under way, each holding off sudden and automatic termination (tests).
+    @MainActor public static var exportsInFlight = 0
 
     /// A page that was not painted yet prints as blank pages: look at what was written and try again.
     @MainActor
@@ -244,7 +276,8 @@ extension MarkdownDocument {
             guard let op, let renderer else { completion(ExportError.pageDidNotLoad); return }
             op.showsPrintPanel = false
             op.showsProgressPanel = false
-            let expectsText = !self.session.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // (What the page shows, not the source: a picture alone, or front matter alone, prints no text.)
+            let expectsText = renderer.bodyHasText
             // Not `run()`: the page is paginated by the web content process, which needs the main
             // run loop; the asynchronous form lets it have it.
             let job = PDFJob { ok in

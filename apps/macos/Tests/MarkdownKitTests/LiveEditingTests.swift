@@ -108,17 +108,46 @@ final class LiveEditingTests: XCTestCase {
         XCTAssertFalse(e.isNull(heading.location + 1))
     }
 
-    func testVerticalMoveIntoAPictureLandsAtTheStartOfItsSource() {
-        let text = "Some paragraph text\n\n![a long description of the picture](missing/picture.png)\n\nend"
+    func testVerticalMovesThroughAPictureKeepTheirColumn() {
+        // AppKit chooses the place in the picture's line while the picture is still drawn there (as wide
+        // as the column), which put the caret at the end of the source going down and up alike; and a
+        // caret set by hand makes AppKit forget the column for the rows after it.
+        let text = "Some paragraph text\n\n![a long description of the picture](missing/picture.png)\n\nend of the text here"
         let ns = text as NSString
+        let picture = ns.range(of: "![a long").location
+        let last = ns.range(of: "end of").location
         let e = Editor.live(text, caret: 5)
         e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
         e.settle()
         XCTAssertEqual(e.tv.selectedRange().location, ns.range(of: "\n\n![").location + 1, "the blank line above the picture is visited")
         e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
         e.settle()
-        XCTAssertEqual(e.tv.selectedRange(), NSRange(location: ns.range(of: "![a long").location, length: 0), "at the start of the picture's source line")
-        XCTAssertFalse(e.isNull(ns.range(of: "![a long").location), "the source is shown while the caret is on it")
+        let inPicture = e.tv.selectedRange().location
+        XCTAssertTrue(abs(inPicture - (picture + 5)) <= 1, "in the picture's source at the column the run started from: \(inPicture - picture)")
+        XCTAssertFalse(e.isNull(picture), "the source is shown while the caret is on it")
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        XCTAssertTrue(abs(e.tv.selectedRange().location - (last + 5)) <= 1, "the row below the picture keeps the column: \(e.tv.selectedRange().location - last)")
+        // Up again: into the source at the same column (not at its end), then the row above it.
+        e.tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+        e.settle()
+        e.tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+        e.settle()
+        XCTAssertTrue(abs(e.tv.selectedRange().location - (picture + 5)) <= 1, "up into the source at the column: \(e.tv.selectedRange().location - picture)")
+        e.tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+        e.settle()
+        e.tv.doCommand(by: #selector(NSResponder.moveUp(_:)))
+        e.settle()
+        XCTAssertTrue(abs(e.tv.selectedRange().location - 5) <= 1, "back on the first row at the column: \(e.tv.selectedRange().location)")
+        // A click (any other selection change) ends the run: the next press starts from where the caret is.
+        e.tv.setSelectedRange(NSRange(location: 2, length: 0))
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        XCTAssertTrue(abs(e.tv.selectedRange().location - (picture + 2)) <= 1, "a new run, a new column: \(e.tv.selectedRange().location - picture)")
     }
 
     func testMovingAcrossACollapsedFenceEntersTheCode() {

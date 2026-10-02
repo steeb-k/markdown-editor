@@ -1,0 +1,126 @@
+[
+ {
+  "log": "The editor's scroll limits: never above the text's top (under the title bar), never past its end, in every layout, after resizing, with the find bar open."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "source"
+  }
+ },
+ {
+  "new": true
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "load": "# Top line\n\nParagraph 0 with some words in it to fill the line.\n\nParagraph 1 with some words in it to fill the line.\n\nParagraph 2 with some words in it to fill the line.\n\nParagraph 3 with some words in it to fill the line.\n\nParagraph 4 with some words in it to fill the line.\n\nParagraph 5 with some words in it to fill the line.\n\nParagraph 6 with some words in it to fill the line.\n\nParagraph 7 with some words in it to fill the line.\n\nParagraph 8 with some words in it to fill the line.\n\nParagraph 9 with some words in it to fill the line.\n\nParagraph 10 with some words in it to fill the line.\n\nParagraph 11 with some words in it to fill the line.\n\nParagraph 12 with some words in it to fill the line.\n\nParagraph 13 with some words in it to fill the line.\n\nParagraph 14 with some words in it to fill the line.\n\nParagraph 15 with some words in it to fill the line.\n\nParagraph 16 with some words in it to fill the line.\n\nParagraph 17 with some words in it to fill the line.\n\nParagraph 18 with some words in it to fill the line.\n\nParagraph 19 with some words in it to fill the line.\n\nParagraph 20 with some words in it to fill the line.\n\nParagraph 21 with some words in it to fill the line.\n\nParagraph 22 with some words in it to fill the line.\n\nParagraph 23 with some words in it to fill the line.\n\nParagraph 24 with some words in it to fill the line.\n\nParagraph 25 with some words in it to fill the line.\n\nParagraph 26 with some words in it to fill the line.\n\nParagraph 27 with some words in it to fill the line.\n\nParagraph 28 with some words in it to fill the line.\n\nParagraph 29 with some words in it to fill the line.\n\nParagraph 30 with some words in it to fill the line.\n\nParagraph 31 with some words in it to fill the line.\n\nParagraph 32 with some words in it to fill the line.\n\nParagraph 33 with some words in it to fill the line.\n\nParagraph 34 with some words in it to fill the line.\n\nParagraph 35 with some words in it to fill the line.\n\nParagraph 36 with some words in it to fill the line.\n\nParagraph 37 with some words in it to fill the line.\n\nParagraph 38 with some words in it to fill the line.\n\nParagraph 39 with some words in it to fill the line.\n\nParagraph 40 with some words in it to fill the line.\n\nParagraph 41 with some words in it to fill the line.\n\nParagraph 42 with some words in it to fill the line.\n\nParagraph 43 with some words in it to fill the line.\n\nParagraph 44 with some words in it to fill the line.\n\nParagraph 45 with some words in it to fill the line.\n\nParagraph 46 with some words in it to fill the line.\n\nParagraph 47 with some words in it to fill the line.\n\nParagraph 48 with some words in it to fill the line.\n\nParagraph 49 with some words in it to fill the line.\n\nParagraph 50 with some words in it to fill the line.\n\nParagraph 51 with some words in it to fill the line.\n\nParagraph 52 with some words in it to fill the line.\n\nParagraph 53 with some words in it to fill the line.\n\nParagraph 54 with some words in it to fill the line.\n\nParagraph 55 with some words in it to fill the line.\n\nParagraph 56 with some words in it to fill the line.\n\nParagraph 57 with some words in it to fill the line.\n\nParagraph 58 with some words in it to fill the line.\n\nParagraph 59 with some words in it to fill the line.\n\nParagraph 60 with some words in it to fill the line.\n\nParagraph 61 with some words in it to fill the line.\n\nParagraph 62 with some words in it to fill the line.\n\nParagraph 63 with some words in it to fill the line.\n\nParagraph 64 with some words in it to fill the line.\n\nParagraph 65 with some words in it to fill the line.\n\nParagraph 66 with some words in it to fill the line.\n\nParagraph 67 with some words in it to fill the line.\n\nParagraph 68 with some words in it to fill the line.\n\nParagraph 69 with some words in it to fill the line.\n\nParagraph 70 with some words in it to fill the line.\n\nParagraph 71 with some words in it to fill the line.\n\nParagraph 72 with some words in it to fill the line.\n\nParagraph 73 with some words in it to fill the line.\n\nParagraph 74 with some words in it to fill the line.\n\nParagraph 75 with some words in it to fill the line.\n\nParagraph 76 with some words in it to fill the line.\n\nParagraph 77 with some words in it to fill the line.\n\nParagraph 78 with some words in it to fill the line.\n\nParagraph 79 with some words in it to fill the line.\n\nThe last line.\n"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": -1000,
+  "notAbove": -32
+ },
+ {
+  "scroll": 10000000,
+  "notBeyondEnd": 200
+ },
+ {
+  "snapshot": "end-editor"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 20
+ },
+ {
+  "scroll": -1000,
+  "notAbove": -32
+ },
+ {
+  "scroll": 10000000,
+  "notBeyondEnd": 200
+ },
+ {
+  "resize": [
+   600,
+   500
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "scroll": -1000,
+  "notAbove": -32
+ },
+ {
+  "scroll": 10000000,
+  "notBeyondEnd": 200
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "resize": [
+   1300,
+   900
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "scroll": -1000,
+  "notAbove": -32
+ },
+ {
+  "scroll": 10000000,
+  "notBeyondEnd": 200
+ },
+ {
+  "action": "performTextFinderAction:",
+  "tag": 1,
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "scroll": -1000
+ },
+ {
+  "snapshot": "find-bar-top"
+ },
+ {
+  "scroll": 10000000
+ },
+ {
+  "snapshot": "find-bar-end"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": -1000
+ },
+ {
+  "scroll": 10000000
+ },
+ {
+  "close": true
+ }
+]

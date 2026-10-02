@@ -20,6 +20,10 @@ public final class EditorTextView: NSTextView {
     public internal(set) var currentCommand: Selector?
     /// The selection Live mode last extended from the keyboard, and its anchor.
     var liveAnchor: (selection: NSRange, anchor: Int)?
+    /// Up and Down through pictures in Live mode (see `moveVerticallyThroughPictures`): the column
+    /// the run of presses keeps, the caret it left, and whether it has placed the caret itself
+    /// (AppKit's own memory of the column is lost once the selection is set by hand).
+    var verticalGoal: (selection: NSRange, x: CGFloat, placed: Bool)?
     /// The pointing hand is showing for a Command-hover over a link.
     var showsLinkCursor = false
 
@@ -201,25 +205,8 @@ public final class EditorTextView: NSTextView {
                 if handleTab(outdent: false) { return }
             case #selector(NSResponder.insertBacktab(_:)):
                 if handleTab(outdent: true) { return }
-            case #selector(NSResponder.moveDown(_:)):
-                // Down into a picture's line puts the caret at the start of its source (where the
-                // line begins), not at the end of it where the picture's own width would leave it.
-                // (AppKit's memory of the column the caret came from is lost by that, so the rows
-                // below a picture start at their beginning.)
-                if let lm = layoutManager as? EditorLayoutManager, session?.viewMode == .live, selectedRange().length == 0,
-                   !lm.imageDecorations.isEmpty {
-                    let ns = string as NSString
-                    let before = selectedRange().location
-                    let pictures = lm.imageDecorations.map { ns.paragraphRange(for: NSRange(location: min($0.range.location, max(0, ns.length - 1)), length: 0)) }
-                    super.doCommand(by: selector)
-                    let after = selectedRange()
-                    if after.length == 0,
-                       let line = pictures.first(where: { NSLocationInRange(after.location, $0) || after.location == NSMaxRange($0) }),
-                       before < line.location, after.location > line.location {
-                        setSelectedRange(NSRange(location: line.location, length: 0))
-                    }
-                    return
-                }
+            case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:)):
+                if moveVerticallyThroughPictures(selector) { return }
             default: break
             }
         }
