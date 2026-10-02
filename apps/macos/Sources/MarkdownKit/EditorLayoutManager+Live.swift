@@ -16,18 +16,41 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
 
     /// Installs `new` and invalidates glyphs and layout only for the paragraphs whose
     /// concealment actually changed.
-    func setLive(_ new: LiveState) {
+    /// `changedWithin`: the states differ only inside this range (the session merges a windowed
+    /// answer into what it had), so only it is compared: the cost of a query does not grow with
+    /// everything concealed elsewhere.
+    func setLive(_ new: LiveState, changedWithin window: NSRange? = nil) {
         let old = live
         guard new != old || !staleRanges.isEmpty else { return }
         live = new
         derive(from: new)
         guard let storage = textStorage else { return }
         let length = storage.length
-        var changed = RangeList.symmetricDifference(old.hidden, new.hidden)
-        changed += RangeList.symmetricDifference(old.collapsed, new.collapsed)
-        for d in Set(old.decorations).symmetricDifference(Set(new.decorations)) { changed.append(d.range) }
-        changed += staleRanges
-        staleRanges = []
+        func near(_ list: [NSRange]) -> [NSRange] {
+            guard let w = window else { return list }
+            let lo = RangeList.firstIndex(endingAfter: w.location - 1, in: list)
+            var out: [NSRange] = []
+            var i = lo
+            while i < list.count, list[i].location <= NSMaxRange(w) { out.append(list[i]); i += 1 }
+            return out
+        }
+        func nearDecorations(_ list: [LiveDecoration]) -> [LiveDecoration] {
+            guard let w = window else { return list }
+            return list.filter { $0.range.location <= NSMaxRange(w) && NSMaxRange($0.range) >= w.location }
+        }
+        var changed = RangeList.symmetricDifference(near(old.hidden), near(new.hidden))
+        changed += RangeList.symmetricDifference(near(old.collapsed), near(new.collapsed))
+        for d in Set(nearDecorations(old.decorations)).symmetricDifference(Set(nearDecorations(new.decorations))) { changed.append(d.range) }
+        // Text whose glyphs were made for a state that is gone: regenerated once a window
+        // covers it (no one sees it before that).
+        if let w = window {
+            let reach = NSRange(location: max(0, w.location - 1), length: w.length + 2)
+            changed += staleRanges.filter { NSIntersectionRange($0, reach).length > 0 }
+            staleRanges = staleRanges.filter { NSIntersectionRange($0, reach).length == 0 }
+        } else {
+            changed += staleRanges
+            staleRanges = []
+        }
         let ns = storage.mutableString as NSString
         var paragraphs = RangeList.normalized(changed.compactMap { r in
             let c = RangeMath.clamp(r, toLength: length)
@@ -36,12 +59,35 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
         })
         // A quote bar or a rule spans lines whose own concealment did not change.
         paragraphs = RangeList.normalized(paragraphs)
+        // A newly queried window changes hundreds of paragraphs: changes close together are
+        // invalidated as one range (fewer calls; the few characters in between are only laid
+        // out again).
+        var coalesced: [NSRange] = []
+        for p in paragraphs {
+            if let last = coalesced.last, p.location - NSMaxRange(last) < Self.invalidationGap {
+                coalesced[coalesced.count - 1] = NSUnionRange(last, p)
+            } else {
+                coalesced.append(p)
+            }
+        }
+        paragraphs = coalesced
         if recordsInvalidations { invalidatedRanges += paragraphs }
         for p in paragraphs {
             invalidateGlyphs(forCharacterRange: p, changeInLength: 0, actualCharacterRange: nil)
             invalidateLayout(forCharacterRange: p, actualCharacterRange: nil)
-            invalidateDisplay(forCharacterRange: p)
         }
+        // Redraw what is on screen. (`invalidateDisplay(forCharacterRange:)` lays the whole
+        // range out to find its rectangles: 80 ms for a newly queried window in a release build;
+        // text off screen is drawn when it is scrolled to anyway.)
+        if !paragraphs.isEmpty {
+            for tv in textContainers.compactMap(\.textView) { tv.setNeedsDisplay(tv.visibleRect, avoidAdditionalLayout: true) }
+        }
+    }
+
+    /// The glyphs of `ranges` were made for concealment that is no longer known: they are
+    /// regenerated when a query covers them again (see `setLive`).
+    func markStale(_ ranges: [NSRange]) {
+        staleRanges = RangeList.normalized(staleRanges + ranges)
     }
 
     /// The layout of everything concealed is stale (width, font or budget changed).
@@ -55,11 +101,14 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
     /// Re-lays out (and redraws) the image paragraphs, e.g. when an image has just loaded.
     func invalidateImages(where matches: (LiveDecoration) -> Bool) {
         guard let storage = textStorage else { return }
+        let ns = storage.mutableString as NSString
         for d in imageDecorations where matches(d) {
             let r = RangeMath.clamp(d.range, toLength: storage.length)
             guard r.length > 0 else { continue }
-            invalidateLayout(forCharacterRange: r, actualCharacterRange: nil)
-            invalidateDisplay(forCharacterRange: r)
+            // The whole line, its terminator (which carries the picture's line fragment) included.
+            let line = ns.paragraphRange(for: r)
+            invalidateLayout(forCharacterRange: line, actualCharacterRange: nil)
+            invalidateDisplay(forCharacterRange: line)
         }
     }
 
@@ -102,6 +151,7 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
         let n = glyphRange.length
         guard !hidden.isEmpty, n > 0 else { return 0 }
         let first = charIndexes[0], last = charIndexes[n - 1]
+        checkSplitSurrogate(at: max(first, last))
         let i = RangeList.firstIndex(endingAfter: min(first, last), in: hidden)
         guard i < hidden.count, hidden[i].location <= max(first, last) else { return 0 }
         var out = Array(UnsafeBufferPointer(start: props, count: n))
@@ -114,6 +164,34 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
             lm.setGlyphs(glyphs, properties: buf.baseAddress!, characterIndexes: charIndexes, font: aFont, forGlyphRange: glyphRange)
         }
         return n
+    }
+
+    /// AppKit sometimes fills a glyph hole in a piece that ends between the two halves of a
+    /// surrogate pair (an emoji, a rare CJK character), and then the character can come out as a
+    /// null glyph: drawn as nothing until its glyphs are made again. Seen only in Live mode
+    /// (whose collapsed and picture lines change how AppKit fills holes); the stress test found
+    /// it. Such a pair is checked once the generation is over and made again if it went wrong.
+    func checkSplitSurrogate(at i: Int) {
+        guard let storage = textStorage, i < storage.length,
+              CFStringIsSurrogateHighCharacter((storage.mutableString as NSString).character(at: i)) else { return }
+        splitSurrogates.insert(i)
+        guard splitSurrogates.count == 1 else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let storage = textStorage else { return }
+            let ns = storage.mutableString as NSString
+            let pending = splitSurrogates
+            splitSurrogates = []
+            var fixed = false
+            for i in pending where i + 1 < ns.length && CFStringIsSurrogateHighCharacter(ns.character(at: i)) && !live.isHidden(i) {
+                if propertyForGlyph(at: glyphIndexForCharacter(at: i)).contains(.null) {
+                    let pair = NSRange(location: i, length: 2)
+                    invalidateGlyphs(forCharacterRange: pair, changeInLength: 0, actualCharacterRange: nil)
+                    invalidateLayout(forCharacterRange: pair, actualCharacterRange: nil)
+                    fixed = true
+                }
+            }
+            if fixed { for tv in textContainers.compactMap(\.textView) { tv.setNeedsDisplay(tv.visibleRect, avoidAdditionalLayout: true) } }
+        }
     }
 
     /// Is the hidden character at `ci` part of the markup that starts its paragraph (`# `, `> `,
@@ -203,6 +281,21 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
         return NSMaxRange(range) < length ? NSMaxRange(range) : max(0, length - 1)
     }
 
+    /// Where a picture starts: under its paragraph's text, so one in a list item or a quote sits
+    /// beside its bullet or bar, not over it.
+    func imageIndent(of range: NSRange) -> CGFloat {
+        guard let storage = textStorage, range.location < storage.length,
+              let style = storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle else { return 0 }
+        return max(0, style.headIndent)
+    }
+
+    /// The room the picture standing for `range` may take: the column right of its indent.
+    func imageBudget(for range: NSRange) -> ImageController.Budget {
+        var budget = imageBudget()
+        budget.width = max(40, budget.width - imageIndent(of: range))
+        return budget
+    }
+
     func imageDecoration(hostedIn chars: NSRange) -> LiveDecoration? {
         imageDecorations.first { d in
             let host = hostCharacter(of: d.range)
@@ -219,7 +312,7 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
         if let line = collapsedLine(inFragment: chars) {
             height = collapsedHeight(of: line)
         } else if let d = imageDecoration(hostedIn: chars), case .image(let destination, _) = d.kind {
-            let budget = imageBudget()
+            let budget = imageBudget(for: d.range)
             let size = imageEntry?(destination, budget).size ?? ImageController.placeholderSize(budget)
             height = size.height + 2 * Self.imagePadding
         }
@@ -293,15 +386,42 @@ extension EditorLayoutManager {
     /// Horizontal extent of the glyphs `run` (within one line fragment), from where the first one
     /// is placed to where the glyph after the run is (or the end of the line). `boundingRect`
     /// answers wrongly for runs next to null glyphs.
+    ///
+    /// Right-to-left text is placed from right to left: there the glyph after the run is to its
+    /// left, so the extent is the union of the run's own glyphs (each from where it is placed to
+    /// its advance).
     private func xRange(of run: NSRange, fragment fragGlyphs: NSRange, line: NSRect, used: NSRect) -> ClosedRange<CGFloat> {
         let start = line.minX + location(forGlyphAt: run.location).x
         let end = NSMaxRange(run) < NSMaxRange(fragGlyphs) ? line.minX + location(forGlyphAt: NSMaxRange(run)).x : used.maxX
-        return start...max(start, end)
+        let rightToLeft = (run.location..<NSMaxRange(run)).contains { isRightToLeft(glyph: $0) }
+        // (Also when the glyph after the run reports no advance, as CJK glyphs drawn one at a time do.)
+        guard rightToLeft || end < start + 0.5, let storage = textStorage else { return start...max(start, end) }
+        var lo = CGFloat.greatestFiniteMagnitude, hi = -CGFloat.greatestFiniteMagnitude
+        for g in run.location..<NSMaxRange(run) where !propertyForGlyph(at: g).contains(.null) {
+            let ci = characterIndexForGlyph(at: g)
+            guard ci < storage.length, let font = storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont else { continue }
+            let x = line.minX + location(forGlyphAt: g).x
+            lo = min(lo, x)
+            hi = max(hi, x + font.advancement(forCGGlyph: cgGlyph(at: g)).width)
+        }
+        return lo <= hi ? lo...hi : start...max(start, end)
+    }
+
+    /// Is glyph `g` laid out right to left (its successor in the same line sits to its left)?
+    private func isRightToLeft(glyph g: Int) -> Bool {
+        guard g + 1 < numberOfGlyphs else { return false }
+        var a = NSRange(), b = NSRange()
+        _ = lineFragmentRect(forGlyphAt: g, effectiveRange: &a)
+        _ = lineFragmentRect(forGlyphAt: g + 1, effectiveRange: &b)
+        return NSEqualRanges(a, b) && location(forGlyphAt: g + 1).x < location(forGlyphAt: g).x
     }
 
     public override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         drawOrigin = origin
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+        // Bullets, checkboxes, bars, rules and pictures go over the text backgrounds and the
+        // selection highlight, like the glyphs they stand for.
+        drawDecorations(forGlyphRange: glyphsToShow, at: origin)
     }
 
     public override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
@@ -328,6 +448,7 @@ extension EditorLayoutManager {
                 while sub.length > 0, live.isHidden(characterIndexForGlyph(at: sub.location)) { sub.location += 1; sub.length -= 1 }
                 guard sub.length > 0 else { return }
                 let x = xRange(of: sub, fragment: fragGlyphs, line: line, used: used)
+                manualDrawings?.append((sub, x))
                 NSRect(x: x.lowerBound + drawOrigin.x, y: line.minY + drawOrigin.y, width: x.upperBound - x.lowerBound, height: line.height).fill()
             }
         }
@@ -353,6 +474,7 @@ extension EditorLayoutManager {
             let baseline = lineRect.minY + location(forGlyphAt: run.location).y
             let y = (baseline - font.xHeight * 0.5).rounded() + 0.5
             let path = NSBezierPath()
+            manualDrawings?.append((run, x))
             path.move(to: NSPoint(x: x.lowerBound + containerOrigin.x, y: y + containerOrigin.y))
             path.line(to: NSPoint(x: x.upperBound + containerOrigin.x, y: y + containerOrigin.y))
             path.lineWidth = max(1, (font.pointSize / 16).rounded())

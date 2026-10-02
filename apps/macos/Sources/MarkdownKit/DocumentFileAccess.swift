@@ -33,6 +33,25 @@ public enum DocumentFileAccess {
         return candidate
     }
 
+    /// Writes `data` to a new file `<name>.<ext>` in `directory` (or `<name> 2.<ext>`...) and
+    /// returns where. Never replaces a file, even one another paste is creating at the same
+    /// moment: the name is only taken if the file did not exist when it was created.
+    public static func writeNew(_ data: Data, in directory: URL, name: String, ext: String) throws -> URL {
+        var n = 1
+        while true {
+            let candidate = directory.appendingPathComponent(n == 1 ? name : "\(name) \(n)").appendingPathExtension(ext)
+            do {
+                try data.write(to: candidate, options: .withoutOverwriting)
+                return candidate
+            } catch CocoaError.fileWriteFileExists {
+                n += 1
+            } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(EEXIST) {
+                n += 1
+            }
+            if n > 10_000 { throw CocoaError(.fileWriteFileExists) }
+        }
+    }
+
     /// `file`'s path relative to the folder holding `document`, or the absolute path when
     /// `document` is nil (not saved yet).
     public static func path(of file: URL, relativeTo document: URL?) -> String {

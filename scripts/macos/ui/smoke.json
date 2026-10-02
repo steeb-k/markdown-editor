@@ -17,6 +17,9 @@
   "open": "scripts/macos/ui/fixtures/tour.md"
  },
  {
+  "viewMode": "source"
+ },
+ {
   "resize": [
    900,
    820
@@ -634,6 +637,9 @@
  },
  {
   "newTab": true
+ },
+ {
+  "viewMode": "source"
  },
  {
   "wait": 0.5

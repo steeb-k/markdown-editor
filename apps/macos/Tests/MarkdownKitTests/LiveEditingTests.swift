@@ -61,7 +61,7 @@ final class LiveEditingTests: XCTestCase {
         }
     }
 
-    func testCaretIsSnappedOutOfHiddenText() {
+    func testCaretRestsOnlyWhereItCanBeSeen() {
         let text = "# Head\n\n- [ ] task\n\n```\ncode\n```\n\nend"
         let ns = text as NSString
         let e = Editor.live(text, caret: ns.length)
@@ -69,26 +69,26 @@ final class LiveEditingTests: XCTestCase {
         func change(from old: Int, to new: Int) -> Int {
             s.textView(e.tv, willChangeSelectionFromCharacterRange: NSRange(location: old, length: 0), toCharacterRange: NSRange(location: new, length: 0)).location
         }
-        // "# " is hidden: a caret inside it goes to the edge it was heading for.
-        XCTAssertEqual(change(from: 20, to: 1), 0, "arriving from below, at the start")
-        XCTAssertEqual(change(from: 0, to: 1), 2, "heading right, past the prefix")
-        // The task prefix is one unit.
-        let task = ns.range(of: "- [ ] ")
-        XCTAssertEqual(change(from: 0, to: task.location + 3), NSMaxRange(task))
-        XCTAssertEqual(change(from: 40, to: task.location + 3), task.location)
-        // Edges are fine.
-        XCTAssertEqual(change(from: 20, to: 0), 0)
-        XCTAssertEqual(change(from: 20, to: 2), 2)
-        // A caret landing on a collapsed fence line goes to the code (or from below, to the end of the code).
-        let open = ns.range(of: "```\ncode")
-        XCTAssertEqual(change(from: 0, to: open.location + 1), open.location + 4)
-        let close = ns.range(of: "```\n\nend")
-        XCTAssertEqual(change(from: ns.length, to: close.location + 1), close.location - 1)
-        // Selections are left alone.
-        XCTAssertEqual(s.textView(e.tv, willChangeSelectionFromCharacterRange: NSRange(location: 0, length: 0), toCharacterRange: NSRange(location: 0, length: 5)), NSRange(location: 0, length: 5))
-        // Source mode never snaps.
-        s.setViewMode(.source)
+        // "# " is hidden now, but shown once the caret is on its line: the caret stays put.
         XCTAssertEqual(change(from: 20, to: 1), 1)
+        XCTAssertEqual(change(from: 0, to: 1), 1)
+        // A task item's prefix stays hidden with the caret beside it; its start and its end are
+        // the same place on screen, and only the end is a place to rest.
+        let task = ns.range(of: "- [ ] ")
+        for p in task.location..<NSMaxRange(task) {
+            XCTAssertEqual(change(from: 0, to: p), NSMaxRange(task), "from above to \(p)")
+            XCTAssertEqual(change(from: 40, to: p), NSMaxRange(task), "from below to \(p) (a click, a vertical move)")
+        }
+        // A caret landing on a collapsed fence line stays there: the fence is shown.
+        let open = ns.range(of: "```\ncode")
+        XCTAssertEqual(change(from: 0, to: open.location + 1), open.location + 1)
+        let close = ns.range(of: "```\n\nend")
+        XCTAssertEqual(change(from: ns.length, to: close.location + 1), close.location + 1)
+        // Selections made by the mouse or by Find are left alone.
+        XCTAssertEqual(s.textView(e.tv, willChangeSelectionFromCharacterRange: NSRange(location: 0, length: 0), toCharacterRange: NSRange(location: 0, length: 5)), NSRange(location: 0, length: 5))
+        // Source mode never moves the caret.
+        s.setViewMode(.source)
+        XCTAssertEqual(change(from: 20, to: task.location + 1), task.location + 1)
     }
 
     func testVerticalMoveIntoAHeadingLandsAfterItsPrefixAndRevealsIt() {
@@ -308,6 +308,26 @@ final class LiveEditingTests: XCTestCase {
         XCTAssertFalse(try click(on: "see"), "plain text is not a link")
     }
 
+    func testThePointingHandComesAndGoesWithCommandOverALink() throws {
+        let text = "see [the site](https://example.com/page) and plain\n\nz"
+        let e = Editor.live(text, caret: (text as NSString).length)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.contentView = e.tv
+        defer { window.contentView = nil }
+        let ns = text as NSString
+        func point(_ needle: String) throws -> NSPoint {
+            let g = e.lm.glyphIndexForCharacter(at: ns.range(of: needle).location)
+            let r = e.lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: try XCTUnwrap(e.tv.textContainer))
+            return NSPoint(x: r.midX + e.tv.textContainerOrigin.x, y: r.midY + e.tv.textContainerOrigin.y)
+        }
+        XCTAssertTrue(e.tv.updateLinkCursor(modifiers: .command, at: try point("the site")))
+        XCTAssertTrue(e.tv.showsLinkCursor)
+        XCTAssertFalse(e.tv.updateLinkCursor(modifiers: [], at: try point("the site")), "Command released")
+        XCTAssertFalse(e.tv.showsLinkCursor)
+        XCTAssertFalse(e.tv.updateLinkCursor(modifiers: .command, at: try point("plain")), "not a link")
+    }
+
     // MARK: menus
 
     func testViewMenuHasModeItemsWithKeyEquivalents() throws {
@@ -351,6 +371,43 @@ final class LiveEditingTests: XCTestCase {
 
     // MARK: windowed queries
 
+    /// A query for a window compares and invalidates only that window, and text the reader
+    /// returns to (unchanged) needs no new glyphs: jumping around a long document does not get
+    /// slower with everything seen before, and coming back costs no layout.
+    func testWindowedQueriesTouchOnlyTheirWindow() {
+        let para = "Paragraph with *emphasis* and **strong** text and a [link](http://x.y) end.\n\n```\ncode\n```\n\n"
+        let text = String(repeating: para, count: 2_500)
+        let e = Editor(text: text)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        scroll.documentView = e.tv
+        e.tv.setFrameSize(NSSize(width: 800, height: 600))
+        e.session.setViewMode(.live)
+        e.select(0)
+        e.settle()
+        func jump(to location: Int) {
+            e.tv.scrollRangeToVisible(NSRange(location: location, length: 0))
+            e.session.visibleRangeChanged()
+            let turn = expectation(description: "turn")
+            DispatchQueue.main.async { turn.fulfill() }
+            wait(for: [turn], timeout: 5)
+        }
+        e.lm.recordsInvalidations = true
+        let length = e.session.storage.length
+        for fraction in [0.3, 0.5, 0.4, 0.55] {
+            e.lm.invalidatedRanges.removeAll()
+            jump(to: Int(Double(length) * fraction))
+            let w = e.session.liveWindow
+            XCTAssertTrue(e.lm.invalidatedRanges.allSatisfy { $0.location >= w.location - 200 && NSMaxRange($0) <= NSMaxRange(w) + 200 },
+                          "only the window is laid out again: \(e.lm.invalidatedRanges) for \(w)")
+        }
+        // Back to a region seen before (within `keptWindows` of the last): nothing changed
+        // there, nothing is invalidated (but a paragraph at the edge of a window, half known
+        // before).
+        e.lm.invalidatedRanges.removeAll()
+        jump(to: Int(Double(length) * 0.3))
+        XCTAssertLessThan(e.lm.invalidatedRanges.reduce(0) { $0 + $1.length }, 600, "\(e.lm.invalidatedRanges) of a \(e.session.liveWindow.length)-character window")
+    }
+
     func testBigDocumentsAreQueriedByWindowAndRequeriedOnScroll() {
         let para = "Paragraph with *emphasis* and **strong** text and a [link](http://x.y) end.\n\n"
         let text = String(repeating: para, count: 3_000) // ~225k characters
@@ -369,12 +426,38 @@ final class LiveEditingTests: XCTestCase {
         let far = e.session.storage.length * 2 / 3
         e.tv.scrollRangeToVisible(NSRange(location: far, length: 0))
         e.session.visibleRangeChanged()
+        let asked = expectation(description: "one main-queue turn")
+        DispatchQueue.main.async { asked.fulfill() }
+        wait(for: [asked], timeout: 5)
         XCTAssertGreaterThan(e.session.liveQueries, queries)
         e.settle()
         XCTAssertTrue(e.session.liveWindow.location > 0)
         XCTAssertFalse(e.lm.live.hidden.isEmpty)
-        // The concealment of text near the first window is still known (carried over), and
-        // equals what a query for it would say.
-        XCTAssertTrue(e.lm.live.hidden.contains { $0.location < 500 })
+        // What the first window said is let go this far away (it is asked again before being
+        // shown), and its glyphs are marked to be made again then.
+        XCTAssertFalse(e.lm.live.hidden.contains { $0.location < 500 })
+        XCTAssertTrue(e.lm.staleRanges.contains { $0.location < 500 })
+        // Text scrolled into view right after an edit (the analysis queue still busy) is queried
+        // before it is drawn: nothing carried over from before the edit is shown there.
+        e.session.coordinator.artificialDelay = 0.05
+        e.edit(range: NSRange(location: 0, length: 0), with: "x")
+        XCTAssertFalse(e.session.coordinator.isIdle)
+        let back = e.session.storage.length / 3
+        e.tv.scrollRangeToVisible(NSRange(location: back, length: 0))
+        e.session.visibleRangeChanged()
+        // One main-queue turn (before the run loop draws): asked and applied by then.
+        let turn = expectation(description: "one main-queue turn")
+        DispatchQueue.main.async { turn.fulfill() }
+        wait(for: [turn], timeout: 5)
+        XCTAssertTrue(NSLocationInRange(back, e.session.liveWindow), "queried before drawing, not when the queue gets to it")
+        e.session.coordinator.artificialDelay = 0
+        e.settle()
+        // What is applied inside the window is what the core says for it now.
+        let applied = e.session.liveWindow, sel = e.tv.selectedRange()
+        let fresh = e.session.coordinator.sync { doc in
+            LiveState(doc.concealment(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))),
+                                      within: Utf16Range(start: UInt32(applied.location), end: UInt32(NSMaxRange(applied)))), images: [])
+        }
+        XCTAssertEqual(RangeList.normalized(e.lm.live.hidden.map { NSIntersectionRange($0, applied) }), fresh.hidden)
     }
 }

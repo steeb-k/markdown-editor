@@ -71,6 +71,174 @@ extension EditorTextView {
         return r
     }
 
+    // MARK: keys
+
+    static let characterMoves: Set<Selector> = [
+        #selector(NSResponder.moveRight(_:)), #selector(NSResponder.moveLeft(_:)),
+        #selector(NSResponder.moveForward(_:)), #selector(NSResponder.moveBackward(_:)),
+        #selector(NSResponder.moveRightAndModifySelection(_:)), #selector(NSResponder.moveLeftAndModifySelection(_:)),
+        #selector(NSResponder.moveForwardAndModifySelection(_:)), #selector(NSResponder.moveBackwardAndModifySelection(_:)),
+    ]
+    /// Commands that extend a selection from its anchor (their moving end obeys the caret rules).
+    static let selectionExtensions: Set<Selector> = [
+        #selector(NSResponder.moveRightAndModifySelection(_:)), #selector(NSResponder.moveLeftAndModifySelection(_:)),
+        #selector(NSResponder.moveForwardAndModifySelection(_:)), #selector(NSResponder.moveBackwardAndModifySelection(_:)),
+        #selector(NSResponder.moveUpAndModifySelection(_:)), #selector(NSResponder.moveDownAndModifySelection(_:)),
+        #selector(NSResponder.moveWordRightAndModifySelection(_:)), #selector(NSResponder.moveWordLeftAndModifySelection(_:)),
+        #selector(NSResponder.moveWordForwardAndModifySelection(_:)), #selector(NSResponder.moveWordBackwardAndModifySelection(_:)),
+        #selector(NSResponder.moveToBeginningOfLineAndModifySelection(_:)), #selector(NSResponder.moveToEndOfLineAndModifySelection(_:)),
+        #selector(NSResponder.moveToLeftEndOfLineAndModifySelection(_:)), #selector(NSResponder.moveToRightEndOfLineAndModifySelection(_:)),
+        #selector(NSResponder.moveParagraphForwardAndModifySelection(_:)), #selector(NSResponder.moveParagraphBackwardAndModifySelection(_:)),
+    ]
+    static let backwardDeletes: Set<Selector> = [
+        #selector(NSResponder.deleteBackward(_:)), #selector(NSResponder.deleteBackwardByDecomposingPreviousCharacter(_:)),
+        #selector(NSResponder.deleteWordBackward(_:)), #selector(NSResponder.deleteToBeginningOfLine(_:)),
+        #selector(NSResponder.deleteToBeginningOfParagraph(_:)),
+    ]
+
+    /// Live mode's part of the key bindings. Returns whether `selector` was handled.
+    ///
+    /// * A character move goes one character in the text, never further. AppKit steps by glyph
+    ///   cluster, and a null glyph joins the cluster before it: from `a| **b**` one press would
+    ///   land inside the bold text, past the place right before it (and with emoji or CJK nearby
+    ///   its visual stepping went backwards). In a left-to-right paragraph the step is taken
+    ///   here, by composed character; in a right-to-left one AppKit moves and a step that passed
+    ///   hidden text is taken again, one character from where it started.
+    /// * Backspace never deletes a character the user cannot see (see `deleteHiddenBeforeCaret`).
+    func handleLiveCommand(_ selector: Selector) -> Bool {
+        guard let session, session.viewMode == .live, let lm = layoutManager as? EditorLayoutManager else { return false }
+        if Self.backwardDeletes.contains(selector) { return !lm.live.isEmpty && deleteHiddenBeforeCaret() }
+        guard Self.characterMoves.contains(selector) else { return false }
+        let ns = string as NSString
+        let before = selectedRange()
+        let extend = Self.selectionExtensions.contains(selector)
+        // A selection's anchor is known when it is a caret, or a selection this method made.
+        var anchor: Int? = nil
+        if extend {
+            if before.length == 0 { anchor = before.location } else if let a = liveAnchor, a.selection == before { anchor = a.anchor }
+        }
+        if !isRightToLeftParagraph(at: before.location), !extend || anchor != nil {
+            let forward = [#selector(NSResponder.moveRight(_:)), #selector(NSResponder.moveForward(_:)),
+                           #selector(NSResponder.moveRightAndModifySelection(_:)), #selector(NSResponder.moveForwardAndModifySelection(_:))].contains(selector)
+            if !extend, before.length > 0 {
+                // Like AppKit: an arrow collapses a selection to its edge.
+                setCaret(forward ? NSMaxRange(before) : before.location)
+                return true
+            }
+            let from: Int
+            if let a = anchor { from = a == before.location ? NSMaxRange(before) : before.location } else { from = before.location }
+            if forward ? from >= ns.length : from <= 0 { return true }
+            let one = forward ? NSMaxRange(Self.character(in: ns, at: from)) : Self.character(in: ns, at: from - 1).location
+            if let a = anchor {
+                setSelectedRange(NSRange(location: min(a, one), length: abs(one - a)))
+                let now = selectedRange()
+                liveAnchor = now.length > 0 ? (now, a) : nil
+                scrollRangeToVisible(NSRange(location: now.location == a ? NSMaxRange(now) : now.location, length: 0))
+            } else {
+                setCaret(one)
+            }
+            return true
+        }
+        let liveBefore = lm.live
+        super.doCommand(by: selector)
+        let after = selectedRange()
+        // The end that moved, and the anchor (nil for a caret).
+        let from: Int, to: Int
+        if before.length == 0 && after.length == 0 {
+            (from, to, anchor) = (before.location, after.location, nil)
+        } else if extend {
+            if before.length == 0 {
+                anchor = before.location
+                from = before.location
+                to = after.location == before.location ? NSMaxRange(after) : after.location
+            } else if after.location == before.location {
+                (anchor, from, to) = (before.location, NSMaxRange(before), NSMaxRange(after))
+            } else if NSMaxRange(after) == NSMaxRange(before) {
+                (anchor, from, to) = (NSMaxRange(before), before.location, after.location)
+            } else {
+                return true
+            }
+        } else {
+            return true
+        }
+        guard abs(to - from) > 1, (min(from, to)..<max(from, to)).contains(where: { liveBefore.isHidden($0) }) else { return true }
+        let one = to > from ? NSMaxRange(Self.character(in: ns, at: from)) : Self.character(in: ns, at: from - 1).location
+        // Where that step comes to rest, judged from where the press started.
+        let step = session.restingPlace(for: one, anchor: anchor, from: NSRange(location: from, length: 0), command: selector)
+        guard step != to else { return true }
+        let a = anchor ?? step
+        // The affinity tells AppKit which end is the anchor for the next extension.
+        setSelectedRange(NSRange(location: min(a, step), length: abs(step - a)), affinity: step >= a ? .downstream : .upstream, stillSelecting: false)
+        scrollRangeToVisible(NSRange(location: step, length: 0))
+        return true
+    }
+
+    /// The character at `i` as a caret steps over it: a composed character sequence, with a
+    /// CRLF line break as one.
+    static func character(in ns: NSString, at i: Int) -> NSRange {
+        let r = ns.rangeOfComposedCharacterSequence(at: i)
+        if ns.character(at: r.location) == 0x0D, NSMaxRange(r) < ns.length, ns.character(at: NSMaxRange(r)) == 0x0A {
+            return NSRange(location: r.location, length: r.length + 1)
+        }
+        if ns.character(at: r.location) == 0x0A, r.location > 0, ns.character(at: r.location - 1) == 0x0D {
+            return NSRange(location: r.location - 1, length: r.length + 1)
+        }
+        return r
+    }
+
+    private func setCaret(_ location: Int) {
+        setSelectedRange(NSRange(location: location, length: 0))
+        scrollRangeToVisible(selectedRange())
+    }
+
+    /// Does the paragraph at `location` read right to left? Its first strong character decides
+    /// (Unicode's rule for a paragraph of natural direction), unless its style sets a direction.
+    func isRightToLeftParagraph(at location: Int) -> Bool {
+        let ns = string as NSString
+        guard ns.length > 0 else { return false }
+        let at = min(location, ns.length - 1)
+        if let style = textStorage?.attribute(.paragraphStyle, at: at, effectiveRange: nil) as? NSParagraphStyle,
+           style.baseWritingDirection != .natural {
+            return style.baseWritingDirection == .rightToLeft
+        }
+        let para = ns.paragraphRange(for: NSRange(location: at, length: 0))
+        for scalar in ns.substring(with: para).unicodeScalars where scalar.properties.isAlphabetic {
+            switch scalar.value {
+            case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x10800...0x10FFF, 0x1E800...0x1EFFF: return true
+            default: return false
+            }
+        }
+        return false
+    }
+
+    /// Backspace with the characters before the caret hidden. The caret rests beside hidden text
+    /// only where that text stays hidden whatever the selection (a task item's `- [ ] `, drawn as
+    /// a checkbox): Backspace deletes it as one unit, so what goes is the checkbox the user sees.
+    /// Anything else hidden there is shown, not deleted (concealment that had not caught up with
+    /// the caret): the press only reveals it. Returns whether the press was handled.
+    func deleteHiddenBeforeCaret() -> Bool {
+        guard let session, let lm = layoutManager as? EditorLayoutManager, isEditable else { return false }
+        let sel = selectedRange()
+        guard sel.length == 0, sel.location > 0, let h = RangeList.range(containing: lm.live.hidden, sel.location - 1) else { return false }
+        let run = NSRange(location: h.location, length: sel.location - h.location)
+        let checkbox = lm.live.decorations.contains { d in
+            if case .checkbox = d.kind { return NSIntersectionRange(d.range, run).length > 0 }
+            return false
+        }
+        guard checkbox else {
+            session.refreshLive(force: true)
+            return true
+        }
+        undoManager?.beginUndoGrouping()
+        breakUndoCoalescing()
+        if replaceThroughUndo(range: run, with: "") {
+            undoManager?.setActionName("Delete")
+            setSelectedRange(NSRange(location: run.location, length: 0))
+        }
+        undoManager?.endUndoGrouping()
+        return true
+    }
+
     // MARK: links
 
     /// The character index under `viewPoint`, if the point is on text (not past a line's end).
@@ -110,10 +278,20 @@ extension EditorTextView {
         updateLinkCursor(modifiers: event.modifierFlags)
     }
 
-    private func updateLinkCursor(modifiers: NSEvent.ModifierFlags) {
-        guard modifiers.contains(.command), let window else { return }
-        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        if bounds.contains(p), link(atViewPoint: p) != nil { NSCursor.pointingHand.set() }
+    /// The pointing hand while Command is held over a link; the I-beam again once Command is
+    /// released or the pointer leaves the link (AppKit would only restore it on the next move).
+    @discardableResult
+    func updateLinkCursor(modifiers: NSEvent.ModifierFlags, at point: NSPoint? = nil) -> Bool {
+        guard let window else { return false }
+        let p = point ?? convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let overLink = modifiers.contains(.command) && bounds.contains(p) && link(atViewPoint: p) != nil
+        if overLink {
+            NSCursor.pointingHand.set()
+        } else if showsLinkCursor, bounds.contains(p) {
+            NSCursor.iBeam.set()
+        }
+        showsLinkCursor = overLink
+        return overLink
     }
 
     public override func updateTrackingAreas() {
@@ -132,14 +310,18 @@ extension EditorTextView {
 
     private func observeScrolling() {
         NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSView.frameDidChangeNotification, object: nil)
         guard let clip = enclosingScrollView?.contentView else { return }
         clip.postsBoundsChangedNotifications = true
+        clip.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(clipBoundsChanged(_:)),
                                                name: NSView.boundsDidChangeNotification, object: clip)
+        NotificationCenter.default.addObserver(self, selector: #selector(clipBoundsChanged(_:)),
+                                               name: NSView.frameDidChangeNotification, object: clip)
     }
 
     @objc private func clipBoundsChanged(_ note: Notification) {
-        session?.visibleRangeChanged()
+        session?.viewportChanged()
     }
 
     // MARK: drop and paste
@@ -234,9 +416,7 @@ extension EditorTextView {
                 var written: URL?
                 do {
                     try DocumentFileAccess.createDirectory(assets)
-                    let url = DocumentFileAccess.uniqueURL(in: assets, name: "image", ext: "png")
-                    try DocumentFileAccess.write(png, to: url)
-                    written = url
+                    written = try DocumentFileAccess.writeNew(png, in: assets, name: "image", ext: "png")
                 } catch {}
                 DispatchQueue.main.async {
                     guard let url = written else { completion?(false); return }

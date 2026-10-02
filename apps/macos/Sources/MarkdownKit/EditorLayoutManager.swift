@@ -21,6 +21,8 @@ public final class EditorLayoutManager: NSLayoutManager {
     var staleRanges: [NSRange] = []
     /// The hidden `- [ ] ` of each task item: zero width, unlike other hidden leading markup.
     var taskPrefixes: [NSRange] = []
+    /// High surrogates at the end of a glyph generation piece, to check (see `checkSplitSurrogate`).
+    var splitSurrogates: Set<Int> = []
 
     /// Set by the session: the room images may take, and what to draw for one.
     var imageBudget: () -> ImageController.Budget = { ImageController.Budget(width: 600, maxHeight: 400) }
@@ -28,6 +30,9 @@ public final class EditorLayoutManager: NSLayoutManager {
     /// Instrumentation: the character ranges whose glyphs and layout `setLive` invalidated.
     var recordsInvalidations = false
     var invalidatedRanges: [NSRange] = []
+    /// Instrumentation: the glyph runs whose backgrounds and strikes were drawn by hand, and the
+    /// horizontal extent (container coordinates) each was given. Recorded while non-nil.
+    var manualDrawings: [(glyphs: NSRange, x: ClosedRange<CGFloat>)]?
     /// Where the background being drawn is anchored (see `fillBackgroundRectArray`).
     var drawOrigin = NSPoint.zero
     /// Set by the session on every appearance change.
@@ -39,6 +44,8 @@ public final class EditorLayoutManager: NSLayoutManager {
     static let collapsedHeight: CGFloat = 2
     static let fenceCollapsedHeight: CGFloat = 8
     static let imagePadding: CGFloat = 6
+    /// Changed paragraphs closer than this are invalidated as one range (see `setLive`).
+    static let invalidationGap = 256
 
     public override init() {
         super.init()

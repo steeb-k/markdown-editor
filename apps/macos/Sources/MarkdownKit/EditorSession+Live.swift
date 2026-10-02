@@ -13,7 +13,14 @@ import MarkdownCore
 /// it arrives when the queue is busy. Applying happens in the same main-thread turn as the
 /// restyle or selection change that caused it, so there is no frame in between.
 extension EditorSession {
-    static let wholeTextLimit = 150_000
+    /// Up to this length the whole text is queried at once; beyond it, a window around what is on
+    /// screen. Measured in a release build: the whole-text query and its application cost about
+    /// 0.07 ms per thousand characters on every caret move and keystroke (18 ms at 150k), so the
+    /// limit is about the size of a window (which is the visible text and 6,000 characters each
+    /// side), where both cost the same.
+    static let wholeTextLimit = 32_000
+    /// How many windows' worth of concealment is kept on either side of the current one.
+    static let keptWindows = 6
 
     func configureLive() {
         layoutManager.palette = appearance.palette
@@ -112,7 +119,11 @@ extension EditorSession {
 
     /// Re-queries the concealment for the current selection and applies it. Cheap when nothing
     /// changed (the layout manager compares states and invalidates only what differs).
-    public func refreshLive(force: Bool = false) {
+    ///
+    /// `synchronous` answers on the spot even when the queue is busy (it waits for the analysis
+    /// of the edits submitted so far): for text about to be shown, which must not be drawn with
+    /// concealment carried over from before the last edits.
+    public func refreshLive(force: Bool = false, synchronous: Bool = false) {
         guard viewMode == .live, let tv = textView, !isComposing() else { return }
         livePending = false
         liveToken += 1
@@ -128,7 +139,7 @@ extension EditorSession {
             return (c, hasImage ? coordinator.cachedImages(of: doc) : [])
         }
         liveQueries += 1
-        if coordinator.isIdle {
+        if coordinator.isIdle || synchronous {
             let (c, images) = coordinator.sync(query)
             applyLive(c, images: images, window: window)
         } else {
@@ -154,8 +165,23 @@ extension EditorSession {
     private func applyLive(_ c: Concealment, images: [ImageRef], window: NSRange) {
         let new = LiveState(c, images: images)
         liveWindow = window
-        let merged = LiveState.merged(old: layoutManager.live, new: new, window: window)
-        layoutManager.setLive(merged)
+        // What earlier windows said about the text around this one is kept (it is asked again
+        // before it is shown, see `visibleRangeChanged`): text the reader returns to then needs no
+        // new glyphs when nothing changed there. Beyond `keptWindows` windows it is let go, so the
+        // cost of each query and edit stays bounded; the glyphs made for it are regenerated when
+        // a window reaches that text again. Only the window is compared.
+        var old = layoutManager.live
+        if window.length < storage.length {
+            let reach = window.length * Self.keptWindows
+            let from = max(0, window.location - reach), to = min(storage.length, NSMaxRange(window) + reach)
+            let (kept, dropped) = old.limited(to: NSRange(location: from, length: to - from))
+            if !dropped.isEmpty {
+                old = kept
+                layoutManager.markStale(dropped)
+            }
+        }
+        let merged = LiveState.merged(old: old, new: new, window: window)
+        layoutManager.setLive(merged, changedWithin: window.length >= storage.length ? nil : window)
         preloadImages()
     }
 
@@ -170,6 +196,21 @@ extension EditorSession {
         }
     }
 
+    /// The visible area moved or changed size. A picture's room depends on the window's height
+    /// (at most 60% of what it shows): when that changes, the picture lines are laid out again,
+    /// or they would keep the old room while being drawn at the new size.
+    func viewportChanged() {
+        let budget = imageBudget()
+        if budget != lastImageBudget {
+            lastImageBudget = budget
+            if viewMode == .live, !layoutManager.imageDecorations.isEmpty {
+                layoutManager.invalidateImages { _ in true }
+                preloadImages()
+            }
+        }
+        visibleRangeChanged()
+    }
+
     /// Called when the text view scrolls or resizes: asks again once the visible text is
     /// close to the edge of what was queried.
     func visibleRangeChanged() {
@@ -177,36 +218,111 @@ extension EditorSession {
         let visible = visibleRange()
         let slack = max(2_000, visible.length)
         let needed = NSRange(location: max(0, visible.location - slack), length: min(storage.length, NSMaxRange(visible) + slack) - max(0, visible.location - slack))
-        if NSIntersectionRange(needed, liveWindow) != needed { refreshLive() }
+        guard NSIntersectionRange(needed, liveWindow) != needed, !scrollRefreshPending else { return }
+        // Asked once the scroll that brought the text into view has finished (asked from inside
+        // it, the new layout moved the text the scroll was aiming for), and before the text is
+        // drawn: main-queue blocks run before the run loop's display pass. Answered on the spot
+        // even if edits are still being analyzed, so nothing carried over is shown.
+        scrollRefreshPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            scrollRefreshPending = false
+            let visible = visibleRange()
+            let slack = max(2_000, visible.length)
+            let needed = NSRange(location: max(0, visible.location - slack), length: min(storage.length, NSMaxRange(visible) + slack) - max(0, visible.location - slack))
+            if NSIntersectionRange(needed, liveWindow) != needed { refreshLive(synchronous: true) }
+        }
     }
 
     // MARK: caret
 
-    /// Keeps a caret out of text that is not drawn: a caret strictly inside concealed text (a
-    /// click or a vertical move that landed on a hidden prefix) goes to the nearer edge in the
-    /// direction it was heading, a caret on a collapsed line goes to the next visible line.
+    /// Keeps the caret (and the moving end of a selection being extended from the keyboard) where
+    /// the user can see it. The rules, judged against what will be concealed once the caret is
+    /// there (touching an element reveals its markup, so most positions next to markup are fine
+    /// as they are):
+    ///
+    /// * a caret never rests inside, or at the start of, text that stays hidden with the caret
+    ///   beside it (a task item's `- [ ] `, drawn as a checkbox): its start and its end are the
+    ///   same place on screen, so the caret goes to its end; a step back from there (Left) goes
+    ///   past it to the character before, so every press moves the caret on screen;
+    /// * anything else lands where it was asked to (a fence line, a heading prefix: they are
+    ///   shown once the caret is there).
+    ///
+    /// The concealment for the proposed caret is asked of the core (one paragraph, so it is
+    /// cheap) only when the current one hides something at that position. When the analysis
+    /// queue is busy the current concealment is used instead: a caret strictly inside hidden text
+    /// goes to the nearer edge in the direction it was heading, one on a collapsed line to the
+    /// next visible line.
     public func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldSelectedCharRange: NSRange,
                          toCharacterRange newSelectedCharRange: NSRange) -> NSRange {
-        guard viewMode == .live, newSelectedCharRange.length == 0, !layoutManager.live.isEmpty else { return newSelectedCharRange }
+        guard viewMode == .live, !layoutManager.live.isEmpty else { return newSelectedCharRange }
         // Undo and redo put the caret exactly where it was.
         if let um = textView.undoManager, um.isUndoing || um.isRedoing { return newSelectedCharRange }
+        let command = (textView as? EditorTextView)?.currentCommand
+        if newSelectedCharRange.length == 0 {
+            let p = restingPlace(for: newSelectedCharRange.location, from: oldSelectedCharRange, command: command)
+            return NSRange(location: p, length: 0)
+        }
+        // A selection extended from the keyboard: its moving end follows the same rules.
+        guard let command, EditorTextView.selectionExtensions.contains(command) else { return newSelectedCharRange }
+        let old = oldSelectedCharRange, new = newSelectedCharRange
+        let anchor: Int, moving: Int
+        if new.location == old.location {
+            (anchor, moving) = (new.location, NSMaxRange(new))
+        } else if NSMaxRange(new) == NSMaxRange(old) {
+            (anchor, moving) = (NSMaxRange(new), new.location)
+        } else {
+            return new
+        }
+        let previousEnd = moving > anchor ? (old.length == 0 ? old.location : NSMaxRange(old)) : old.location
+        let p = restingPlace(for: moving, anchor: anchor, from: NSRange(location: previousEnd, length: 0), command: command)
+        return NSRange(location: min(anchor, p), length: abs(p - anchor))
+    }
+
+    /// Where a caret asked for at `p` comes to rest (see the delegate method above); with an
+    /// `anchor`, where the moving end of the selection from `anchor` to `p` does.
+    func restingPlace(for p: Int, anchor: Int? = nil, from old: NSRange, command: Selector?) -> Int {
         let live = layoutManager.live
-        let p = newSelectedCharRange.location
-        let forward = p >= oldSelectedCharRange.location
+        guard RangeList.range(containing: live.hidden, p) != nil || live.collapsedLine(containing: p) != nil else { return p }
+        let previous = old.location
+        let forward = p >= previous
+        if coordinator.isIdle {
+            let ns = storage.mutableString as NSString
+            let length = ns.length
+            let para = ns.paragraphRange(for: NSRange(location: min(p, max(0, length - 1)), length: 0))
+            let a = UInt32(anchor ?? p), u = UInt32(p)
+            let c = coordinator.sync { $0.concealment(selection: Utf16Range(start: min(a, u), end: max(a, u)),
+                                                      within: Utf16Range(start: UInt32(para.location), end: UInt32(NSMaxRange(para)))) }
+            let after = LiveState(c, images: [])
+            guard let h = RangeList.range(containing: after.hidden, p) else { return p }
+            if let anchor, p == h.location, p > anchor {
+                // A selection that ends right before hidden text: one more step takes that text
+                // in, which shows it, unless it stays hidden whatever is selected (a checkbox).
+                let e = UInt32(NSMaxRange(h))
+                let wider = coordinator.sync { $0.concealment(selection: Utf16Range(start: a, end: e),
+                                                              within: Utf16Range(start: UInt32(para.location), end: UInt32(NSMaxRange(para)))) }
+                if !LiveState(wider, images: []).isHidden(p) { return p }
+            }
+            let characterStep = command.map { EditorTextView.characterMoves.contains($0) } ?? false
+            if characterStep, !forward, previous >= NSMaxRange(h) {
+                return h.location > 0 ? EditorTextView.character(in: ns, at: h.location - 1).location : NSMaxRange(h)
+            }
+            return NSMaxRange(h)
+        }
         if let line = live.collapsedLine(containing: p) {
             // A caret entering a collapsed fence goes to the first (or last) line of the code. One
             // that was on this line already (an edit just made it a delimiter, as when `  - `
             // typed under a list item turns into a setext underline) stays: the next query shows
             // the line again.
-            if NSLocationInRange(oldSelectedCharRange.location, line) { return newSelectedCharRange }
-            if forward, NSMaxRange(line) < storage.length { return NSRange(location: NSMaxRange(line), length: 0) }
-            if !forward, line.location > 0 { return NSRange(location: line.location - 1, length: 0) }
-            return newSelectedCharRange
+            if NSLocationInRange(previous, line) { return p }
+            if forward, NSMaxRange(line) < storage.length { return NSMaxRange(line) }
+            if !forward, line.location > 0 { return line.location - 1 }
+            return p
         }
         if let h = RangeList.range(containing: live.atomic, p), p > h.location {
-            return NSRange(location: forward ? NSMaxRange(h) : h.location, length: 0)
+            return forward ? NSMaxRange(h) : h.location
         }
-        return newSelectedCharRange
+        return p
     }
 }
 

@@ -14,6 +14,12 @@ public final class EditorTextView: NSTextView {
     public weak var documentUndoManager: UndoManager?
     /// Called when the user starts typing (not for shortcuts or navigation): chrome fades out.
     public var onTyping: (() -> Void)?
+    /// The key binding command being performed (`moveLeft:`...), while it runs.
+    public internal(set) var currentCommand: Selector?
+    /// The selection Live mode last extended from the keyboard, and its anchor.
+    var liveAnchor: (selection: NSRange, anchor: Int)?
+    /// The pointing hand is showing for a Command-hover over a link.
+    var showsLinkCursor = false
 
     public override var undoManager: UndoManager? { documentUndoManager ?? super.undoManager }
 
@@ -103,7 +109,8 @@ public final class EditorTextView: NSTextView {
         let local = rect.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: 0, dy: -EditorLayoutManager.blockOutset.height)
         let glyphs = lm.glyphRange(forBoundingRectWithoutAdditionalLayout: local, in: tc)
         lm.drawBlockBackgrounds(forGlyphRange: glyphs, at: origin)
-        lm.drawDecorations(forGlyphRange: glyphs, at: origin)
+        // Live mode's decorations are drawn by the layout manager, after the selection highlight
+        // (which would cover a selected line's bullet or checkbox), before the glyphs.
     }
 
     func visibleCharacterRange() -> NSRange {
@@ -152,6 +159,11 @@ public final class EditorTextView: NSTextView {
     }
 
     public override func doCommand(by selector: Selector) {
+        // Live mode's caret rules depend on what kind of move asked for a new selection.
+        let previous = currentCommand
+        currentCommand = selector
+        defer { currentCommand = previous }
+        if session != nil, !hasMarkedText(), handleLiveCommand(selector) { return }
         if session != nil, !hasMarkedText() {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):

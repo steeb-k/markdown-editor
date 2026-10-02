@@ -157,8 +157,8 @@ public final class AnalysisCoordinator {
         carry = RangeMath.clamp(merged, toLength: mirror.length)
 
         lock.lock()
-        outstanding -= 1
-        let behind = outstanding > 0
+        let behind = outstanding > 1
+        if behind { outstanding -= 1 }
         _lastAnalysis = CFAbsoluteTimeGetCurrent() - started
         lock.unlock()
         if behind { return } // a newer edit is queued; its result will cover this one
@@ -167,8 +167,11 @@ public final class AnalysisCoordinator {
         carry = nil
         let fetched = aligned.length <= Self.maxInlineSpanRange ? fetch(aligned) : nil
         let result = AnalysisResult(seq: seq, range: aligned, spans: fetched?.0, prose: fetched?.1 ?? [])
+        // Idle only once the result is in the inbox: `isIdle` (and so `isStyled`) must not be
+        // true while the last edit's spans are still being fetched.
         lock.lock()
         inbox.append(result)
+        outstanding -= 1
         lock.broadcast()
         lock.unlock()
         DispatchQueue.main.async { [weak self] in self?.deliverPending() }

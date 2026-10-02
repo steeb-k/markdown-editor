@@ -247,6 +247,28 @@ final class AnalysisCoordinatorTests: XCTestCase {
         XCTAssertEqual(e.session.coordinator.coreText(), e.string)
     }
 
+    /// `isIdle` (what `isStyled` and the bounded wait rely on) is true only once the last
+    /// edit's result can be delivered: it used to turn true while that result's spans were still
+    /// being fetched, so `waitUntilStyled` could return with the styling not applied (seen with a
+    /// release-built core, where the race is easy to win).
+    func testIdleOnlyOnceTheLastResultIsReady() {
+        let c = AnalysisCoordinator(text: String(repeating: "# Head\n\ntext *em* **b**\n\n", count: 400))
+        for round in 0..<30 {
+            c.artificialDelay = round % 2 == 0 ? 0.002 : 0
+            var delivered: [Int] = []
+            c.onResult = { delivered.append($0.seq) }
+            var last = 0
+            for i in 0..<3 { last = c.submit(range: NSRange(location: i, length: 0), replacement: "x") }
+            // Without running the main run loop (which would deliver on its own): the moment the
+            // queue says it is idle, the result must be there to deliver.
+            let deadline = Date(timeIntervalSinceNow: 5)
+            while !c.isIdle && Date() < deadline { usleep(50) }
+            c.deliverPending()
+            XCTAssertTrue(delivered.contains(last), "round \(round): idle, but the result for edit \(last) was not ready: \(delivered)")
+        }
+        c.artificialDelay = 0
+    }
+
     func testStaleResultsAreNeverAppliedToShiftedText() {
         let e = Editor(text: "# Title\n\nbody\n")
         let heading = e.session.storage.attribute(.font, at: 3, effectiveRange: nil) as! NSFont

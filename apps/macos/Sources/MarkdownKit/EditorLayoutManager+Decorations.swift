@@ -4,7 +4,8 @@ import AppKit
 /// geometry comes from the visible layout (line fragments and glyph rectangles), never from
 /// character counts, so it stays right when markup is hidden, indents hang or lines collapse.
 extension EditorLayoutManager {
-    /// Called by the text view after the block panels, before the text.
+    /// Called from `drawBackground(forGlyphRange:at:)`: after the text backgrounds and the
+    /// selection highlight (a selected bullet must not disappear under it), before the glyphs.
     func drawDecorations(forGlyphRange glyphs: NSRange, at origin: NSPoint) {
         guard !live.decorations.isEmpty, let tc = textContainers.first, let palette else { return }
         let chars = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
@@ -156,9 +157,9 @@ extension EditorLayoutManager {
 
     private func drawImage(_ d: LiveDecoration, destination: String, alt: String, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let a = anchor(of: NSRange(location: hostCharacter(of: d.range), length: 1), in: tc) else { return }
-        let budget = imageBudget()
+        let budget = imageBudget(for: d.range)
         let entry = imageEntry?(destination, budget) ?? ImageController.Entry(phase: .loading, image: nil, size: ImageController.placeholderSize(budget))
-        let frame = NSRect(x: a.line.minX + origin.x, y: a.line.minY + Self.imagePadding + origin.y,
+        let frame = NSRect(x: a.line.minX + imageIndent(of: d.range) + origin.x, y: a.line.minY + Self.imagePadding + origin.y,
                            width: entry.size.width, height: entry.size.height)
         let clip = NSBezierPath(roundedRect: frame, xRadius: 5, yRadius: 5)
         NSGraphicsContext.saveGraphicsState()

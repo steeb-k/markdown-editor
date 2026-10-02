@@ -172,7 +172,7 @@ final class LiveConcealTests: XCTestCase {
         a.session.setViewMode(.live)
         XCTAssertEqual(a.session.viewMode, .live)
         XCTAssertEqual(b.session.viewMode, .source, "a window's mode is its own")
-        XCTAssertEqual(Settings(defaults: UserDefaults(suiteName: "markdown-fresh-\(UUID())")!).defaultViewMode, .live, "Live is the default")
+        XCTAssertEqual(Settings(defaults: UserDefaults(suiteName: "markdown-fresh-\(UUID())")!).defaultViewMode, .source, "styled source is the default; Live is a choice")
     }
 
     // MARK: random editing
@@ -321,6 +321,19 @@ final class LiveConcealTests: XCTestCase {
         XCTAssertEqual(e.lineTop(of: ns.range(of: "end").location), top, accuracy: 0.5)
     }
 
+    func testAdjacentCollapsedLinesBothCollapse() {
+        // An empty code block: its two fences are consecutive collapsed lines.
+        for text in ["a\n\n```\n```\n\nb", "a\n\n```\nx\n```\n```\ny\n```\n\nb"] {
+            let ns = text as NSString
+            let e = Editor.live(text, caret: ns.length)
+            XCTAssertGreaterThanOrEqual(e.lm.live.collapsed.count, 2, text)
+            for line in e.lm.live.collapsed {
+                XCTAssertEqual(ns.substring(with: line).filter { $0 == "\n" }.count, 1, "one line per range: \(text.debugDescription)")
+                XCTAssertLessThan(e.lineHeight(of: NSMaxRange(line) - 1), 12, "\(text.debugDescription): \(ns.substring(with: line).debugDescription) collapses")
+            }
+        }
+    }
+
     func testRevealingInlineMarkupHeadingsAndQuotesMovesNoLineBelow() {
         let text = "para one\n\n# Head with **bold**\n\n> a quote line\n> second\n\n- item with [link](http://a.b)\n\n## Two\n\nlast line"
         let ns = text as NSString
@@ -411,6 +424,45 @@ final class LiveConcealTests: XCTestCase {
         XCTAssertTrue(e.lm.live.decorations.isEmpty)
     }
 
+    /// Bullets and checkboxes stand for glyphs: like glyphs, they are drawn over the selection
+    /// highlight, not hidden by it.
+    func testDecorationsAreDrawnOverTheSelection() throws {
+        let text = "x\n\n- bullet item\n- [x] done item\n\nend"
+        let ns = text as NSString
+        let e = Editor.live(text, caret: ns.length, width: 600)
+        e.tv.selectedTextAttributes = [.backgroundColor: NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 1)]
+        let probes: [NSPoint] = try {
+            let tc = try XCTUnwrap(e.tv.textContainer)
+            let bullet = try XCTUnwrap(e.lm.live.decorations.first { $0.kind == .bullet })
+            let g = e.lm.glyphRange(forCharacterRange: bullet.range, actualCharacterRange: nil)
+            let line = e.lm.lineFragmentRect(forGlyphAt: g.location, effectiveRange: nil)
+            let rect = e.lm.boundingRect(forGlyphRange: g, in: tc)
+            let font = try XCTUnwrap(e.session.storage.attribute(.font, at: bullet.range.location, effectiveRange: nil) as? NSFont)
+            let baseline = line.minY + e.lm.location(forGlyphAt: g.location).x * 0 + e.lm.location(forGlyphAt: g.location).y
+            let diameter = max(4, (font.pointSize * 0.3).rounded())
+            let bulletCenter = NSPoint(x: rect.minX + font.pointSize * 0.06 + diameter / 2, y: baseline - font.xHeight * 0.5)
+            let box = try XCTUnwrap(e.lm.live.decorations.first { if case .checkbox = $0.kind { return true } else { return false } })
+            let frame = try XCTUnwrap(e.lm.checkboxFrame(of: box, in: tc))
+            return [bulletCenter, NSPoint(x: frame.midX, y: frame.midY)]
+        }()
+        func color(at p: NSPoint) throws -> NSColor {
+            e.tv.setFrameSize(NSSize(width: 600, height: 300))
+            let rep = try XCTUnwrap(e.tv.bitmapImageRepForCachingDisplay(in: e.tv.bounds))
+            e.tv.cacheDisplay(in: e.tv.bounds, to: rep)
+            let o = e.tv.textContainerOrigin
+            let scale = CGFloat(rep.pixelsWide) / e.tv.bounds.width
+            return try XCTUnwrap(rep.colorAt(x: Int((p.x + o.x) * scale), y: Int((p.y + o.y) * scale))).usingColorSpace(.sRGB)!
+        }
+        let unselected = try probes.map(color)
+        e.select(ns.range(of: "- bullet").location, ns.range(of: "end").location - ns.range(of: "- bullet").location)
+        e.settle()
+        for (i, p) in probes.enumerated() {
+            let c = try color(at: p)
+            XCTAssertFalse(c.greenComponent > 0.9 && c.redComponent < 0.1, "decoration \(i) is covered by the selection highlight")
+            XCTAssertEqual(c.redComponent, unselected[i].redComponent, accuracy: 0.2)
+        }
+    }
+
     func testBulletAndCheckboxMarkersAreLaidOutButNotDrawn() {
         let text = "- a\n- [ ] b\n\nx"
         let e = Editor.live(text, caret: (text as NSString).length)
@@ -418,5 +470,42 @@ final class LiveConcealTests: XCTestCase {
         XCTAssertFalse(e.isNull(0))
         XCTAssertEqual(e.lm.markerRanges, [NSRange(location: 0, length: 1)])
         XCTAssertTrue(e.lm.live.isHidden((text as NSString).range(of: "[ ]").location))
+    }
+}
+
+/// Inline code backgrounds and strikethrough are drawn by hand next to hidden markup; they must
+/// cover their text in right-to-left and CJK lines too, wrapped or not.
+final class LiveManualDrawingTests: XCTestCase {
+    func testCodeBackgroundsAndStrikesCoverTheirGlyphsInEveryScript() throws {
+        for (line, inner) in [("Latin `code` and ~~gone~~ here", ["code", "gone"]),
+                              ("עברית `קוד` וגם ~~מחוק~~ כאן", ["קוד", "מחוק"]),
+                              ("日本語`コード`と~~取り消し~~です", ["コード", "取り消し"])] {
+            let text = line + "\n\nend"
+            let ns = text as NSString
+            let e = Editor.live(text, caret: ns.length, width: 700)
+            let tc = try XCTUnwrap(e.tv.textContainer)
+            e.lm.manualDrawings = []
+            e.tv.setFrameSize(NSSize(width: 700, height: 300))
+            let rep = try XCTUnwrap(e.tv.bitmapImageRepForCachingDisplay(in: e.tv.bounds))
+            e.tv.cacheDisplay(in: e.tv.bounds, to: rep)
+            let drawn = try XCTUnwrap(e.lm.manualDrawings)
+            for word in inner {
+                let r = ns.range(of: word)
+                let g = e.lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
+                // The glyphs' own extent, glyph by glyph (no hidden neighbours involved).
+                var lo = CGFloat.greatestFiniteMagnitude, hi = -CGFloat.greatestFiniteMagnitude
+                for gi in g.location..<NSMaxRange(g) where !e.lm.propertyForGlyph(at: gi).contains(.null) {
+                    let b = e.lm.boundingRect(forGlyphRange: NSRange(location: gi, length: 1), in: tc)
+                    lo = min(lo, b.minX); hi = max(hi, b.maxX)
+                }
+                let mine = drawn.filter { NSIntersectionRange($0.glyphs, g).length > 0 }
+                XCTAssertFalse(mine.isEmpty, "\(word): drawn by hand")
+                // AppKit may hand the strike over glyph by glyph: together they cover the word.
+                let from = mine.map(\.x.lowerBound).min() ?? 0, to = mine.map(\.x.upperBound).max() ?? 0
+                XCTAssertEqual(from, lo, accuracy: 3, "\(word) in \(line.debugDescription): starts at its first glyph")
+                XCTAssertEqual(to, hi, accuracy: 3, "\(word) in \(line.debugDescription): ends at its last glyph")
+                XCTAssertGreaterThan(mine.map { $0.x.upperBound - $0.x.lowerBound }.reduce(0, +), (hi - lo) * 0.9, "\(word): no gaps")
+            }
+        }
     }
 }

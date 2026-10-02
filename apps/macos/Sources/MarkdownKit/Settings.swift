@@ -69,7 +69,7 @@ public final class Settings: NSObject {
             Key.spellCheck: true,
             Key.showToolbar: true,
             Key.autoHide: true,
-            Key.defaultViewMode: ViewMode.live.rawValue,
+            Key.defaultViewMode: ViewMode.source.rawValue,
         ])
     }
 
@@ -122,9 +122,9 @@ public final class Settings: NSObject {
         set { defaults.set(newValue, forKey: Key.showToolbar); changed() }
     }
 
-    /// The mode new windows start in.
+    /// The mode new windows start in. Styled source unless the user picks Live.
     public var defaultViewMode: ViewMode {
-        get { ViewMode(rawValue: defaults.string(forKey: Key.defaultViewMode) ?? "") ?? .live }
+        get { ViewMode(rawValue: defaults.string(forKey: Key.defaultViewMode) ?? "") ?? .source }
         set { defaults.set(newValue.rawValue, forKey: Key.defaultViewMode); changed() }
     }
 

@@ -59,6 +59,27 @@
   }
  },
  {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "measureKeys": {
+   "count": 200,
+   "command": "moveRight:"
+  }
+ },
+ {
+  "measureKeys": {
+   "count": 60,
+   "command": "moveDown:"
+  }
+ },
+ {
+  "measureJump": {
+   "count": 30
+  }
+ },
+ {
   "log": "--- Live mode"
  },
  {
@@ -102,6 +123,27 @@
   "measureCaret": {
    "count": 200,
    "stride": 97
+  }
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "measureKeys": {
+   "count": 200,
+   "command": "moveRight:"
+  }
+ },
+ {
+  "measureKeys": {
+   "count": 60,
+   "command": "moveDown:"
+  }
+ },
+ {
+  "measureJump": {
+   "count": 30
   }
  },
  {

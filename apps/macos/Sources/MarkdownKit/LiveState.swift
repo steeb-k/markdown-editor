@@ -67,10 +67,28 @@ public struct LiveState: Equatable {
     public static func merged(old: LiveState, new: LiveState, window: NSRange) -> LiveState {
         var out = LiveState()
         out.hidden = RangeList.union(RangeList.subtract(old.hidden, window), new.hidden)
-        out.collapsed = RangeList.union(old.collapsed.filter { !intersects($0, window) }, new.collapsed)
+        // Whole lines, one range each: two collapsed lines in a row stay two ranges (merged, the
+        // first would lose its terminator and with it its collapsed fragment).
+        out.collapsed = (old.collapsed.filter { !intersects($0, window) } + new.collapsed).sorted { $0.location < $1.location }
         out.decorations = (old.decorations.filter { !intersects($0.range, window) } + new.decorations)
             .sorted { ($0.range.location, -$0.range.length) < ($1.range.location, -$1.range.length) }
         return out
+    }
+
+    /// Only what lies inside `zone` (ranges cut at its edges; decorations and collapsed lines
+    /// that reach outside it dropped), and the ranges of what was dropped.
+    public func limited(to zone: NSRange) -> (state: LiveState, dropped: [NSRange]) {
+        var out = LiveState()
+        var dropped: [NSRange] = []
+        func inside(_ r: NSRange) -> Bool { r.location >= zone.location && NSMaxRange(r) <= NSMaxRange(zone) }
+        for r in hidden {
+            let i = NSIntersectionRange(r, zone)
+            if i.length > 0 { out.hidden.append(i) }
+            if i.length < r.length { dropped.append(r) }
+        }
+        for r in collapsed { if inside(r) { out.collapsed.append(r) } else { dropped.append(r) } }
+        for d in decorations { if inside(d.range) { out.decorations.append(d) } else { dropped.append(d.range) } }
+        return (out, dropped)
     }
 
     /// The state after text changed: ranges move with their text, those whose text was

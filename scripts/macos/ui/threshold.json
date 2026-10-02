@@ -1,0 +1,139 @@
+[
+ {
+  "log": "Either side of the 150k whole-text limit for Live-mode queries: caret moves, arrow keys and jumps. Run with RELEASE=1."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "openGenerated": {
+   "from": "scripts/macos/ui/fixtures/dense.md",
+   "minLength": 149464
+  }
+ },
+ {
+  "resize": [
+   900,
+   820
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "log": "--- 149464 UTF-16 units"
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "measureCaret": {
+   "count": 200,
+   "stride": 97
+  }
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "measureKeys": {
+   "count": 200,
+   "command": "moveRight:"
+  }
+ },
+ {
+  "measureTyping": {
+   "count": 100,
+   "interval": 0.05
+  }
+ },
+ {
+  "measureJump": {
+   "count": 20
+  }
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "openGenerated": {
+   "from": "scripts/macos/ui/fixtures/dense.md",
+   "minLength": 150416
+  }
+ },
+ {
+  "resize": [
+   900,
+   820
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "log": "--- 150416 UTF-16 units"
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "measureCaret": {
+   "count": 200,
+   "stride": 97
+  }
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8
+ },
+ {
+  "measureKeys": {
+   "count": 200,
+   "command": "moveRight:"
+  }
+ },
+ {
+  "measureTyping": {
+   "count": 100,
+   "interval": 0.05
+  }
+ },
+ {
+  "measureJump": {
+   "count": 20
+  }
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ }
+]

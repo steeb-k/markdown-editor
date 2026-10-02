@@ -24,6 +24,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     var liveToken = 0
     var livePending = false
     var liveQueries = 0
+    /// The room pictures were last laid out for (the window's height caps it).
+    var lastImageBudget: ImageController.Budget?
+    /// A query for newly visible text is scheduled (see `visibleRangeChanged`).
+    var scrollRefreshPending = false
 
     /// The format state at the selection, refreshed off the main thread on every selection change.
     public private(set) var formatState: FormatState = EditorSession.emptyFormatState
@@ -163,7 +167,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         log.removeAll { $0.seq <= result.seq }
         if result.seq == coordinator.latestSeq {
             if let spans = result.spans, !isComposing() {
-                apply(spans, prose: result.prose, in: result.range)
+                apply(spans, prose: result.prose, in: result.range, afterEdit: true)
                 debt.subtract(result.range)
             } else {
                 debt.add(result.range)
@@ -178,7 +182,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public private(set) var totalStyleTime: TimeInterval = 0
     public private(set) var longestStyle: TimeInterval = 0
 
-    private func apply(_ spans: [Span], prose: [Utf16Range], in range: NSRange) {
+    /// `afterEdit`: the result of an edit (the text changed, so Live mode asks again what to
+    /// conceal). Styling owed for unchanged text (a theme change, the initial pass, a mode
+    /// switch) changes no concealment and asks nothing.
+    private func apply(_ spans: [Span], prose: [Utf16Range], in range: NSRange, afterEdit: Bool) {
         let t0 = CFAbsoluteTimeGetCurrent()
         defer {
             let d = CFAbsoluteTimeGetCurrent() - t0
@@ -189,7 +196,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange), insideProcessing: inDelegate)
         isStyling = false
         textView?.refreshTypingAttributes()
-        if viewMode == .live, !inDelegate { refreshLive() } else if viewMode == .live { scheduleLiveRefresh() }
+        if viewMode == .live, afterEdit {
+            if inDelegate { scheduleLiveRefresh() } else { refreshLive() }
+        }
         onStyled?()
     }
 
@@ -210,7 +219,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             guard let self else { return }
             debtInFlight = false
             if result.seq == coordinator.latestSeq, !isComposing(), let spans = result.spans {
-                apply(spans, prose: result.prose, in: RangeMath.clamp(result.range, toLength: storage.length))
+                apply(spans, prose: result.prose, in: RangeMath.clamp(result.range, toLength: storage.length), afterEdit: false)
                 debt.subtract(result.range)
             }
             DispatchQueue.main.async { [weak self] in self?.kickDebt() }

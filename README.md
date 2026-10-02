@@ -36,6 +36,7 @@ open build/Markdown.app
 # Drive the real app from a JSON script (no Accessibility permission needed): snapshots + log.json
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
 scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour -> build/ui/live/
+scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by eye: pictures, selections, drop/paste
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 ```
 

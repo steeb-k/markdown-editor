@@ -1,0 +1,558 @@
+[
+ {
+  "log": "--- Live mode by eye: lists, tasks, quotes, fences, pictures of every kind, selections, themes, drop and paste"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "defaultViewMode": "source"
+  }
+ },
+ {
+  "httpServe": "scripts/macos/ui/fixtures/images",
+  "port": 8765
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/live-look.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   980
+  ]
+ },
+ {
+  "assert": {
+   "viewMode": "source"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitImages": 8
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "viewMode": "live",
+   "coreMatchesText": true,
+   "edited": false
+  }
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "look-01-lists"
+ },
+ {
+  "selectText": "Quote with a list",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-02-quotes"
+ },
+ {
+  "selectText": "## Pictures",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "The end.",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "selectText": "## Pictures",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "Inline",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-03-pictures"
+ },
+ {
+  "assert": {
+   "images": {
+    "loaded": 8,
+    "failed": 1
+   }
+  }
+ },
+ {
+  "selectText": "![Tall]",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "The end.",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-04-pictures-end"
+ },
+ {
+  "log": "--- wrapping code and strikethrough, right-to-left and CJK next to hidden markup, spelling marks"
+ },
+ {
+  "setting": {
+   "spellCheck": true
+  }
+ },
+ {
+  "selectText": "## Wrapping",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "selectText": "## Wrapping",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "Inline",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 2.0
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "selectText": "A long line with",
+  "offset": -40,
+  "length": 0
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "snapshot": "look-04b-wrapping-rtl-cjk-spelling",
+  "bitmap": true
+ },
+ {
+  "selectText": "struck phrase",
+  "offset": 0,
+  "length": 60
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-04c-selection-in-wrapping",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "spellCheck": false
+  }
+ },
+ {
+  "log": "--- the caret rules, in the real window: Right through the whole document, then Left back"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "caretWalk": {
+   "command": "moveRight:"
+  }
+ },
+ {
+  "log": "(Right in the Hebrew line moves the caret visually, backwards in the text: AppKit's behavior in Source mode too. The walk goes on after it.)"
+ },
+ {
+  "selectText": "\u65e5\u672c\u8a9e\u306e",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "caretWalk": {
+   "command": "moveRight:"
+  }
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8,
+  "length": 0
+ },
+ {
+  "caretWalk": {
+   "command": "moveLeft:"
+  }
+ },
+ {
+  "selectText": "## Wrapping",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "caretWalk": {
+   "command": "moveLeft:"
+  }
+ },
+ {
+  "assert": {
+   "selection": [
+    0,
+    0
+   ]
+  }
+ },
+ {
+  "caretWalk": {
+   "command": "moveDown:"
+  }
+ },
+ {
+  "caretWalk": {
+   "command": "moveUp:"
+  }
+ },
+ {
+  "assert": {
+   "edited": false,
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "--- a picture that changes on disk (the window becoming key again rechecks)"
+ },
+ {
+  "copyFile": {
+   "from": "scripts/macos/ui/fixtures/images/rotated.png",
+   "to": "work/images/changing.png"
+  }
+ },
+ {
+  "revalidateImages": true
+ },
+ {
+  "waitImages": 5
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-05-changed-on-disk"
+ },
+ {
+  "log": "--- selections over hidden markup, collapsed lines and pictures"
+ },
+ {
+  "selectText": "A bullet that is long",
+  "offset": -2,
+  "length": 150
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-06-selection-lists",
+  "bitmap": true
+ },
+ {
+  "selectText": "lazy continuation",
+  "offset": 0,
+  "length": 120
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-07-selection-fence-picture",
+  "bitmap": true
+ },
+ {
+  "selectText": "Inline",
+  "offset": 0,
+  "length": 70
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-07b-selection-inline-and-list-picture",
+  "bitmap": true
+ },
+ {
+  "selectText": "Same again",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "selectText": "The end.",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "selectText": "[Wide]",
+  "offset": -1,
+  "length": 60
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-07c-selection-over-pictures",
+  "bitmap": true
+ },
+ {
+  "log": "--- themes"
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "look-08-dark-lists"
+ },
+ {
+  "selectText": "Inline",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-09-dark-pictures"
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "selectText": "Text right after an empty",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "look-10-sepia-lists"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "log": "--- drop an image and a non-image file, paste image data twice (unique names)"
+ },
+ {
+  "selectText": "The end.",
+  "offset": 8,
+  "length": 0
+ },
+ {
+  "type": "\n\n"
+ },
+ {
+  "dropFile": "scripts/macos/ui/fixtures/images/small.png"
+ },
+ {
+  "assert": {
+   "textContains": "![small]("
+  }
+ },
+ {
+  "type": "\n\n"
+ },
+ {
+  "dropFile": "scripts/macos/ui/fixtures/live-edge.md"
+ },
+ {
+  "assert": {
+   "textContains": "[live-edge.md]("
+  }
+ },
+ {
+  "type": "\n\n"
+ },
+ {
+  "pasteImage": "scripts/macos/ui/fixtures/images/small.png",
+  "wait": 5
+ },
+ {
+  "assert": {
+   "pasted": true,
+   "assets": 1,
+   "textContains": "![image](live-look.assets/image.png)"
+  }
+ },
+ {
+  "type": "\n\n"
+ },
+ {
+  "pasteImage": "scripts/macos/ui/fixtures/images/tall.png",
+  "wait": 5
+ },
+ {
+  "assert": {
+   "pasted": true,
+   "assets": 2,
+   "textContains": "image 2.png"
+  }
+ },
+ {
+  "type": "\n\nend"
+ },
+ {
+  "waitImages": 5
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "look-11-dropped-and-pasted"
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "--- an unsaved document: a relative picture cannot resolve; pasting asks to save first, cancel aborts"
+ },
+ {
+  "new": true
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "load": "Untitled with a relative picture:\n\n![rel](images/sample.png)\n\nend"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "look-12-unsaved-relative"
+ },
+ {
+  "assert": {
+   "images": {
+    "failed": 1
+   }
+  }
+ },
+ {
+  "pasteImage": "scripts/macos/ui/fixtures/images/small.png",
+  "wait": 1.5
+ },
+ {
+  "assert": {
+   "sheet": true
+  }
+ },
+ {
+  "sheet": "end"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "pasted": false,
+   "sheet": false,
+   "textLacks": "![image]"
+  }
+ }
+]

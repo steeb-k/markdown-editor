@@ -258,6 +258,64 @@ final class InlineImageLayoutTests: XCTestCase {
         XCTAssertGreaterThan(e.lineHeight(of: ns.range(of: ")\n\n").location + 1), 150)
     }
 
+    func testPicturesInListItemsAndQuotesStartAtTheirText() throws {
+        try TestImages.png(width: 900, height: 300).write(to: dir.appendingPathComponent("wide.png"))
+        let text = "x\n\n![a](wide.png)\n\n- ![b](wide.png)\n\n> ![c](wide.png)\n\nz\n"
+        let ns = text as NSString
+        let e = Editor(text: text)
+        e.session.documentURL = { self.dir.appendingPathComponent("note.md") }
+        e.tv.setFrameSize(NSSize(width: 700, height: 900))
+        e.session.setViewMode(.live)
+        e.select(0)
+        e.settle()
+        XCTAssertTrue(spin { !e.session.imageController.isLoading })
+        e.settle()
+        let images = e.lm.imageDecorations
+        XCTAssertEqual(images.count, 3)
+        let column = e.session.imageBudget().width
+        for d in images {
+            let indent = e.lm.imageIndent(of: d.range)
+            let budget = e.lm.imageBudget(for: d.range)
+            XCTAssertEqual(budget.width, column - indent, accuracy: 0.5, "the picture fits beside its indent")
+            let source = ns.substring(with: d.range)
+            if source.contains("![a]") { XCTAssertEqual(indent, 0) } else { XCTAssertGreaterThan(indent, 5, "\(source) starts at its text, right of the bullet or bar") }
+            // The reserved line is as tall as the picture at that width.
+            let entry = e.session.imageController.entry(for: "wide.png", budget: budget, scale: 2)
+            XCTAssertEqual(entry.size.width, budget.width, accuracy: 1)
+            let host = e.lm.hostCharacter(of: d.range)
+            XCTAssertEqual(e.lineHeight(of: host), entry.size.height + 2 * EditorLayoutManager.imagePadding, accuracy: 1)
+        }
+    }
+
+    func testAPictureKeepsItsRoomInStepWithTheWindowHeight() throws {
+        // Tall enough to be capped by the window's height (60% of what it shows).
+        try TestImages.png(width: 200, height: 2000).write(to: dir.appendingPathComponent("tall.png"))
+        let text = "x\n\n![t](tall.png)\n\nz\n"
+        let ns = text as NSString
+        let e = Editor(text: text)
+        e.session.documentURL = { self.dir.appendingPathComponent("note.md") }
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
+        scroll.documentView = e.tv
+        e.tv.setFrameSize(NSSize(width: 700, height: 600))
+        e.session.setViewMode(.live)
+        e.select(0)
+        e.settle()
+        XCTAssertTrue(spin { !e.session.imageController.isLoading })
+        e.settle()
+        let host = ns.range(of: ")\n\nz").location + 1
+        func reserved() -> CGFloat { e.lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: ns.length)); return e.lineHeight(of: host) }
+        func drawn() -> CGFloat { e.session.imageController.entry(for: "tall.png", budget: e.lm.imageBudget(for: e.lm.imageDecorations[0].range), scale: 2).size.height }
+        XCTAssertEqual(reserved(), drawn() + 2 * EditorLayoutManager.imagePadding, accuracy: 1)
+        let tall = drawn()
+        for height in [300.0, 900.0] {
+            scroll.setFrameSize(NSSize(width: 700, height: height))
+            scroll.tile()
+            e.settle()
+            XCTAssertNotEqual(drawn(), tall, "the cap follows the window")
+            XCTAssertEqual(reserved(), drawn() + 2 * EditorLayoutManager.imagePadding, accuracy: 1, "the room follows the picture at \(height)")
+        }
+    }
+
     func testPlaceholderForMissingImageDoesNotChangeTheText() {
         let text = "a\n\n![gone](missing.png)\n\nb\n"
         let e = Editor(text: text)
@@ -369,6 +427,33 @@ final class DropAndPasteTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: assets.appendingPathComponent("image 2.png").path))
         XCTAssertTrue(e.string.contains("My Note.assets/image 2.png"))
         XCTAssertEqual(e.session.coordinator.coreText(), e.string)
+    }
+
+    func testTwoPastesAtOnceNeverShareAFile() throws {
+        // Both pastes pick a name off the main thread: picking and writing must be one step.
+        let pb = imagePasteboard()
+        let e = Editor(text: "x\n")
+        e.session.documentURL = { self.dir.appendingPathComponent("n.md") }
+        var done = 0
+        for _ in 0..<6 { e.tv.pasteImage(from: pb) { _ in done += 1 } }
+        XCTAssertTrue(spin { done == 6 })
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("n.assets").path)
+        XCTAssertEqual(files.count, 6, "\(files)")
+        let links = e.string.components(separatedBy: "![image](").count - 1
+        XCTAssertEqual(links, 6)
+        // And the primitive itself, from many threads.
+        let target = dir.appendingPathComponent("many", isDirectory: true)
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let lock = NSLock()
+        var urls = Set<URL>()
+        DispatchQueue.concurrentPerform(iterations: 40) { i in
+            let u = try? DocumentFileAccess.writeNew(Data([UInt8(i)]), in: target, name: "image", ext: "png")
+            lock.lock()
+            if let u { urls.insert(u) }
+            lock.unlock()
+        }
+        XCTAssertEqual(urls.count, 40)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: target.path).count, 40)
     }
 
     func testPastedImageIntoAnUnsavedDocumentAsksToSaveFirst() throws {

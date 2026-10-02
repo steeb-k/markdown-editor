@@ -1,6 +1,7 @@
 #if DEBUG || UI_SCRIPT
 import AppKit
 import MarkdownCore
+import Network
 
 /// A self-driving mode for checking the real app without Accessibility permissions: the app
 /// reads a JSON script, drives itself on the main run loop through the same paths a user
@@ -70,6 +71,8 @@ final class UIScriptRunner {
 
     /// The last URL a Cmd-click asked to open (nothing is really opened while a script runs).
     private static var opened: URL?
+    /// Whether the last `pasteImage` inserted a picture (nil while it waits, e.g. on the save panel).
+    private static var pasted: Bool?
 
     static func startIfRequested() {
         guard let path = scriptPath else { return }
@@ -194,6 +197,40 @@ final class UIScriptRunner {
             }
             record(["cmdClickLink": needle, "opened": Self.opened.map { $0.absoluteString }], ok: ok)
             done()
+        } else if let dir = str("httpServe") {
+            // A tiny local web server for remote pictures (no internet needed).
+            let port = (step["port"] as? Int) ?? 8765
+            let ok = LocalHTTPServer.start(root: resolve(dir), port: UInt16(port))
+            record(["httpServe": dir, "port": port], ok: ok)
+            later(0.2, done)
+        } else if let c = step["copyFile"] as? [String: String], let from = c["from"], let to = c["to"] {
+            // `to` is relative to the output directory (the opened copies live in `work/`).
+            let dst = outDir.appendingPathComponent(to)
+            try? FileManager.default.createDirectory(at: dst.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: dst)
+            let ok = (try? FileManager.default.copyItem(at: resolve(from), to: dst)) != nil
+            record(["copyFile": c], ok: ok)
+            done()
+        } else if step["revalidateImages"] != nil {
+            // What the window becoming key again does.
+            session?.imageController.revalidate()
+            record(["revalidateImages": true], ok: true)
+            later(0.5, done)
+        } else if let path = str("pasteImage") {
+            // Image data on a private pasteboard, pasted the way Edit > Paste does it.
+            let pb = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
+            pb.clearContents()
+            pb.setData(try? Data(contentsOf: resolve(path)), forType: .png)
+            Self.pasted = nil
+            textView?.pasteImage(from: pb) { ok in Self.pasted = ok }
+            let deadline = Date(timeIntervalSinceNow: (step["wait"] as? Double) ?? 3)
+            func poll() {
+                if Self.pasted == nil && Date() < deadline { later(0.05, poll); return }
+                pb.releaseGlobally()
+                record(["pasteImage": path, "inserted": Self.pasted.map { "\($0)" } ?? "pending"], ok: true)
+                done()
+            }
+            poll()
         } else if let path = str("dropFile") {
             let pb = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
             pb.clearContents()
@@ -279,7 +316,7 @@ final class UIScriptRunner {
             record(["waitStyled": ok], ok: ok)
             done()
         } else if let name = str("snapshot") {
-            snapshot(name, which: str("window"))
+            snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false)
             done()
         } else if let a = step["assert"] as? [String: Any] {
             assertions(a)
@@ -346,6 +383,12 @@ final class UIScriptRunner {
             measureTyping(m, then: done)
         } else if let m = step["measureCaret"] as? [String: Any] {
             measureCaret(m, then: done)
+        } else if let m = step["caretWalk"] as? [String: Any] {
+            caretWalk(m, then: done)
+        } else if let m = step["measureKeys"] as? [String: Any] {
+            measureKeys(m, then: done)
+        } else if let m = step["measureJump"] as? [String: Any] {
+            measureJump(m, then: done)
         } else if step["close"] != nil {
             close(then: done)
         } else if step["controlLeakProbe"] != nil {
@@ -488,6 +531,7 @@ final class UIScriptRunner {
         if let v = s["spellCheck"] as? Bool { st.spellCheck = v }
         if let v = s["showFormattingToolbar"] as? Bool { st.showFormattingToolbar = v }
         if let v = s["autoHideChrome"] as? Bool { st.autoHideChrome = v }
+        if let v = s["defaultViewMode"] as? String, let m = ViewMode(rawValue: v) { st.defaultViewMode = m }
     }
 
     // MARK: input
@@ -649,9 +693,115 @@ final class UIScriptRunner {
         step()
     }
 
+    /// Presses an arrow key (`command`) until the caret stops (or `count` presses) and checks Live
+    /// mode's caret rules on every press: the press passed something visible (before or after),
+    /// and the caret does not rest inside, or at the start of, hidden text.
+    private func caretWalk(_ m: [String: Any], then done: @escaping () -> Void) {
+        let command = Selector((m["command"] as? String) ?? "moveRight:")
+        let count = m["count"] as? Int ?? 100_000
+        var problems: [String] = []
+        var presses = 0
+        var seen: [Int: Int] = [:]
+        func step() {
+            guard presses < count, let tv = textView, let s = session else { finishWalk(); return }
+            let before = tv.selectedRange().location
+            // A place reached twice by the same key means the walk goes round in circles (in
+            // right-to-left text Right moves backwards: AppKit's visual movement).
+            seen[before, default: 0] += 1
+            if seen[before]! > 1 {
+                let ns = (s.text as NSString)
+                let para = ns.paragraphRange(for: NSRange(location: min(before, max(0, ns.length - 1)), length: 0))
+                record(["caretWalk": "\(command)", "cycle at": before, "paragraph": ns.substring(with: para)], ok: true)
+                finishWalk()
+                return
+            }
+            let liveBefore = s.layoutManager.live
+            // (No undo group: an empty one still counts as a change to the document.)
+            tv.doCommand(by: command)
+            _ = s.waitUntilStyled(timeout: 5)
+            let after = tv.selectedRange().location
+            presses += 1
+            if after == before { finishWalk(); return }
+            let live = s.layoutManager.live
+            let passed = min(before, after)..<max(before, after)
+            if !passed.contains(where: { !liveBefore.isHidden($0) || !live.isHidden($0) }) { problems.append("\(before)->\(after) passed only hidden text") }
+            if let h = RangeList.range(containing: live.hidden, after) { problems.append("rests in hidden \(h) at \(after)") }
+            later(0, step)
+        }
+        func finishWalk() {
+            record(["caretWalk": "\(command)", "presses": presses, "problems": Array(problems.prefix(20))], ok: problems.isEmpty)
+            done()
+        }
+        step()
+    }
+
+    /// Presses an arrow key (`command`, default `moveRight:`) `count` times through the key
+    /// bindings and records the main-thread time per press, the concealment it causes included.
+    private func measureKeys(_ m: [String: Any], then done: @escaping () -> Void) {
+        let count = m["count"] as? Int ?? 200
+        let command = Selector((m["command"] as? String) ?? "moveRight:")
+        var per: [Double] = []
+        var i = 0
+        func step() {
+            guard i < count, let tv = textView else {
+                let sorted = per.sorted()
+                func pct(_ p: Double) -> Double { sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] * 1000 }
+                let stats: [String: Any] = ["presses": per.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000]
+                let limit = (m["maxMs"] as? NSNumber)?.doubleValue
+                record(["measureKeys": stats, "command": "\(command)"], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
+                done()
+                return
+            }
+            let t0 = CFAbsoluteTimeGetCurrent()
+            asEvent { tv.doCommand(by: command) }
+            tv.displayIfNeeded()
+            per.append(CFAbsoluteTimeGetCurrent() - t0)
+            i += 1
+            later(0.005, step)
+        }
+        step()
+    }
+
+    /// Jumps `count` times to places spread over the document (as dragging the scroller does) and
+    /// records how long laying out and drawing the screenful takes, the Live-mode query for the
+    /// newly visible text included: a proxy for scrolling smoothness.
+    private func measureJump(_ m: [String: Any], then done: @escaping () -> Void) {
+        let count = m["count"] as? Int ?? 20
+        var per: [Double] = []
+        var i = 0
+        func step() {
+            guard i < count, let tv = textView, let s = session, let clip = tv.enclosingScrollView?.contentView else {
+                let sorted = per.sorted()
+                func pct(_ p: Double) -> Double { sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] * 1000 }
+                let stats: [String: Any] = ["jumps": per.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000,
+                                            "live_queries": session?.liveQueries ?? 0]
+                let limit = (m["maxMs"] as? NSNumber)?.doubleValue
+                record(["measureJump": stats], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
+                done()
+                return
+            }
+            // Golden-ratio steps cover the document evenly without repeating.
+            let fraction = (Double(i) * 0.618_033_988_75).truncatingRemainder(dividingBy: 1)
+            let y = (tv.bounds.height - clip.bounds.height) * CGFloat(fraction)
+            let t0 = CFAbsoluteTimeGetCurrent()
+            clip.scroll(to: NSPoint(x: 0, y: max(0, y)))
+            tv.enclosingScrollView?.reflectScrolledClipView(clip)
+            // Live mode asks about newly visible text on the main queue, before the run loop
+            // draws: that turn is part of the jump.
+            DispatchQueue.main.async {
+                tv.displayIfNeeded()
+                per.append(CFAbsoluteTimeGetCurrent() - t0)
+                _ = s
+                i += 1
+                later(0.05, step)
+            }
+        }
+        step()
+    }
+
     // MARK: windows
 
-    private func snapshot(_ name: String, which: String?) {
+    private func snapshot(_ name: String, which: String?, bitmap: Bool = false) {
         let w: NSWindow? = which == "settings" ? SettingsWindowController.shared.window : (which == "sheet" ? window?.attachedSheet : window)
         guard let w, let content = w.contentView else {
             record(["snapshot": name, "error": "no window"], ok: false)
@@ -677,7 +827,12 @@ final class UIScriptRunner {
             NSGraphicsContext.current?.restoreGraphicsState()
         }
         if w === window, let c = controller, let tv = textView, let clip = tv.enclosingScrollView?.contentView {
-            if let pdf = NSImage(data: tv.dataWithPDF(inside: tv.visibleRect)) {
+            if bitmap, let rep = tv.bitmapImageRepForCachingDisplay(in: tv.visibleRect) {
+                // As drawn on screen, selection and insertion point included (PDF leaves them out).
+                tv.cacheDisplay(in: tv.visibleRect, to: rep)
+                rep.draw(in: clip.convert(clip.bounds, to: frameView), from: .zero, operation: .sourceOver, fraction: 1,
+                         respectFlipped: true, hints: nil)
+            } else if let pdf = NSImage(data: tv.dataWithPDF(inside: tv.visibleRect)) {
                 pdf.draw(in: clip.convert(clip.bounds, to: frameView))
             }
             for v in c.overlayViews { draw(v) }
@@ -797,6 +952,24 @@ final class UIScriptRunner {
             check("decorations \(v)", v.allSatisfy { counts[$0.key, default: 0] == $0.value }, "\(counts)")
         }
         if let v = a["collapsedLines"] as? Int, let s = session { check("collapsed lines \(v)", s.layoutManager.live.collapsed.count == v, "\(s.layoutManager.live.collapsed.count)") }
+        if let v = a["pasted"] as? Bool { check("pasted \(v)", Self.pasted == v, Self.pasted.map { "\($0)" } ?? "pending") }
+        if let v = a["assets"] as? Int {
+            // Files in `<document>.assets` beside the current document.
+            let url = document?.fileURL
+            let dir = url.map { $0.deletingLastPathComponent().appendingPathComponent($0.deletingPathExtension().lastPathComponent + ".assets") }
+            let files = dir.flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0.path) }?.filter { !$0.hasPrefix(".") }.sorted() ?? []
+            check("assets \(v)", files.count == v, "\(files)")
+        }
+        if let v = a["images"] as? [String: Int], let s = session {
+            // How many picture decorations are loaded, failed or still loading.
+            var counts: [String: Int] = [:]
+            for d in s.layoutManager.imageDecorations {
+                guard case .image(let destination, _) = d.kind else { continue }
+                let e = s.imageController.entry(for: destination, budget: s.imageBudget(), scale: window?.backingScaleFactor ?? 2)
+                counts["\(e.phase)", default: 0] += 1
+            }
+            check("images \(v)", v.allSatisfy { counts[$0.key, default: 0] == $0.value }, "\(counts)")
+        }
         if let v = a["linkOpened"] as? String { check("linkOpened \(v)", Self.opened?.absoluteString == v, Self.opened?.absoluteString ?? "nil") }
         if let v = a["inTable"] as? Bool { check("inTable \(v)", session?.formatState.inTable == v) }
         if let v = a["theme"] as? String { check("theme \(v)", session?.appearance.theme.id == v, session?.appearance.theme.id ?? "nil") }
@@ -852,6 +1025,37 @@ final class UIScriptRunner {
             let ok = r.location != NSNotFound && (tv.session?.allowsSpellChecking(in: r) ?? false)
             check("spell checking in \(v)", ok)
         }
+    }
+}
+
+/// Serves the files of one folder over HTTP on the loopback interface, for scripts that need a
+/// remote picture without the internet. GET only; just enough HTTP/1.0 for URLSession.
+enum LocalHTTPServer {
+    private static var listener: NWListener?
+
+    static func start(root: URL, port: UInt16) -> Bool {
+        if listener != nil { return true }
+        guard let p = NWEndpoint.Port(rawValue: port), let l = try? NWListener(using: .tcp, on: p) else { return false }
+        l.newConnectionHandler = { c in
+            c.start(queue: .global())
+            c.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, _, _ in
+                let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let path = request.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+                let file = root.appendingPathComponent(path.removingPercentEncoding ?? path).standardizedFileURL
+                var response: Data
+                if file.path.hasPrefix(root.standardizedFileURL.path), let body = try? Data(contentsOf: file) {
+                    let type = file.pathExtension == "png" ? "image/png" : "application/octet-stream"
+                    response = Data("HTTP/1.0 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+                    response.append(body)
+                } else {
+                    response = Data("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8)
+                }
+                c.send(content: response, completion: .contentProcessed { _ in c.cancel() })
+            }
+        }
+        l.start(queue: .global())
+        listener = l
+        return true
     }
 }
 #endif
