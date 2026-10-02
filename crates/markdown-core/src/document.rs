@@ -346,7 +346,7 @@ impl Document {
 
     /// Convert byte ranges that are sorted by (start asc, end desc) and properly nested
     /// (or disjoint) in a single forward sweep of the text.
-    fn convert_nested(&self, items: &[(usize, usize)]) -> Vec<(u32, u32)> {
+    pub(crate) fn convert_nested(&self, items: &[(usize, usize)]) -> Vec<(u32, u32)> {
         let mut cur = self.map.cursor(&self.text);
         let mut out = vec![(0u32, 0u32); items.len()];
         let mut stack: Vec<(usize, usize)> = Vec::new(); // (end byte, index)

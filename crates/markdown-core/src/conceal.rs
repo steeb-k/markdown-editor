@@ -11,7 +11,10 @@
 //!   immediately before or after `**bold**` reveals it;
 //! * line-scoped markup (ATX `#`, quote `>`) is revealed by the line, fences and front
 //!   matter delimiters by anywhere in their block, a setext underline by its heading;
-//! * a non-empty selection reveals every owner it overlaps;
+//! * a non-empty selection reveals every owner it overlaps, and each of its ends reveals
+//!   what a caret there would, unless that end is on the far side of a line terminator
+//!   (a selection ending with a line break, or starting with one, does not reach the
+//!   neighbouring line);
 //! * never concealed: anything in a table, link reference definitions, footnote labels and
 //!   references, raw HTML, indented code.
 
@@ -35,12 +38,21 @@ pub(crate) fn compute(doc: &Document, selection: TextRange, within: Option<TextR
     let empty = s0 == s1;
     let sel_a = doc.byte_snapped(s0, false);
     let sel_b = if empty { sel_a } else { doc.byte_snapped(s1, true) };
-    // An owner is touched by a caret at either edge; by a range only when they overlap.
+    // An owner is touched by a caret at either edge. A range touches what it overlaps, and
+    // each of its ends touches like a caret (a selection that ends right before `**b**` ends
+    // where the caret after the hidden `**` would be drawn, so it must show it) -- except an
+    // end that is the far side of a line terminator: a selection of whole lines, terminator
+    // included, does not reveal the next line's `# `, nor one starting at a terminator the
+    // previous line's.
+    let nl = |i: usize| matches!(b.get(i), Some(b'\n' | b'\r'));
+    let start_touches = !nl(sel_a);
+    let end_touches = !(sel_b > 0 && nl(sel_b - 1));
     let touch = |o: (usize, usize)| {
+        let at = |p: usize| o.0 <= p && p <= o.1;
         if empty {
-            o.0 <= sel_a && sel_a <= o.1
+            at(sel_a)
         } else {
-            sel_a < o.1 && o.0 < sel_b
+            (sel_a < o.1 && o.0 < sel_b) || (start_touches && at(sel_a)) || (end_touches && at(sel_b))
         }
     };
 
@@ -69,6 +81,7 @@ pub(crate) fn compute(doc: &Document, selection: TextRange, within: Option<TextR
         .collect();
 
     let mut hidden: Vec<Range<usize>> = Vec::new();
+    let mut boxed: Vec<usize> = Vec::new(); // task markers whose item prefix is hidden
     let mut candidates: Vec<usize> = Vec::new(); // starts of lines that may collapse
     let mut decorations: Vec<(usize, usize, DecorationKind)> = Vec::new();
     let mut stack: Vec<(usize, SpanKind, usize)> = Vec::new(); // (end, kind, start) of enclosing spans
@@ -146,11 +159,14 @@ pub(crate) fn compute(doc: &Document, selection: TextRange, within: Option<TextR
                     // A task item shows only its checkbox: the marker, the `[ ]` and the blanks
                     // around them are hidden, the checkbox is drawn at the bullet's place.
                     hidden.push(sp.start..prefix_end);
+                    boxed.push(q);
                 } else {
                     decorations.push((sp.start, sp.end, DecorationKind::Bullet));
                 }
             }
-            SpanKind::TaskMarker { checked } if !in_table => {
+            // Only where the prefix was hidden above: in an ordered item the number stays, and
+            // so does the `[ ]` after it (there is no room for a box; PLAN fallback).
+            SpanKind::TaskMarker { checked } if !in_table && boxed.contains(&sp.start) => {
                 decorations.push((sp.start, sp.end, DecorationKind::Checkbox { checked }));
             }
             SpanKind::ThematicBreak if !in_table => {
@@ -165,7 +181,11 @@ pub(crate) fn compute(doc: &Document, selection: TextRange, within: Option<TextR
             }
             SpanKind::Image if !in_table => {
                 let idx = a.images.partition_point(|im| im.start < sp.start);
-                if let Some(im) = a.images.get(idx).filter(|im| im.start == sp.start && im.end == sp.end && im.standalone) {
+                // Only a picture written on one line: hidden ranges never hold a line break, so
+                // a source over several lines would leave an empty line beside the picture.
+                // Such an image stays source, its markup concealed like an inline image's.
+                let one_line = !b[sp.start..sp.end].iter().any(|&c| matches!(c, b'\n' | b'\r'));
+                if let Some(im) = a.images.get(idx).filter(|im| im.start == sp.start && im.end == sp.end && im.standalone && one_line) {
                     // The owner is the image's paragraph: entering it shows the source.
                     let bi = a.blocks.partition_point(|bl| bl.start <= sp.start).saturating_sub(1);
                     let owner = a
@@ -241,13 +261,19 @@ pub(crate) fn compute(doc: &Document, selection: TextRange, within: Option<TextR
     decorations.sort_by_key(|&(s, e, k)| (s, std::cmp::Reverse(e), kind_rank(k)));
     decorations.retain(|&(s, e, _)| in_window(s, e));
 
-    let unit = |p: usize| doc.unit_of(p);
+    // One forward sweep converts everything (hidden and collapsed are sorted and disjoint,
+    // decorations sorted and nested): converting offset by offset was most of the cost.
+    let to_ranges = |v: &[(usize, usize)]| -> Vec<TextRange> {
+        doc.convert_nested(v).into_iter().map(|(s, e)| TextRange::new(s, e)).collect()
+    };
+    let deco_pairs: Vec<(usize, usize)> = decorations.iter().map(|&(s, e, _)| (s, e)).collect();
     Concealment {
-        hidden: clipped.into_iter().map(|(s, e)| TextRange::new(unit(s), unit(e))).collect(),
-        collapsed: collapsed_bytes.into_iter().map(|(s, e)| TextRange::new(unit(s), unit(e))).collect(),
-        decorations: decorations
+        hidden: to_ranges(&clipped),
+        collapsed: to_ranges(&collapsed_bytes),
+        decorations: to_ranges(&deco_pairs)
             .into_iter()
-            .map(|(s, e, kind)| Decoration { range: TextRange::new(unit(s), unit(e)), kind })
+            .zip(decorations)
+            .map(|(range, (_, _, kind))| Decoration { range, kind })
             .collect(),
     }
 }

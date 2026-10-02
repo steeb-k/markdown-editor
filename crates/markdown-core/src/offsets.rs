@@ -39,7 +39,8 @@ impl OffsetMap {
         let (mut byte, mut unit) = (0usize, 0usize);
         while byte + STRIDE < bytes.len() {
             let mut next = byte + STRIDE;
-            while (bytes[next] & 0xC0) == 0x80 {
+            // (A code point that straddles the stride may run to the very end of the text.)
+            while next < bytes.len() && (bytes[next] & 0xC0) == 0x80 {
                 next += 1;
             }
             unit += units(enc, &bytes[byte..next]);

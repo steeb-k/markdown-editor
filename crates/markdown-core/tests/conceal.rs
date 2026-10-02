@@ -231,6 +231,22 @@ fn lists_and_tasks() {
     assert_eq!(decos("- [ ¦] a").len(), 1);
     // Nested bullets.
     assert_eq!(decos("¦- a\n  - b\n").iter().filter(|d| d.1 == DecorationKind::Bullet).count(), 2);
+    // The prefix stays hidden with the caret on the item's line, at either end of it.
+    assert_eq!(hidden("- [ ] a¦"), v(&["- [ ] "]));
+    assert_eq!(hidden("¦- [ ] a"), v(&["- [ ] "]));
+    assert_eq!(hidden("- [ ¦] a"), v(&["- [ ] "]));
+    // An empty task item: the whole line is prefix.
+    assert_eq!(hidden("¦z\n\n* [ ]\n"), v(&["* [ ]"]));
+}
+
+#[test]
+fn ordered_task_items_keep_their_number_and_marker() {
+    // Regression: a checkbox was emitted for `1. [x]` while `[x]` stayed visible (drawn twice,
+    // or not at all, by the shell). The number stays, so does the marker; no checkbox.
+    assert!(hidden("¦z\n\n1. [x] b\n2) [ ] c\n").is_empty());
+    assert!(decos("¦z\n\n1. [x] b\n2) [ ] c\n").is_empty());
+    // Unordered siblings are unaffected.
+    assert_eq!(decos("¦z\n\n1. [x] b\n\n- [ ] c\n"), vec![("[ ]".to_string(), DecorationKind::Checkbox { checked: false })]);
 }
 
 #[test]
@@ -309,12 +325,27 @@ fn definitions_and_footnotes_stay_visible() {
 fn selections_reveal_every_owner_they_overlap() {
     let t = "x **a** y *b* z `c` w";
     assert_eq!(hidden(&t.replace("**a** y *b*", "⟪**a** y *b*⟫")), v(&["`", "`"]));
-    // A selection that stops right before an element does not reveal it.
-    assert_eq!(hidden("⟪x ⟫**a** y"), v(&["**", "**"]));
+    // Each end of a selection touches like a caret: one that stops right before an element (or
+    // starts right after it) reveals it, as a caret there would.
+    assert!(hidden("⟪x ⟫**a** y").is_empty());
+    assert!(hidden("x **a**⟪ y⟫").is_empty());
+    assert_eq!(hidden("⟪x⟫ **a** y"), v(&["**", "**"]));
+    assert_eq!(hidden("x **a** ⟪y⟫"), v(&["**", "**"]));
     assert_eq!(hidden("x⟪ y⟫ **a**"), v(&["**", "**"]));
     // A whole-line selection (with its terminator) does not reveal the next line's marker.
     assert_eq!(hidden("⟪text\n⟫# Next\n"), v(&["# "]));
     assert!(hidden("⟪text\n# Next\n⟫").is_empty());
+    assert_eq!(hidden("⟪text\r\n⟫# Next\n"), v(&["# "]));
+    assert_eq!(hidden("⟪text\r⟫# Next\n"), v(&["# "]));
+    // Without the terminator the end is on the first line; the next line is not touched.
+    assert_eq!(hidden("⟪text⟫\n# Next\n"), v(&["# "]));
+    // Symmetrically, a selection starting at a line terminator does not reveal that line.
+    assert_eq!(hidden("# Head⟪\nnext⟫\n"), v(&["# "]));
+    assert_eq!(hidden("# Head⟪\r\nnext⟫\n"), v(&["# "]));
+    assert!(hidden("# Hea⟪d\nnext⟫\n").is_empty());
+    // A fence or quote line is not revealed by a selection that only reaches it with a break.
+    assert_eq!(hidden("⟪a\n⟫> q\n"), v(&["> "]));
+    assert_eq!(hidden("> q⟪\na⟫\n"), v(&["> "]));
     // Inverted selections are normalized.
     let doc = Document::new("a **b** c", OffsetEncoding::Utf8);
     assert_eq!(doc.concealment(TextRange::new(6, 3), None), doc.concealment(TextRange::new(3, 6), None));
@@ -428,6 +459,33 @@ fn concealment_of_a_window_in_a_one_megabyte_document_is_cheap() {
     let per = start.elapsed() / n;
     println!("1 MB document ({} units): windowed concealment (12k units) {per:?} each, {} hidden ranges per query", doc.len(), hidden / n as usize);
     assert!(per < std::time::Duration::from_millis(5));
+}
+
+/// The shell queries the whole text up to 150k UTF-16 units, a window beyond: what each costs.
+/// `cargo test --release -p markdown-core --test conceal -- --ignored --nocapture whole`
+#[test]
+#[ignore = "timing"]
+fn whole_document_concealment_at_the_shell_threshold() {
+    let unit = "# Heading\n\nSome *emphasis*, **strong**, `code` and a [link](http://x.y/z) here.\n\n> quote\n> more\n\n- [ ] task\n- item\n\n```\ncode\n```\n\n";
+    let text = unit.repeat(150_000 / unit.len() + 1);
+    for enc in [OffsetEncoding::Utf16, OffsetEncoding::Utf8] {
+    let doc = Document::new(&text, enc);
+    let n = 200;
+    let start = std::time::Instant::now();
+    for i in 0..n {
+        let p = (i * 997) % doc.len();
+        std::hint::black_box(doc.concealment(TextRange::new(p, p), None));
+    }
+    let whole = start.elapsed() / n;
+    let start = std::time::Instant::now();
+    for i in 0..n {
+        let p = (i * 997) % doc.len();
+        let w = TextRange::new(p.saturating_sub(6000), (p + 6000).min(doc.len()));
+        std::hint::black_box(doc.concealment(TextRange::new(p, p), Some(w)));
+    }
+    let windowed = start.elapsed() / n;
+    println!("{enc:?} {} units: whole document {whole:?}, 12k window {windowed:?}", doc.len());
+    }
 }
 
 // ---------- properties ----------
@@ -558,12 +616,18 @@ proptest! {
         let spans = doc.spans(None);
         let owners = doc.markup_spans(None);
         let bytes = text.as_bytes();
+        // The paragraph of a standalone image is its owner (a hard break before the image does
+        // not make it less alone: `\\` CR LF `![a](p.png)`).
+        let image_paras: Vec<TextRange> = doc.images().iter().filter(|i| i.standalone).filter_map(|i| {
+            doc.blocks().into_iter().find(|b| b.range.start <= i.range.start && i.range.end <= b.range.end).map(|b| b.range)
+        }).collect();
         let plain: Vec<u32> = bs.iter().copied().filter(|&p| {
             let ls = text[..p as usize].rfind(['\n', '\r']).map_or(0, |i| i as u32 + 1);
             let le = text[p as usize..].find(['\n', '\r']).map_or(text.len() as u32, |i| p + i as u32);
             let _ = bytes;
             // Far from any owner: the caret's line has no block-level markup or decoration,
             // and the caret is not in or next to any inline owner, block or image.
+            image_paras.iter().all(|r| !(r.start <= p && p <= r.end)) &&
             owners.iter().all(|m| !((m.owner.start <= p && p <= m.owner.end) || (m.range.start >= ls && m.range.end <= le)))
                 && spans.iter().all(|s| {
                     let on_line = s.range.start <= le && s.range.end >= ls;
@@ -598,4 +662,160 @@ proptest! {
             prop_assert_eq!(doc.concealment(sel, None), fresh.concealment(sel, None));
         }
     }
+}
+
+// ---------- the test pass's list of suspects, pinned ----------
+
+#[test]
+fn nested_owners_are_independent() {
+    // Caret in the outer strong, outside the inner emphasis: only the strong shows.
+    assert_eq!(hidden("x **a¦ *b* c**"), v(&["*", "*"]));
+    assert!(hidden("x **a *b¦* c**").is_empty());
+    // `***a** b*`: emphasis around strong, the caret after the strong but inside the emphasis.
+    assert_eq!(hidden("x ***a**¦ b*"), Vec::<String>::new());
+    assert_eq!(hidden("x ***a** b¦*"), v(&["**", "**"]));
+    // Caret in emphasis, outside the link it holds.
+    assert_eq!(hidden("x *a [b](u) c¦*"), v(&["[", "](u)"]));
+}
+
+#[test]
+fn links_holding_images() {
+    // Away: both bracket pairs and both destinations hide; the alt text stays.
+    assert_eq!(hidden("[![i](x.png)](u)\n\n¦z"), v(&["[![", "](x.png)](u)"]));
+    // At the link's end: the link shows, the image inside it (not touched) does not.
+    assert_eq!(hidden("[![i](x.png)](u)¦"), v(&["![", "](x.png)"]));
+    // Not standalone (the link is the paragraph's content): no image decoration.
+    assert!(decos("[![i](x.png)](u)\n\n¦z").is_empty());
+}
+
+#[test]
+fn images_in_containers_are_standalone() {
+    assert_eq!(decos("- ![i](x.png)\n\n¦z"), vec![("-".to_string(), DecorationKind::Bullet), ("![i](x.png)".to_string(), DecorationKind::Image { index: 0 })]);
+    assert_eq!(hidden("> ![i](x.png)\n\n¦z"), v(&["> ![i](x.png)"]));
+    assert!(hidden("> ![i](x.png)¦\n\nz").is_empty());
+}
+
+#[test]
+fn headings_in_containers() {
+    assert_eq!(hidden("- # H\n\n¦z"), v(&["# "]));
+    assert!(hidden("- # H¦\n\nz").is_empty());
+    assert_eq!(hidden("> # H\n\n¦z"), v(&["> # "]));
+    assert_eq!(hidden("> ## H\n> b¦\n\nz"), v(&["> ## "]));
+}
+
+#[test]
+fn lazy_continuation_lines_have_no_marker() {
+    assert_eq!(hidden("> a\nlazy\n\n¦z"), v(&["> "]));
+    // The bar covers the whole quote, lazy line included; the shell draws it only beside
+    // lines whose `>` is hidden.
+    assert_eq!(decos("> a\nlazy\n\n¦z"), vec![("> a\nlazy".to_string(), DecorationKind::QuoteBar { depth: 0 })]);
+}
+
+#[test]
+fn setext_underlines_and_their_neighbours() {
+    // `  - ` under a paragraph is an underline (up to three blanks of indentation).
+    assert_eq!(hidden("a\n  - \n\n¦z"), v(&["-"]));
+    assert_eq!(collapsed("a\n  - \n\n¦z"), v(&["  - \n"]));
+    assert!(hidden("a\n  - ¦\n\nz").is_empty());
+    assert!(hidden("a\n¦  - \n\nz").is_empty(), "the start of the underline's line is on it");
+    // `*`, `+` and `1.` cannot be underlines: they stay list items.
+    for m in ["*", "+", "1."] {
+        let t = format!("- a\n  {m} \n\n¦z");
+        assert!(hidden(&t).is_empty(), "{t:?}");
+        assert!(collapsed(&t).is_empty(), "{t:?}");
+    }
+    // `==` is an underline too.
+    assert_eq!(hidden("- a\n  ==\n\n¦z"), v(&["=="]));
+    // A rule after a lazy line is a rule, not an underline.
+    assert_eq!(decos("- a\nb\n---\n¦z"), vec![("-".to_string(), DecorationKind::Bullet), ("---".to_string(), DecorationKind::Rule)]);
+    // Thematic breaks of each kind.
+    assert_eq!(hidden("¦z\n\n***\n---\n___"), v(&["***", "---", "___"]));
+}
+
+#[test]
+fn fences_in_containers() {
+    // In a list item: the closing fence line collapses; the opening line keeps its bullet.
+    let t = "¦z\n\n- ```\n  code\n  ```\n";
+    assert_eq!(hidden(t), v(&["```", "```"]));
+    assert_eq!(collapsed(t), v(&["  ```\n"]));
+    // Unclosed in a list item.
+    assert_eq!(hidden("¦z\n\n- ```\n  code\n"), v(&["```"]));
+    // Unclosed in a quote.
+    assert_eq!(hidden("¦z\n\n> ```\n> code\n"), v(&["> ```", "> "]));
+    assert_eq!(collapsed("¦z\n\n> ```\n> code\n"), v(&["> ```\n"]));
+}
+
+#[test]
+fn an_indented_closing_fence_is_content() {
+    // Regression: `    ```` (four blanks) cannot close a fence; it was hidden and collapsed.
+    assert_eq!(hidden("```\naaa\n    ```\n\n¦"), v(&["```"]));
+    assert_eq!(collapsed("```\naaa\n    ```\n\n¦"), v(&["```\n"]));
+    // Three blanks still close.
+    assert_eq!(hidden("```\naaa\n   ```\n\n¦"), v(&["```", "```"]));
+    // In a list item the indentation counts from the item's content.
+    assert_eq!(hidden("¦z\n\n- ```\n  a\n      ```\n"), v(&["```"]));
+}
+
+#[test]
+fn quote_markers_inside_multi_line_code_spans_and_list_items() {
+    // Regression: the `>` starting a quote line inside a code span (or inline HTML) that runs
+    // over two lines was taken for code content and left showing.
+    assert_eq!(hidden("> a `b\n> c` d\n\n¦z"), v(&["> ", "`", "> ", "`"]));
+    assert_eq!(hidden("> a <span\n> title=x> d\n\n¦z"), v(&["> ", "> "]));
+    // Regression: a quoted fence in a list item, its `>` lines four columns in.
+    assert_eq!(hidden("- > ```rs\n    >\n\n¦z"), v(&["> ```rs", ">"]));
+}
+
+#[test]
+fn front_matter_lookalikes() {
+    // Not closed: a rule and a paragraph.
+    assert_eq!(decos("---\ntitle\n\n¦z"), vec![("---".to_string(), DecorationKind::Rule)]);
+    assert_eq!(decos("---\n\n¦z"), vec![("---".to_string(), DecorationKind::Rule)]);
+    // `...` closes YAML too.
+    assert_eq!(hidden("---\na: b\n...\n¦z"), v(&["---", "..."]));
+    // pulldown-cmark 0.13 accepts a metadata block after a blank line anywhere; the preview
+    // omits it, so Live mode treats it as front matter too.
+    assert_eq!(collapsed("x\n\n---\ntitle: x\n---\n¦z"), v(&["---\n", "---\n"]));
+}
+
+#[test]
+fn escapes_next_to_emphasis_and_hard_breaks() {
+    // An escaped backslash before strong: the escape and the strong are separate owners.
+    assert_eq!(hidden("¦z \\\\**a**"), v(&["\\", "**", "**"]));
+    assert_eq!(hidden("\\\\**a**¦ z"), v(&["\\"]));
+    assert_eq!(hidden("¦z **a\\***"), v(&["**", "\\", "**"]));
+    // A backslash at the end of a paragraph or a heading is text, not a hard break.
+    assert!(hidden("¦z\n\na\\\n\nb").is_empty());
+    assert_eq!(hidden("¦z\n\n# a\\\n\nb"), v(&["# "]));
+    // A hard break in a quote: hidden like the markers around it.
+    assert_eq!(hidden("¦z\n\n> a\\\n> b"), v(&["> ", "\\", "> "]));
+}
+
+#[test]
+fn autolinks_and_remote_definitions() {
+    assert_eq!(hidden("¦z <http://a.b> <me@x.y>"), v(&["<", ">", "<", ">"]));
+    assert_eq!(hidden("¦<http://a.b> <me@x.y>"), v(&["<", ">"]), "the caret before the first touches it");
+    // A reference whose definition is in a quote further down: the link hides its brackets,
+    // the definition (never concealed) keeps its own; only the quote's `> ` goes.
+    assert_eq!(hidden("[a][ref]\n\n> [ref]: /u\n\n¦z"), v(&["[", "][ref]", "> "]));
+}
+
+#[test]
+fn empty_documents_and_crlf() {
+    assert_eq!(conceal("¦").1, Concealment::default());
+    assert_eq!(conceal("¦\n").1, Concealment::default());
+    assert_eq!(conceal("¦\r\n").1, Concealment::default());
+    let t = "¦z\r\n\r\n# H\r\n\r\n```\r\nc\r\n```\r\n";
+    assert_eq!(hidden(t), v(&["# ", "```", "```"]));
+    assert_eq!(collapsed(t), v(&["```\r\n", "```\r\n"]));
+    // A caret between CR and LF is on neither line's text.
+    assert_eq!(hidden("# H\r¦\nz"), v(&["# "]));
+}
+
+#[test]
+fn a_standalone_image_over_two_lines_stays_source() {
+    // Regression: the decoration stood for source whose line break could not be hidden.
+    let t = "¦z\n\n![a](p.png\n)\n";
+    assert!(decos(t).is_empty());
+    assert_eq!(hidden(t), v(&["![", "](p.png", ")"]));
 }

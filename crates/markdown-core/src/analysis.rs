@@ -242,6 +242,10 @@ struct Builder<'a> {
     extended_end: Option<usize>,
     /// Role given to the `Markup` spans emitted right now.
     role: MarkupRole,
+    /// The closing fence `fence_markup` guessed for the open code block (index in `spans`
+    /// and byte range); dropped again if pulldown-cmark reports it as code text (`    ```` is
+    /// content, not a closing fence).
+    close_fence: Option<(usize, usize, usize)>,
 }
 
 #[inline]
@@ -285,6 +289,7 @@ impl<'a> Builder<'a> {
             backslash_run: (0, 0),
             extended_end: None,
             role: MarkupRole::Plain,
+            close_fence: None,
         }
     }
 
@@ -420,13 +425,63 @@ impl<'a> Builder<'a> {
         if !matches!(ev, Event::Text(_)) {
             self.flush_run();
         }
-        if matches!(ev, Event::Text(_) | Event::Code(_) | Event::Html(_) | Event::InlineHtml(_)) && r.start < r.end {
+        if matches!(ev, Event::Code(_) | Event::InlineHtml(_)) && r.start < r.end {
+            // A code span or inline HTML can run over several lines of a quote; the `>` that
+            // starts a continuation line is the quote's marker, not content (pulldown-cmark
+            // reports the element's range over it). Content resumes after it.
+            let mut s = r.start;
+            let mut i = r.start;
+            while i < r.end {
+                if matches!(self.b[i], b'\n' | b'\r') {
+                    if s < i {
+                        self.texts.push((s, i));
+                    }
+                    i += 1;
+                    if i < r.end && self.b[i - 1] == b'\r' && self.b[i] == b'\n' {
+                        i += 1;
+                    }
+                    // `>` markers each after at most three blanks. Deeper (a quote inside a list
+                    // item) is left as content: a marker shown is better than content hidden.
+                    loop {
+                        let mut j = i;
+                        while j < r.end && j - i < 3 && self.b[j] == b' ' {
+                            j += 1;
+                        }
+                        if j < r.end && self.b[j] == b'>' {
+                            i = j + 1;
+                            if i < r.end && matches!(self.b[i], b' ' | b'\t') {
+                                i += 1;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    s = i;
+                } else {
+                    i += 1;
+                }
+            }
+            if s < r.end {
+                self.texts.push((s, r.end));
+            }
+        } else if matches!(ev, Event::Text(_) | Event::Html(_)) && r.start < r.end {
             self.texts.push((r.start, r.end));
         }
         match ev {
             Event::Start(tag) => self.start(tag, r),
             Event::End(tag) => self.end(tag, r),
             Event::Text(t) => {
+                if self.in_code
+                    && let Some((i, fs, fe)) = self.close_fence
+                    && r.start < fe
+                    && fs < r.end
+                {
+                    // The guessed closing fence is code text: not markup after all.
+                    if self.spans.get(i).is_some_and(|sp| sp.start == fs && sp.end == fe && sp.kind == SpanKind::Markup) {
+                        self.spans.remove(i);
+                    }
+                    self.close_fence = None;
+                }
                 if self.in_code || self.in_meta || self.in_html {
                     return;
                 }
@@ -566,8 +621,8 @@ impl<'a> Builder<'a> {
                 self.push_block(BlockKind::CodeBlock, t, None, d);
                 if matches!(kind, CodeBlockKind::Fenced(_)) {
                     self.role = MarkupRole::Fence;
-self.fence_markup(t);
-self.role = MarkupRole::Plain;
+                    self.fence_markup(t);
+                    self.role = MarkupRole::Plain;
                 }
                 self.in_code = true;
             }
@@ -715,7 +770,10 @@ self.role = MarkupRole::Plain;
                 self.quote_depth = self.quote_depth.saturating_sub(1);
                 self.container_depth = self.container_depth.saturating_sub(1);
             }
-            TagEnd::CodeBlock => self.in_code = false,
+            TagEnd::CodeBlock => {
+                self.in_code = false;
+                self.close_fence = None;
+            }
             TagEnd::HtmlBlock => self.in_html = false,
             TagEnd::List(_) => self.flush_para(),
             TagEnd::Item | TagEnd::FootnoteDefinition => {
@@ -850,7 +908,10 @@ self.role = MarkupRole::Plain;
                 // code block of the quote without reporting its text; four columns of
                 // indentation there make it block content, not a marker.
                 let indent = self.b[ls..ms].iter().fold(0, |c, &x| if x == b'\t' { (c / 4 + 1) * 4 } else { c + 1 });
+                // Only a tab does this: plain spaces (a quote in a list item sits four columns in)
+                // are the container's indentation, and pulldown-cmark reports those lines.
                 let in_block = indent >= 4
+                    && self.b[ls..ms].contains(&b'\t')
                     && self.spans.iter().any(|sp| matches!(sp.kind, SpanKind::Html | SpanKind::CodeBlock) && sp.start < ms && ms < sp.end);
                 if !in_block && self.texts.get(i).is_none_or(|t| t.0 >= me) {
                     self.markup(ms, me, (ls, le), MarkupScope::Line);
@@ -905,7 +966,11 @@ self.role = MarkupRole::Plain;
                 q += 1;
             }
             if q - p >= n && b[q..lle].iter().all(|&x| matches!(x, b' ' | b'\t')) {
+                let i = self.spans.len();
                 self.markup(p, q, (ll, lle), MarkupScope::Line);
+                if self.spans.len() == i + 1 {
+                    self.close_fence = Some((i, p, q));
+                }
             }
         }
     }

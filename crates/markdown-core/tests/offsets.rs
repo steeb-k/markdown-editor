@@ -300,3 +300,24 @@ fn queries_on_an_empty_document() {
         }
     }
 }
+
+/// A multi-byte character that straddles a checkpoint of the offset table and ends the text
+/// (found by the Live-mode stress test: a 254-byte document typed into in UTF-16 crashed).
+#[test]
+fn a_character_straddling_a_checkpoint_at_the_very_end() {
+    for tail in ["\u{65E5}", "\u{1F389}", "e\u{301}", "\u{E9}"] {
+        for n in 250..=260 {
+            let text = format!("{}{tail}", "a".repeat(n));
+            for enc in [OffsetEncoding::Utf16, OffsetEncoding::Utf32] {
+                let d = Document::new(&text, enc);
+                check_everything(&d).unwrap();
+                let mut e = Document::new("", enc);
+                e.replace(TextRange::new(0, 0), &text).unwrap();
+                assert_eq!(e.len(), d.len());
+                let mut f = Document::new(&text[1..], enc);
+                f.replace(TextRange::new(0, 0), "\u{65E5}").unwrap();
+                check_everything(&f).unwrap();
+            }
+        }
+    }
+}

@@ -338,7 +338,9 @@ pub enum DecorationKind {
     /// is hidden instead).
     Bullet,
     /// A task marker `[ ]` / `[x]` drawn as a checkbox the user can click. The item's list
-    /// marker, the marker itself and the blanks around them are in `hidden`.
+    /// marker, the marker itself and the blanks around them are in `hidden`, whatever the
+    /// selection. Only for unordered items: in an ordered item (`1. [ ]`) the number and the
+    /// task marker stay visible and no checkbox is drawn.
     Checkbox { checked: bool },
     /// A thematic break drawn as a horizontal rule. Emitted only while its characters are
     /// hidden (the selection is not on its line).
