@@ -76,18 +76,51 @@ public final class MarkdownDocument: NSDocument {
         }
     }
 
+    /// What a save writes: the text and a copy of the attribution, taken together.
+    struct SaveSnapshot {
+        let text: String
+        let authorship: Authorship
+        let hasBOM: Bool
+        let lineEnding: LineEnding
+
+        /// The file's bytes: the text, then the annotation block when some text belongs to
+        /// someone other than the user (or the original block, if neither the text nor the
+        /// marks changed). The block's hash is the expensive part (tens of milliseconds at 1 MB).
+        func encoded() -> Data {
+            var data = TextCodec.encode(text, hasBOM: hasBOM, lineEnding: lineEnding)
+            let tail = authorship.fileTail(text: text, ending: lineEnding.annotationEnding)
+            if !tail.isEmpty { data.append(Data(tail.utf8)) }
+            return data
+        }
+    }
+
+    /// Instrumentation (tests): the thread each write ran on.
+    var writesOnMainThread: [Bool] = []
+
+    func saveSnapshot() -> SaveSnapshot {
+        SaveSnapshot(text: session.text, authorship: session.authorship.copy(), hasBOM: hasBOM, lineEnding: lineEnding)
+    }
+
     public override func data(ofType typeName: String) throws -> Data {
-        let text = session.text
-        var data = TextCodec.encode(text, hasBOM: hasBOM, lineEnding: lineEnding)
-        // The annotation block, when some text belongs to someone other than the user (or the
-        // original block, if neither the text nor the marks changed).
-        let tail = session.authorship.fileTail(text: text, ending: lineEnding.annotationEnding)
-        if !tail.isEmpty { data.append(Data(tail.utf8)) }
-        return data
+        saveSnapshot().encoded()
+    }
+
+    /// Saves are written off the main thread: the text and the attribution are copied while
+    /// NSDocument holds the main thread, then the user can type again while the block is hashed
+    /// and the file written.
+    public override func canAsynchronouslyWrite(to url: URL, ofType typeName: String,
+                                                for saveOperation: NSDocument.SaveOperationType) -> Bool {
+        true
     }
 
     public override func write(to url: URL, ofType typeName: String) throws {
-        try DocumentFileAccess.write(data(ofType: typeName), to: url)
+        // On a background thread during an asynchronous save, with the main thread waiting for
+        // `unblockUserInteraction` (nothing can change the text meanwhile); on the main thread
+        // otherwise.
+        let snapshot = saveSnapshot()
+        writesOnMainThread.append(Thread.isMainThread)
+        if !Thread.isMainThread { unblockUserInteraction() }
+        try DocumentFileAccess.write(snapshot.encoded(), to: url)
     }
 }
 

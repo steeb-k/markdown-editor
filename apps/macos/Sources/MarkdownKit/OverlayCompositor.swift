@@ -298,12 +298,13 @@ public final class OverlayCompositor {
         }
     }
 
+    /// Clears the whole text, not just what the model says is applied: after a new text was
+    /// loaded the edited ranges were not applied yet, and whatever AppKit carried into the new
+    /// text is not trusted.
     private func removeAll() {
         guard let lm = layoutManager else { return }
-        for run in applied {
-            let r = RangeMath.clamp(run.range, toLength: textLength())
-            if r.length > 0 { lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: r) }
-        }
+        let length = textLength()
+        if length > 0 { lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: NSRange(location: 0, length: length)) }
     }
 
     // MARK: composition (pure)
@@ -463,8 +464,12 @@ public final class OverlayCompositor {
     }
 
     /// The focus range after an edit: text typed inside it, or at either edge of it, stays in
-    /// it (typing at the end of a sentence must not flash dim before the next query).
+    /// it, and text typed where nothing was lit is lit (typing must not flash dim before the
+    /// next query, which in a long document comes after the character is drawn).
     static func shiftKeeping(_ keep: [NSRange], through c: TextChange) -> [NSRange] {
+        // Nothing lit (the caret was on a blank line): what is typed there starts a new unit,
+        // which the next answer lights; until then it is lit already.
+        if keep.isEmpty, c.newLength > 0 { return [NSRange(location: c.old.location, length: c.newLength)] }
         var out: [NSRange] = []
         for k in keep {
             var r = RangeMath.shift(k, through: c)

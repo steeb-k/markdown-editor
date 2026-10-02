@@ -367,7 +367,7 @@ extension EditorTextView {
         for (n, url) in urls.enumerated() {
             if n > 0 {
                 let end = NSMaxRange(selectedRange())
-                _ = replaceThroughUndo(range: NSRange(location: end, length: 0), with: "\n\n")
+                _ = replaceThroughUndo(range: NSRange(location: end, length: 0), with: "\n\n", origin: .typed)
                 setSelectedRange(NSRange(location: end + 2, length: 0))
             }
             let path = DocumentFileAccess.path(of: url, relativeTo: docURL)
@@ -376,7 +376,9 @@ extension EditorTextView {
             let command: FormatCommand = isImage
                 ? .image(destination: path, alt: name)
                 : .linkTo(destination: path, text: url.lastPathComponent)
-            perform(actionName: isImage ? "Insert Image" : "Insert Link") { $0.format(command: command, selection: $1) }
+            // A file the user dropped or pasted: the reference to it is the user's text, not the
+            // text beside it.
+            perform(actionName: isImage ? "Insert Image" : "Insert Link", origin: .typed) { $0.format(command: command, selection: $1) }
         }
         undoManager?.setActionName(urls.count == 1 && (UTType(filenameExtension: urls[0].pathExtension)?.conforms(to: .image) ?? false) ? "Insert Image" : "Insert Files")
         undoManager?.endUndoGrouping()
@@ -425,7 +427,7 @@ extension EditorTextView {
                     // After an asynchronous gap: its own undo step, whatever the event grouping.
                     self.undoManager?.beginUndoGrouping()
                     self.breakUndoCoalescing()
-                    self.perform(actionName: "Paste Image") { $0.format(command: .image(destination: path, alt: "image"), selection: $1) }
+                    self.perform(actionName: "Paste Image", origin: .typed) { $0.format(command: .image(destination: path, alt: "image"), selection: $1) }
                     self.undoManager?.endUndoGrouping()
                     completion?(true)
                 }

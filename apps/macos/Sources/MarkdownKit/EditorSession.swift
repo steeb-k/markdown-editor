@@ -21,6 +21,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onViewModeChange: (() -> Void)?
     /// The text range the layout manager's live state was last computed for.
     var liveWindow = NSRange(location: 0, length: 0)
+    /// The text range focus mode's ranges were last asked for.
+    var focusWindow = NSRange(location: 0, length: 0)
     var liveToken = 0
     var livePending = false
     var liveQueries = 0
@@ -49,9 +51,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     var editOrigin: EditOrigin = .typed
     var isLoading = false
     var authorshipUndo = AuthorshipUndoState()
-    /// The edit the text view last announced (`shouldChangeText`): exact, unlike the storage's
-    /// edited range. Consumed by the next storage edit.
-    var pendingEdit: (range: NSRange, length: Int)?
+    /// The edits the text view last announced (`shouldChangeText`): exact, unlike the storage's
+    /// edited range. One for an ordinary edit, several when it announced several ranges at once
+    /// (Replace All, a drag that moves text). Consumed by the storage edits that make them.
+    var pendingEdits: [(range: NSRange, length: Int)] = []
     /// A file whose marks might be misplaced: editing waits for Keep or Discard.
     public internal(set) var pendingAuthorshipDecision: AnnotationStatus?
     public var onAuthorshipDecisionNeeded: (() -> Void)?
@@ -59,6 +62,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onAuthorshipDiscarded: (() -> Void)?
     /// Instrumentation: queries to the analysis queue made for the selection (see `refreshState`).
     var stateQueries = 0
+    /// Selection queries asked asynchronously whose answer has not been applied yet.
+    var stateQueriesInFlight = 0
+    /// Nothing about the selection is still to come: no query in flight or scheduled.
+    var selectionStateSettled: Bool { stateQueriesInFlight == 0 && !livePending && !scrollRefreshPending }
     /// Instrumentation: main-thread time spent asking and applying (seconds).
     var timeInStateQueries: TimeInterval = 0
     /// The scope and classes the overlay was last told about (to notice a change in `Settings`).
@@ -99,6 +106,16 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public private(set) var activeTableEdited = false
     var lastUserEdit: NSRange?
     private var isRealigning = false
+    /// Tests: a table left after an edit is aligned when `flushHeldRealigns()` says, not on its
+    /// own a moment later (a random walk needs to know which undo step is whose).
+    var holdsRealigns = false
+    private var heldRealigns: [NSRange] = []
+
+    func flushHeldRealigns() {
+        let held = heldRealigns
+        heldRealigns = []
+        for t in held { realign(t, token: selectionToken) }
+    }
     private var observers: [NSObjectProtocol] = []
 
     public init(settings: Settings = .shared, forcedAppearance: NSAppearance? = nil) {
@@ -199,6 +216,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         overlay.noteEdit(change)
         if syntaxEnabled { pos.noteEdit(change) }
         liveWindow = RangeMath.shift(liveWindow, through: change)
+        focusWindow = RangeMath.shift(focusWindow, through: change)
         if let t = activeTable { activeTable = RangeMath.shift(t, through: change) }
         // What counts as editing a table (so leaving it realigns): typing and commands, not undo
         // or redo (undoing a realign must not bring it straight back) and not the realign itself.
@@ -358,7 +376,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         // The table the caret has just left (the answer below replaces it).
         if let table = activeTable, !tableContains(table, selection), canRealign(tv) {
             activeTable = nil
-            if activeTableEdited { realign(table, token: token) }
+            if activeTableEdited {
+                if holdsRealigns { heldRealigns.append(table) } else { realign(table, token: token) }
+            }
             activeTableEdited = false
         }
         // One round trip to the analysis queue: concealment (Live), focus range (focus mode), format

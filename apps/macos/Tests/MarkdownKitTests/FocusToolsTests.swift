@@ -17,8 +17,12 @@ final class FakeTagger: PosTagger {
 
     func supports(_ language: NLLanguage) -> Bool { supported }
 
+    private var _languages: [String: NLLanguage] = [:]
+    /// The language each text was tagged as.
+    var languages: [String: NLLanguage] { lock.lock(); defer { lock.unlock() }; return _languages }
+
     func tag(_ text: String, language: NLLanguage) -> [PosWord] {
-        lock.lock(); _calls += 1; _texts.append(text); lock.unlock()
+        lock.lock(); _calls += 1; _texts.append(text); _languages[text] = language; lock.unlock()
         if delay > 0 { Thread.sleep(forTimeInterval: delay) }
         return Self.words(in: text)
     }
@@ -435,6 +439,31 @@ final class FocusToolsTests: XCTestCase {
         wait(e)
         XCTAssertEqual(e.session.pos.language, .french)
         XCTAssertEqual(tagger.calls, 1)
+    }
+
+    /// The document is English; a long French paragraph in it is tagged as French, a short
+    /// French line (too short to judge) as the document's language.
+    func testAParagraphInAnotherLanguageIsTaggedInItsOwn() {
+        let english = "The old fisherman slowly mends his large blue nets while the children watch the sea from the quay, and the gulls wait on the harbour wall for whatever the boats bring back in the evening."
+        let french = "Le vieux p\u{EA}cheur r\u{E9}pare lentement ses grands filets bleus pendant que les enfants regardent la mer depuis le quai, et les mouettes attendent sur le mur du port."
+        let short = "Bonjour \u{E0} tous."
+        let text = [english, english, french, english, short, english].joined(separator: "\n\n")
+        let tagger = FakeTagger()
+        let e = Editor(text: text)
+        e.session.pos.tagger = tagger
+        e.session.setSyntaxEnabled(true)
+        wait(e)
+        XCTAssertEqual(e.session.pos.language, .english)
+        let langs = tagger.languages
+        XCTAssertEqual(langs[english], .english)
+        XCTAssertEqual(langs[french], .french)
+        XCTAssertEqual(langs[short], .english)
+        // And nothing is tagged twice: the cache holds the French result like any other.
+        let calls = tagger.calls
+        e.select(0)
+        e.session.viewportChanged()
+        wait(e)
+        XCTAssertEqual(tagger.calls, calls)
     }
 
     func testClassesCanBeSwitchedOffWithoutTaggingAgain() {

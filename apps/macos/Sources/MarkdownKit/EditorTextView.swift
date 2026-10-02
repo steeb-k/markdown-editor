@@ -127,14 +127,19 @@ public final class EditorTextView: NSTextView {
         // is coalescing) registers the attribution before it, *before* the text system registers
         // its own action: anything registered after the text system's would stop it coalescing.
         let changesSomething = affectedRanges.contains { $0.rangeValue.length > 0 } || (replacementStrings ?? []).contains { !$0.isEmpty }
-        if changesSomething, !isCoalescingUndo, undoManager?.isUndoing != true, undoManager?.isRedoing != true {
+        let undoing = undoManager?.isUndoing == true || undoManager?.isRedoing == true
+        // Several ranges at once (the find bar's Replace All, a drag that moves text) are never
+        // part of the typing being coalesced: the text system registers them as an undo step of
+        // their own, so the attribution before them needs one too.
+        if changesSomething, affectedRanges.count > 1, !undoing { breakUndoCoalescing() }
+        if changesSomething, !isCoalescingUndo, !undoing {
             session?.registerAuthorshipUndo()
         }
         let ok = super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings)
-        if ok, affectedRanges.count == 1, let strings = replacementStrings, strings.count == 1 {
-            session?.pendingEdit = (affectedRanges[0].rangeValue, (strings[0] as NSString).length)
+        if ok, let strings = replacementStrings, strings.count == affectedRanges.count, !affectedRanges.isEmpty {
+            session?.pendingEdits = zip(affectedRanges, strings).map { ($0.rangeValue, ($1 as NSString).length) }
         } else {
-            session?.pendingEdit = nil
+            session?.pendingEdits = []
         }
         return ok
     }
@@ -217,16 +222,27 @@ public final class EditorTextView: NSTextView {
     /// Asks the core (after letting analysis catch up) for an edit at the selection and applies
     /// it. Returns false when the core has nothing to do (default behavior should follow).
     @discardableResult
+    ///
+    /// `origin` attributes what the edit inserts (see `EditOrigin`): by default a command's edit,
+    /// whose inserted text takes its neighbour's author.
     public func perform(actionName: String? = nil, _ make: @escaping (Document, Utf16Range) -> TextEdit?) -> Bool {
+        perform(actionName: actionName, origin: nil, make)
+    }
+
+    func perform(actionName: String? = nil, origin: EditOrigin?, _ make: @escaping (Document, Utf16Range) -> TextEdit?) -> Bool {
         guard let session, !hasMarkedText(), isEditable else { return false }
         let sel = selectedRange()
         let u = Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)))
         guard let edit = session.coordinator.sync({ make($0, u) }) else { return false }
-        apply(edit, actionName: actionName)
+        apply(edit, actionName: actionName, origin: origin)
         return true
     }
 
     public func apply(_ edit: TextEdit, actionName: String? = nil) {
+        apply(edit, actionName: actionName, origin: nil)
+    }
+
+    func apply(_ edit: TextEdit, actionName: String?, origin: EditOrigin?) {
         guard let session else { return }
         let range = NSRange(location: Int(edit.range.start), length: Int(edit.range.end - edit.range.start))
         let selection = NSRange(location: Int(edit.selection.start), length: Int(edit.selection.end - edit.selection.start))
@@ -237,7 +253,7 @@ public final class EditorTextView: NSTextView {
             session.selectionChanged(in: self)
         }
         if !(range.length == 0 && edit.replacement.isEmpty) {
-            guard replaceThroughUndo(range: range, with: edit.replacement) else { return }
+            guard replaceThroughUndo(range: range, with: edit.replacement, origin: origin) else { return }
             if let actionName { undoManager?.setActionName(actionName) }
         }
         if NSMaxRange(selection) <= session.storage.length {

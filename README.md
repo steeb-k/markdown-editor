@@ -19,6 +19,8 @@ cargo test --workspace
 # PROPTEST_CASES=100000 cargo test --profile fuzz -p markdown-core --test command_oracle     # commands judged by pulldown-cmark
 # SWEEP_STRIDE=1 cargo test --profile fuzz -p markdown-core --test command_props every_command  # every command on every selection
 # INSTA_UPDATE=always cargo test -p markdown-core --test fixtures       # accept changed snapshots (review the diff!)
+# PROPTEST_CASES=1000000 cargo test --profile fuzz -p markdown-core --test authorship   # authorship arithmetic and the file format
+# cargo test -p markdown-core --test authorship -- --ignored spec_readme    # the format's own spec README (fetched, not vendored) still verifies
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
 
@@ -27,6 +29,8 @@ scripts/build-core.sh                 # or --release, or --universal (arm64+x86_
 
 # Swift build and tests (after build-core.sh)
 cd apps/macos && swift build && swift test
+# Longer random walks: AUTHORSHIP_ROUNDS=40 AUTHORSHIP_STEPS=300 swift test --filter AuthorshipRandom
+#                      OVERLAY_SEEDS=6 swift test --filter OverlayRandomTests
 
 # Assemble and ad-hoc sign build/Markdown.app (runs build-core.sh and swift build)
 scripts/macos/bundle.sh               # or --release, or --universal
@@ -38,12 +42,17 @@ open build/Markdown.app
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
 scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour -> build/ui/live/
 scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by eye: pictures, selections, drop/paste
+scripts/macos/ui-script.sh scripts/macos/ui/live-edge.json      # Live mode edge cases
+scripts/macos/ui-script.sh scripts/macos/ui/look.json           # the M2 look: the tour in three themes, Settings
 scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
 scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As, typing in borrowed text, undo, save and reopen; three themes
 scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep-or-discard sheet for marks that may be misplaced
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
-RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-focus.json  # 1 MB: focus and syntax off vs on
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-live.json   # the same in Live mode
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/threshold.json  # Live mode either side of the whole-text limit
+scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
+scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).

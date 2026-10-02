@@ -478,7 +478,7 @@ final class AuthorshipFileTests: XCTestCase {
     }
 
     func testUntouchedFilesAreWrittenBackByteForByte() throws {
-        for name in ["ai-draft.md", "crlf.md", "emoji.md", "unknown-keys.md", "bom.md", "spec-example.md", "spec-readme.md", "lookalikes.md"] {
+        for name in ["ai-draft.md", "crlf.md", "emoji.md", "unknown-keys.md", "bom.md", "spec-example.md", "harbour-lights.md", "lookalikes.md"] {
             let data = try fixture(name)
             let doc = try open(data, window: name == "ai-draft.md")
             XCTAssertEqual(try doc.data(ofType: "net.daringfireball.markdown"), data, name)
@@ -705,7 +705,7 @@ final class AuthorshipFileTests: XCTestCase {
 
     func testThreadingTheHashWorkIsOffTheTypingPath() throws {
         // The block is only built when saving: typing in a document with marks does no hashing
-        // (a 1 MB document is checked by the UI script big-authorship.json).
+        // (a 1 MB document with thousands of runs is timed by scripts/macos/ui-big-focus.sh, "all").
         let e = Editor(text: String(repeating: "word ", count: 20_000))
         e.privatePasteboard()
         e.paste("ai", as: .ai)
@@ -727,8 +727,8 @@ class AuthorshipRandomTests: XCTestCase {
         var runs: [String]
     }
 
-    /// (No table: leaving one aligns it asynchronously, as a step of its own at a moment the
-    /// test does not control. Realign has its own test.)
+    /// A table is included: leaving one after editing it aligns it as an undo step of its own,
+    /// which the walk takes as an edit of the app's (`(automatic edit)` below).
     static let base = """
     # Title
 
@@ -738,6 +738,13 @@ class AuthorshipRandomTests: XCTestCase {
     - two
     1. first
     2. second
+
+    | a | b |
+    |---|---|
+    | cell | two |
+
+    - [ ] task one
+    - [x] done
 
     > quote line
 
@@ -755,6 +762,7 @@ class AuthorshipRandomTests: XCTestCase {
             var rng = SplitMix(seed: seed + UInt64(round))
             let e = live ? Editor.live(Self.base, caret: 0) : Editor(text: Self.base)
             e.privatePasteboard()
+            e.session.holdsRealigns = true
             // Undo is grouped by event, as in the app: an edit is one step, and an operation that
             // changes nothing (an empty selection) leaves no empty step behind.
             e.um.groupsByEvent = true
@@ -787,7 +795,7 @@ class AuthorshipRandomTests: XCTestCase {
                     let end = hi < len ? ns.rangeOfComposedCharacterSequence(at: hi).location : len
                     e.select(lo, rng.next() % 4 == 0 ? 0 : end - lo)
                 }
-                let op = Int(rng.next() % 16)
+                let op = Int(rng.next() % 22)
                 let before = state()
                 let groupsBefore = closedGroups
                 var isEdit = true
@@ -811,7 +819,7 @@ class AuthorshipRandomTests: XCTestCase {
                 case 5, 6:
                     randomSelection()
                     let c: AuthorChoice? = [nil, .me, .ai, .reference][Int(rng.next() % 4)]
-                    log.append("mark as \(String(describing: c)) \(e.tv.selectedRange())")
+                    log.append("mark as \(String(describing: c)) \(e.tv.selectedRange()) \(e.runState())")
                     act {
                         switch c {
                         case nil: e.tv.markAsNoAuthor(nil)
@@ -865,6 +873,72 @@ class AuthorshipRandomTests: XCTestCase {
                         XCTAssertEqual(got.text, history[at].text, "redo text, step \(step): \(log.suffix(4))")
                         XCTAssertEqual(got.runs, history[at].runs, "redo attribution, step \(step): \(log.suffix(4))")
                     }
+                case 16:
+                    // IME composition, committed.
+                    randomSelection()
+                    log.append("compose at \(e.tv.selectedRange())")
+                    let none = NSRange(location: NSNotFound, length: 0)
+                    act {
+                        e.tv.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: none)
+                        e.tv.setMarkedText("かん", selectedRange: NSRange(location: 2, length: 0), replacementRange: none)
+                        e.tv.insertText("漢", replacementRange: none)
+                    }
+                case 17:
+                    // The find bar's Replace All: every range announced at once, replaced last first.
+                    let needle = ["e", "o", "| ", "\u{1F389}", "**", "\n"][Int(rng.next() % 6)]
+                    let with = ["E", "", "xy", "\u{1F600}"][Int(rng.next() % 4)]
+                    var ranges: [NSRange] = []
+                    var from = 0
+                    while from <= ns.length {
+                        let r = ns.range(of: needle, options: [], range: NSRange(location: from, length: ns.length - from))
+                        if r.location == NSNotFound { break }
+                        ranges.append(r)
+                        from = NSMaxRange(r)
+                    }
+                    log.append("replace all \(needle.debugDescription) with \(with.debugDescription) (\(ranges.count))")
+                    if ranges.isEmpty { isEdit = false; break }
+                    let client = e.tv as AnyObject
+                    act {
+                        guard client.shouldReplaceCharacters?(inRanges: ranges.map { NSValue(range: $0) }, with: ranges.map { _ in with }) == true else { return }
+                        for r in ranges.reversed() { client.replaceCharacters?(in: r, with: with) }
+                        client.didReplaceCharacters?()
+                    }
+                case 18:
+                    // A drag that moves the selection elsewhere: insertion and deletion announced
+                    // together and made in one round of editing.
+                    randomSelection()
+                    let src = e.tv.selectedRange()
+                    let dst = pos(rng.next())
+                    if src.length == 0 || (dst >= src.location && dst <= NSMaxRange(src)) { isEdit = false; break }
+                    let moved = ns.substring(with: src)
+                    log.append("drag \(src) to \(dst)")
+                    act {
+                        let ranges = dst > NSMaxRange(src) ? [NSRange(location: dst, length: 0), src] : [src, NSRange(location: dst, length: 0)]
+                        let strings = dst > NSMaxRange(src) ? [moved, ""] : ["", moved]
+                        guard e.tv.shouldChangeText(inRanges: ranges.map { NSValue(range: $0) }, replacementStrings: strings) else { return }
+                        e.session.storage.beginEditing()
+                        for (r, t) in zip(ranges, strings).sorted(by: { $0.0.location > $1.0.location }) {
+                            e.session.storage.replaceCharacters(in: r, with: t)
+                        }
+                        e.session.storage.endEditing()
+                        e.tv.didChangeText()
+                    }
+                case 19:
+                    // A checkbox click (the core's toggle, as Live mode does it).
+                    let boxes = [ns.range(of: "- [ ]"), ns.range(of: "- [x]")].filter { $0.location != NSNotFound }
+                    guard let box = boxes.first else { isEdit = false; break }
+                    log.append("toggle task at \(box.location)")
+                    act { e.tv.toggleTask(at: box.location) }
+                case 20:
+                    // A spelling correction from the contextual menu.
+                    randomSelection()
+                    log.append("correct \(e.tv.selectedRange())")
+                    act { e.tv.insertText("quick", replacementRange: e.tv.selectedRange()) }
+                case 21:
+                    // A file dropped at the caret.
+                    let at = pos(rng.next())
+                    log.append("drop at \(at)")
+                    act { e.tv.insertFiles([URL(fileURLWithPath: "/tmp/p\u{E9}.png")], at: at) }
                 default:
                     isEdit = false
                     log.append("display toggle")
@@ -877,7 +951,7 @@ class AuthorshipRandomTests: XCTestCase {
                         // Every edit is exactly one undo step, and undoing it gives back exactly
                         // the state before, redoing it the state after.
                         e.um.undo()
-                        XCTAssertEqual(state(), before, "undo of the last edit, step \(step): \(log.suffix(2))")
+                        XCTAssertEqual(state(), before, "undo of the last edit, round \(round) step \(step): \(log.suffix(6))")
                         e.um.redo()
                         XCTAssertEqual(state(), now, "redo of the last edit, step \(step): \(log.suffix(2))")
                         // A new edit ends the redo history. 
@@ -887,6 +961,9 @@ class AuthorshipRandomTests: XCTestCase {
                     }
                 }
                 let groupsAfterOp = closedGroups
+                e.settle()
+                pump()
+                e.session.flushHeldRealigns()
                 e.settle()
                 pump()
                 // The app edits by itself too: a table is aligned when the caret leaves it, as its

@@ -12,7 +12,8 @@ public struct PosWord: Equatable {
 /// The platform service the core does not provide: tags words. On macOS it is `NLTagger`; tests
 /// substitute their own. `tag` is called from one background queue only.
 public protocol PosTagger: AnyObject {
-    /// Can this language be tagged at all? (Asked on the main thread, once per language.)
+    /// Can this language be tagged at all? (Asked once per language, on the main thread for the
+    /// document's language and on the tagging queue for a paragraph in another language.)
     func supports(_ language: NLLanguage) -> Bool
     /// The words of `text` that belong to one of the five classes (others are left out), in order.
     func tag(_ text: String, language: NLLanguage) -> [PosWord]
@@ -397,7 +398,7 @@ public final class PosHighlighter {
             tagging += 1
             _invocations += 1
             lock.unlock()
-            let words = tagger.tag(job.text, language: lang)
+            let words = tagger.tag(job.text, language: unitLanguage(job.text, document: lang))
             let tags = words.map { PosTag(range: Utf16Range(start: UInt32($0.range.location), end: UInt32(NSMaxRange($0.range))), class: $0.posClass) }
             let mapped = posMapTags(unit: job.unit, words: tags)
             let base = job.unit.range.start
@@ -411,6 +412,26 @@ public final class PosHighlighter {
                 lastPost = now
             }
         }
+    }
+
+    /// A paragraph long enough to judge, recognized with confidence as another language the
+    /// tagger knows, is tagged as that language: a French paragraph in an English document gets
+    /// French parts of speech. Anything shorter or less certain is the document's language.
+    /// Decided from the unit's text alone, so the cache (keyed by text and document language)
+    /// stays exact. Runs on the tagging queue.
+    static let unitLanguageMinimum = 100
+    static let unitLanguageConfidence = 0.9
+    private var supportedOnQueue: [NLLanguage: Bool] = [:]
+
+    private func unitLanguage(_ text: String, document lang: NLLanguage) -> NLLanguage {
+        guard languageOverride == nil, (text as NSString).length >= Self.unitLanguageMinimum else { return lang }
+        let r = NLLanguageRecognizer()
+        r.processString(text)
+        guard let (found, p) = r.languageHypotheses(withMaximum: 1).max(by: { $0.value < $1.value }),
+              found != lang, p >= Self.unitLanguageConfidence else { return lang }
+        let ok = supportedOnQueue[found] ?? tagger.supports(found)
+        supportedOnQueue[found] = ok
+        return ok ? found : lang
     }
 
     /// Results arrive: remember them, and look at the text again (it may have moved since).

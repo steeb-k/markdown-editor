@@ -16,12 +16,15 @@ What a GTK shell writes for the focus tools, given what the core already does:
   everything). Dim by applying a `GtkTextTag` with the theme's `focus_dim` foreground to the
   complement; the shell has no sentence or paragraph logic of its own.
 - **Syntax highlighting**: `Document::pos_units(window)` gives one unit per block (its prose
-  pieces and where they are set off from each other). Join a unit's pieces as `PosUnit` says,
+  pieces and where they are set off from each other), or several for a block with more than about
+  12 KB of prose, cut at places an edit elsewhere does not move. Join a unit's pieces as `PosUnit` says,
   run the tagger on the text, turn its words into `PosTag`s (class mapping below, offsets in the
   joined text) and call `PosUnit::map_tags` to get document ranges, one tag per piece for a
   word cut by markup. Cache the result by the joined text (plus the pieces' layout and the
   language) as ranges relative to the unit, so scrolling and unrelated edits never tag again.
-  Colour with the theme's `pos_*` roles in a tag lower in priority than the focus dimming.
+  Colour with the theme's `pos_*` roles in a tag lower in priority than the focus dimming. The macOS
+  shell tags a unit of 100 or more characters that its recognizer is at least 90% sure is in another
+  (supported) language in that language, and otherwise in the document's.
 - The five classes are noun, verb, adjective, adverb, conjunction. macOS maps `NLTag.noun`
   (names included), `.verb`, `.adjective`, `.adverb`, `.conjunction` and leaves pronouns,
   determiners, prepositions, particles, numbers, interjections and everything else uncoloured.
@@ -30,8 +33,9 @@ What a GTK shell writes for the focus tools, given what the core already does:
   in the buffer's unit (`Utf32` for GTK), no parsing, cheap enough to live on the main thread next
   to the `GtkTextBuffer` so undo is synchronous. Keep it in step from the buffer's
   `insert-text` / `delete-range` signals with `edit(range, inserted_len, attribution)` (`Typed(me)`
-  for typing and plain paste, `As(author)` for Paste As, `Inherit` or `edit_replacing(range, old,
-  new, Inherit)` for edits the core's commands compute) and take an `AuthorshipSnapshot` before each
+  for typing, plain paste, find-and-replace, spelling corrections and dropped files, `As(author)` for
+  Paste As, `Inherit` or `edit_replacing(range, old, new, Inherit)` for edits the core's commands
+  compute; a replacement of several ranges at once is one `edit` per range, the last range first) and take an `AuthorshipSnapshot` before each
   undoable change. Colour AI and Reference runs (`runs(None)`) with `GtkTextTag`s using the theme's
   `author_ai` / `author_reference`, below focus dimming and parts of speech. On open, call
   `split_annotations(file_text)` (the file as read, line endings untouched), show `body`, build the

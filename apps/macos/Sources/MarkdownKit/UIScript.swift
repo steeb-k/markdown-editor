@@ -53,8 +53,11 @@ final class UIScriptRunner {
 
     private static var running: UIScriptRunner?
 
-    /// Every Objective-C exception is logged with its stack, even one that AppKit or a run-loop
-    /// callout swallows (a swallowed exception would otherwise just stop the script).
+    /// Any Objective-C exception ends the script as a failure, at the point it is thrown: it is
+    /// logged with its stack (the throw site, which a crash report does not keep), recorded in
+    /// `log.json`, and the app exits with status 3. Left to the run loop it would be swallowed
+    /// (the script just stops) or, on recent macOS, end in AppKit's exception telltale aborting
+    /// the process with a crash report. Set `UI_SCRIPT_EXCEPTIONS=log` to only log them.
     private static func logExceptions() {
         typealias Preprocessor = @convention(c) (UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
         typealias Setter = @convention(c) (Preprocessor) -> Preprocessor?
@@ -62,11 +65,25 @@ final class UIScriptRunner {
         let set = unsafeBitCast(sym, to: Setter.self)
         _ = set { raw in
             if let raw, let e = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue() as? NSException {
-                let text = "[ui-script] EXCEPTION \(e.name.rawValue): \(e.reason ?? "")\n" + Thread.callStackSymbols.prefix(30).joined(separator: "\n") + "\n"
+                let stack = Thread.callStackSymbols.prefix(30).joined(separator: "\n")
+                let text = "[ui-script] EXCEPTION \(e.name.rawValue): \(e.reason ?? "")\n" + stack + "\n"
                 FileHandle.standardError.write(Data(text.utf8))
+                if ProcessInfo.processInfo.environment["UI_SCRIPT_EXCEPTIONS"] != "log" {
+                    UIScriptRunner.running?.failOnException(e, stack: stack)
+                }
             }
             return raw
         }
+    }
+
+    private func failOnException(_ e: NSException, stack: String) {
+        record(["exception": e.name.rawValue, "reason": e.reason ?? "", "stack": stack], ok: false)
+        let summary: [String: Any] = ["steps": steps.count, "failures": failures, "log": log]
+        if let data = try? JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: outDir.appendingPathComponent("log.json"))
+        }
+        FileHandle.standardError.write(Data("[ui-script] stopped by an exception in step \(index); log in \(outDir.path)/log.json\n".utf8))
+        exit(3)
     }
 
     /// The last URL a Cmd-click asked to open (nothing is really opened while a script runs).
@@ -404,6 +421,26 @@ final class UIScriptRunner {
             asEvent { if which == "cut" { tv?.cut(nil) } else { tv?.copy(nil) } }
             record(["copyOrCut": which, "authorshipOnPasteboard": scriptPasteboard()?.data(forType: AuthorshipPasteboard.type) != nil], ok: tv != nil)
             done()
+        } else if let m = step["markEvery"] as? [String: Any] {
+            // Marks `length` characters every `stride` characters (thousands of runs, quickly).
+            let stride = m["stride"] as? Int ?? 300, length = m["length"] as? Int ?? 100
+            let choice: AuthorChoice = (m["as"] as? String) == "reference" ? .reference : .ai
+            var n = 0
+            if let s = session {
+                let ns = s.text as NSString
+                var at = 0
+                while at + length < ns.length {
+                    let r = ns.rangeOfComposedCharacterSequences(for: NSRange(location: at, length: length))
+                    s.authorship.mark(range: r.utf16Range, author: s.author(for: n % 3 == 2 ? .reference : choice))
+                    n += 1
+                    at += stride
+                }
+                s.refreshAuthorshipOverlay()
+            }
+            record(["markEvery": n, "runs": session?.authorship.runs(within: nil).count ?? 0], ok: session != nil)
+            done()
+        } else if let m = step["soak"] as? [String: Any] {
+            soak(m, then: done)
         } else if let on = step["authorshipDisplay"] as? Bool {
             session?.setAuthorshipDisplay(on)
             record(["authorshipDisplay": on], ok: session != nil)
@@ -420,6 +457,31 @@ final class UIScriptRunner {
             } else { ok = false }
             record(["authorshipDecision": d], ok: ok)
             later(0.2, done)
+        } else if step["measureSave"] != nil {
+            // A save through NSDocument, timed: how long it took and the longest the main thread
+            // was unavailable meanwhile (a 1 ms heartbeat's longest gap).
+            guard let doc = document, let url = doc.fileURL else { record(["measureSave": "no file"], ok: false); done(); return }
+            var gaps: [Double] = []
+            var last = CFAbsoluteTimeGetCurrent()
+            let heartbeat = Timer(timeInterval: 0.001, repeats: true) { _ in
+                let now = CFAbsoluteTimeGetCurrent()
+                gaps.append(now - last)
+                last = now
+            }
+            RunLoop.main.add(heartbeat, forMode: .common)
+            let t0 = CFAbsoluteTimeGetCurrent()
+            doc.updateChangeCount(.changeDone)
+            doc.save(to: url, ofType: "net.daringfireball.markdown", for: .saveOperation) { error in
+                let total = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+                later(0.05) {
+                    heartbeat.invalidate()
+                    let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+                    self.record(["measureSave": ["total_ms": total, "max_runloop_gap_ms": (gaps.max() ?? 0) * 1000, "bytes": bytes,
+                                                 "off_main": doc.writesOnMainThread.last == false],
+                                 "error": error.map { "\($0)" } ?? ""], ok: error == nil)
+                    done()
+                }
+            }
         } else if step["save"] != nil {
             // Writes the document to its (scratch) file, through the same path Save uses.
             guard let doc = document, let url = doc.fileURL else { record(["save": "no file"], ok: false); done(); return }
@@ -761,6 +823,225 @@ final class UIScriptRunner {
             sendKey(c)
             perKey.append(CFAbsoluteTimeGetCurrent() - t0)
             later(interval, step)
+        }
+        step()
+    }
+
+    /// Everything together, at random, through the paths a person uses: typing (key events),
+    /// Return and Backspace, Paste As and Mark As (menu actions), undo and redo, caret moves and
+    /// scrolling, Source and Live, themes, focus mode, syntax highlighting and the authorship
+    /// display switched on and off. After every step, once styling and tagging have settled:
+    /// the core's text is the storage's, every character's temporary colour is what the layers
+    /// say (outside the overlay's window: nothing), the layers are what their sources say (the
+    /// attribution, the core's focus range), the runs are valid; every `fileEvery` steps the file
+    /// the document would write reads back to the same attribution. Records the main-thread time
+    /// of each kind of step.
+    private func soak(_ m: [String: Any], then done: @escaping () -> Void) {
+        let steps = m["steps"] as? Int ?? 200
+        let fileEvery = m["fileEvery"] as? Int ?? 20
+        let toggles = m["toggles"] as? Bool ?? true
+        var state = UInt64(m["seed"] as? Int ?? 1) &+ 0x9E37_79B9_7F4A_7C15
+        func rnd() -> UInt64 {
+            state = state &+ 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+        var times: [String: [Double]] = [:]
+        var opLog: [String] = []
+        var failed = 0
+        var i = 0
+        let words = ["word ", "the ", "\u{1F600} ", "e\u{301}t\u{E9} ", "**b** ", "Sentence. ", "\u{65E5}\u{672C} "]
+        let pastes = ["Generated text. Two sentences.", "- a list\n- of items\n", "A quote \u{1F389} from a book."]
+        func fail(_ what: String) {
+            failed += 1
+            if failed <= 10 { check("soak step \(i): \(what) after \(opLog.suffix(4))", false) }
+        }
+        func verify() {
+            guard let s = session, let tv = textView, let lm = tv.layoutManager else { return fail("no document") }
+            if s.coordinator.coreText() != s.text { fail("core text differs from the storage") }
+            let length = s.storage.length
+            // Runs valid.
+            let runs = s.authorship.runs(within: nil)
+            var prev = 0
+            for r in runs {
+                if Int(r.range.start) < prev || r.range.end <= r.range.start || Int(r.range.end) > length { fail("invalid run \(r.range)"); break }
+                prev = Int(r.range.end)
+            }
+            // The layers are what their sources say.
+            let o = s.overlay
+            o.apply()
+            let authors = s.authorship.authors()
+            var want: [OverlayRun] = []
+            if s.authorshipDisplay {
+                for r in runs where r.authorIndex != 0 {
+                    want.append(OverlayRun(r.range.nsRange, .authorship(authors[Int(r.authorIndex)].kind == .ai ? .ai : .reference)))
+                }
+            }
+            if o.layers.authorship != OverlayCompositor.merged(want) { fail("the authorship layer is not the attribution") }
+            if s.focusEnabled {
+                let sel = tv.selectedRange()
+                let w = s.liveQueryWindow()
+                let scope: FocusScope = s.settings.focusScope == .sentence ? .sentence : .paragraph
+                let core = s.coordinator.sync { doc in
+                    doc.focusRange(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), scope: scope).map(\.nsRange)
+                }
+                func clip(_ rs: [NSRange]) -> [NSRange] { rs.map { NSIntersectionRange($0, w) }.filter { $0.length > 0 } }
+                if clip(o.layers.focus ?? []) != clip(core) {
+                    let u = Utf16Range(start: UInt32(w.location), end: UInt32(NSMaxRange(w)))
+                    let windowed = s.coordinator.sync { doc in
+                        doc.selectionState(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), within: u, conceal: false, focus: scope).focus?.map(\.nsRange)
+                    }
+                    fail("the focus layer \(o.layers.focus ?? []) is not the core's \(core); selection \(sel), query window now \(w), focus asked for \(s.focusWindow), visible \(s.visibleRange()), the windowed answer now \(windowed ?? [])")
+                }
+            } else if o.layers.focus != nil { fail("focus layer while focus mode is off") }
+            if !s.syntaxEnabled, !o.layers.pos.isEmpty { fail("part-of-speech layer while syntax is off") }
+            // Every character's colour, the whole text.
+            let window = o.appliedWindow
+            let wanted = OverlayCompositor.compose(o.layers, in: window)
+            var k = 0, run = 0
+            while k < length {
+                var eff = NSRange()
+                let actual = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: k, effectiveRange: &eff) as? NSColor
+                let end = min(length, max(k + 1, NSMaxRange(eff)))
+                var bad = false
+                for c in k..<end {
+                    var paint: OverlayPaint?
+                    if NSLocationInRange(c, window) {
+                        while run < wanted.count, NSMaxRange(wanted[run].range) <= c { run += 1 }
+                        paint = run < wanted.count && wanted[run].range.location <= c ? wanted[run].paint : nil
+                    }
+                    if !Self.sameColor(actual, paint.flatMap { o.color(for: $0) }) { fail("character \(c) painted wrong (\(String(describing: paint)), window \(window))"); bad = true; break }
+                }
+                if bad { break }
+                k = end
+            }
+            // The file the document would write reads back to the same attribution.
+            if fileEvery > 0, i % fileEvery == 0, let doc = document, let data = try? doc.data(ofType: "net.daringfireball.markdown") {
+                let split = splitAnnotations(fileText: String(decoding: data, as: UTF8.self))
+                if let ann = split.annotations {
+                    if split.status != .valid { fail("the file written has a block that does not validate: \(split.status)") }
+                    let back = Authorship.fromAnnotations(body: split.body, annotations: ann, me: s.authorship.me().name)
+                    let names = back.authors().map(\.name), mine = authors.map(\.name)
+                    let a1 = back.runs(within: nil).map { "\($0.range.start)-\($0.range.end) \(names[Int($0.authorIndex)])" }
+                    let a2 = runs.map { "\($0.range.start)-\($0.range.end) \(mine[Int($0.authorIndex)])" }
+                    // (A text without a final newline reads back with one: the blank line before the block.)
+                    if split.body != s.text, split.body != s.text + "\n" { fail("the file's body is not the text") }
+                    if a1 != a2 { fail("the file reads back to other marks") }
+                } else if s.authorship.hasMarks() { fail("marks but no block") }
+            }
+        }
+        // Settled: styling caught up, tagging done, and every answer about the selection applied
+        // (checked after at least one run-loop turn, so what the step scheduled has started).
+        func settleThen(_ deadline: Date, _ next: @escaping () -> Void) {
+            later(0.01) {
+                guard let s = self.session else { return next() }
+                s.kickDebt()
+                if s.isStyled && s.selectionStateSettled && (!s.syntaxEnabled || s.pos.isSettled) { return next() }
+                if Date() > deadline {
+                    fail("did not settle in time (styled \(s.isStyled), selection answered \(s.selectionStateSettled), tagging done \(s.pos.isSettled))")
+                    return next()
+                }
+                settleThen(deadline, next)
+            }
+        }
+        func step() {
+            guard i < steps, let s = session, let tv = textView else {
+                var stats: [String: Any] = ["steps": i, "failures": failed]
+                for (k, v) in times {
+                    let sorted = v.sorted()
+                    func pct(_ p: Double) -> Double { sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] }
+                    stats[k] = ["n": v.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": sorted.last ?? 0]
+                }
+                record(["soak": stats], ok: failed == 0)
+                done()
+                return
+            }
+            i += 1
+            let length = s.storage.length
+            func randomPlace() -> Int {
+                let ns = s.text as NSString
+                let p = Int(rnd() % UInt64(length + 1))
+                return p < ns.length ? ns.rangeOfComposedCharacterSequence(at: p).location : p
+            }
+            let op = Int(rnd() % (toggles ? 20 : 15))
+            var name = ""
+            let t0 = CFAbsoluteTimeGetCurrent()
+            switch op {
+            case 0, 1, 2, 3:
+                name = "type"
+                let w = words[Int(rnd() % UInt64(words.count))]
+                opLog.append("type \(w.debugDescription)")
+                for c in w { sendKey(String(c)) }
+            case 4:
+                name = "return"; opLog.append("return"); sendKey("\n")
+            case 5:
+                name = "backspace"; opLog.append("backspace"); sendKey("\u{7F}", code: 51)
+            case 6, 7:
+                name = "caret"
+                let p = randomPlace()
+                let len = rnd() % 3 == 0 ? Int(rnd() % 80) : 0
+                let r = (s.text as NSString).rangeOfComposedCharacterSequences(for: NSRange(location: p, length: min(len, length - p)))
+                opLog.append("select \(r)")
+                tv.setSelectedRange(len == 0 ? NSRange(location: p, length: 0) : r)
+                tv.scrollRangeToVisible(tv.selectedRange())
+            case 8:
+                name = "pasteAs"
+                let pb = scriptPasteboard()
+                pb?.clearContents()
+                pb?.setString(pastes[Int(rnd() % UInt64(pastes.count))], forType: .string)
+                let action = rnd() % 2 == 0 ? #selector(EditorTextView.pasteAsAI(_:)) : #selector(EditorTextView.pasteAsReference(_:))
+                opLog.append("\(action) at \(tv.selectedRange())")
+                asEvent { _ = NSApp.sendAction(action, to: nil, from: nil) }
+            case 9:
+                name = "markAs"
+                let p = randomPlace()
+                let r = (s.text as NSString).rangeOfComposedCharacterSequences(for: NSRange(location: p, length: min(Int(rnd() % 200), length - p)))
+                tv.setSelectedRange(r)
+                let actions = [#selector(EditorTextView.markAsAI(_:)), #selector(EditorTextView.markAsReference(_:)), #selector(EditorTextView.markAsMe(_:)), #selector(EditorTextView.markAsNoAuthor(_:))]
+                let action = actions[Int(rnd() % 4)]
+                opLog.append("\(action) \(r)")
+                asEvent { _ = NSApp.sendAction(action, to: nil, from: nil) }
+            case 10, 11:
+                name = "undo"; opLog.append("undo")
+                if document?.undoManager?.canUndo == true { document?.undoManager?.undo() }
+            case 12:
+                name = "redo"; opLog.append("redo")
+                if document?.undoManager?.canRedo == true { document?.undoManager?.redo() }
+            case 13:
+                name = "copyPaste"
+                opLog.append("copy+paste \(tv.selectedRange())")
+                asEvent { tv.copy(nil) }
+                tv.setSelectedRange(NSRange(location: randomPlace(), length: 0))
+                asEvent { tv.paste(nil) }
+            case 14:
+                name = "scroll"
+                let p = randomPlace()
+                opLog.append("scroll to \(p)")
+                tv.scrollRangeToVisible(NSRange(location: p, length: 0))
+            case 15:
+                name = "mode"
+                let mode: ViewMode = s.viewMode == .live ? .source : .live
+                opLog.append("mode \(mode)")
+                s.setViewMode(mode)
+            case 16:
+                name = "theme"
+                let t = [ThemeChoice.light, .dark, .sepia][Int(rnd() % 3)]
+                opLog.append("theme \(t)")
+                Settings.shared.theme = t
+            case 17:
+                name = "focus"; opLog.append("focus toggle"); s.setFocusEnabled(!s.focusEnabled)
+            case 18:
+                name = "syntax"; opLog.append("syntax toggle"); s.setSyntaxEnabled(!s.syntaxEnabled)
+            default:
+                name = "authorshipDisplay"; opLog.append("display toggle"); s.setAuthorshipDisplay(!s.authorshipDisplay)
+            }
+            times[name, default: []].append((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+            settleThen(Date(timeIntervalSinceNow: 30)) {
+                verify()
+                later(0, step)
+            }
         }
         step()
     }

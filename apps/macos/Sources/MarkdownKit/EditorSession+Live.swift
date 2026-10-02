@@ -139,8 +139,9 @@ extension EditorSession {
         let composing = isComposing()
         let live = viewMode == .live && !composing
         let scope: FocusScope? = focusEnabled && !composing ? focusScopeForCore : nil
-        guard live || scope != nil || selectionChange else { return }
+        // Whatever was scheduled is answered by this call, even when there is nothing to ask.
         livePending = false
+        guard live || scope != nil || selectionChange else { return }
         liveToken += 1
         let token = liveToken
         let selectionToken = self.selectionToken
@@ -163,6 +164,7 @@ extension EditorSession {
                 applyLive(c, images: images, window: window)
             }
             if current, scope != nil, focusEnabled {
+                focusWindow = window
                 applyFocus(state.focus)
             }
             if selectionChange, selectionToken == self.selectionToken, processed == coordinator.latestSeq {
@@ -172,8 +174,10 @@ extension EditorSession {
         if coordinator.isIdle || synchronous {
             finish(coordinator.sync(query), processed: coordinator.latestSeq)
         } else {
+            stateQueriesInFlight += 1
             coordinator.async(query) { [weak self] result, processed in
-                guard self != nil else { return }
+                guard let self else { return }
+                stateQueriesInFlight -= 1
                 finish(result, processed: processed)
             }
         }
@@ -245,11 +249,11 @@ extension EditorSession {
     /// Called when the text view scrolls or resizes: asks again once the visible text is
     /// close to the edge of what was queried.
     func visibleRangeChanged() {
-        guard viewMode == .live, storage.length > Self.wholeTextLimit else { return }
+        guard storage.length > Self.wholeTextLimit, let covered = queriedWindowForScrolling() else { return }
         let visible = visibleRange()
         let slack = max(2_000, visible.length)
         let needed = NSRange(location: max(0, visible.location - slack), length: min(storage.length, NSMaxRange(visible) + slack) - max(0, visible.location - slack))
-        guard NSIntersectionRange(needed, liveWindow) != needed, !scrollRefreshPending else { return }
+        guard NSIntersectionRange(needed, covered) != needed, !scrollRefreshPending else { return }
         // Asked once the scroll that brought the text into view has finished (asked from inside
         // it, the new layout moved the text the scroll was aiming for), and before the text is
         // drawn: main-queue blocks run before the run loop's display pass. Answered on the spot
@@ -258,11 +262,21 @@ extension EditorSession {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             scrollRefreshPending = false
+            guard let covered = queriedWindowForScrolling() else { return }
             let visible = visibleRange()
             let slack = max(2_000, visible.length)
             let needed = NSRange(location: max(0, visible.location - slack), length: min(storage.length, NSMaxRange(visible) + slack) - max(0, visible.location - slack))
-            if NSIntersectionRange(needed, liveWindow) != needed { refreshLive(synchronous: true) }
+            if NSIntersectionRange(needed, covered) != needed { refreshLive(synchronous: true) }
         }
+    }
+
+    /// The text the selection query last covered, when scrolling can show text it did not: Live
+    /// mode's concealment, and focus mode with a selection (the units a selection touches are
+    /// worked out inside the query's window only, so text scrolled into view is asked about).
+    private func queriedWindowForScrolling() -> NSRange? {
+        if viewMode == .live { return liveWindow }
+        if focusEnabled, let tv = textView, tv.selectedRange().length > 0 { return focusWindow }
+        return nil
     }
 
     // MARK: caret

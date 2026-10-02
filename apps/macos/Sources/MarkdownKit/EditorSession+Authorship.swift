@@ -131,10 +131,16 @@ extension EditorSession {
         }
         // The storage's edited range can be wider than what was typed (attribute fixing makes
         // it cover the text after the caret too, and reports edits that change nothing); the
-        // edit the text view announced is exact.
-        guard let p = pendingEdit, p.range.location >= change.old.location, NSMaxRange(p.range) <= NSMaxRange(change.old),
-              change.old.length - p.range.length == change.newLength - p.length else {
-            pendingEdit = nil
+        // edits the text view announced are exact. One storage edit can carry several of them
+        // (the text view applies a Replace All inside one round of editing) and several storage
+        // edits can make up one announcement (each replacement on its own).
+        let inside = pendingEdits.indices.filter {
+            let p = pendingEdits[$0].range
+            return p.location >= change.old.location && NSMaxRange(p) <= NSMaxRange(change.old)
+        }
+        let delta = inside.reduce(0) { $0 + pendingEdits[$1].length - pendingEdits[$1].range.length }
+        guard !inside.isEmpty, delta == change.newLength - change.old.length else {
+            pendingEdits = []
             // An edit nobody announced: one that changed no length is taken for a change of
             // attributes only; otherwise the text is inserted as a command would.
             if change.newLength != change.old.length {
@@ -142,20 +148,29 @@ extension EditorSession {
             }
             return
         }
-        pendingEdit = nil
-        let offset = p.range.location - change.old.location
-        let exactReplacement = (replacement as NSString).substring(with: NSRange(location: offset, length: p.length))
-        let range = p.range.utf16Range
-        let length = UInt32(p.length)
+        let edits = inside.map { pendingEdits[$0] }
+        pendingEdits = pendingEdits.indices.filter { !inside.contains($0) }.map { i in
+            // What is still to come moves with this change.
+            var e = pendingEdits[i]
+            if e.range.location >= NSMaxRange(change.old) { e.range.location += change.newLength - change.old.length }
+            return e
+        }
+        if edits.count == 1, case .inherit(let old) = editOrigin {
+            let p = edits[0]
+            let offset = p.range.location - change.old.location
+            let exactReplacement = (replacement as NSString).substring(with: NSRange(location: offset, length: p.length))
+            authorship.editReplacing(range: p.range.utf16Range, old: old, new: exactReplacement, attribution: .inherit)
+            return
+        }
+        let attribution: Attribution
         switch editOrigin {
-        case .typed:
-            authorship.edit(range: range, insertedLen: length, attribution: .typed(author: authorship.me()))
-        case .inherit(let old):
-            authorship.editReplacing(range: range, old: old, new: exactReplacement, attribution: .inherit)
-        case .pasteAs(let author):
-            authorship.edit(range: range, insertedLen: length, attribution: .pasted(author: author))
-        case .unattributed:
-            authorship.edit(range: range, insertedLen: length, attribution: .none)
+        case .typed, .inherit: attribution = .typed(author: authorship.me())
+        case .pasteAs(let author): attribution = .pasted(author: author)
+        case .unattributed: attribution = .none
+        }
+        // Last first: the earlier ranges are still where they were announced.
+        for p in edits.sorted(by: { $0.range.location > $1.range.location }) {
+            authorship.edit(range: p.range.utf16Range, insertedLen: UInt32(p.length), attribution: attribution)
         }
     }
 
@@ -231,6 +246,11 @@ extension EditorSession {
         refreshAuthorshipOverlay()
         authorshipUndo.pendingRestore = nil
         authorshipUndo.operationStart = nil
+        // Undo and redo select what they changed and scroll it into view, in that order: the
+        // selection was asked about with the window of what was on screen before. Ask again on
+        // the next turn, with the view where it ended up (a far selection's units are worked
+        // out inside the window, see `focus_ranges`).
+        scheduleLiveRefresh()
     }
 
     private func observeUndoManager(_ um: UndoManager) {

@@ -18,6 +18,11 @@ launched with `--ui-script <file>` (`--ui-out <dir>`, `--ui-root <dir>` for rela
 uses its own defaults suite (never the user's settings) and opens copies of the files it is
 given. Set `UI_SCRIPT_TRACE=1` to log every step as it starts.
 
+Any Objective-C exception stops the script at once: it is logged with the stack of the throw
+(stderr), recorded in `log.json`, and the app exits with status 3 (no crash report, no dialog).
+`UI_SCRIPT_EXCEPTIONS=log` only logs them. Undo and redo are `{"undo": true}` and `{"redo": true}`:
+`{"action": "undo:"}` would undo inside the step's own undo group, which NSUndoManager rejects.
+
 Snapshots are composited by the app itself (the text view rendered as vector PDF, then the
 toolbar, fade and title-bar controls on top): vibrancy blur is not reproduced, and sheets are
 captured with `"window": "sheet"`.
@@ -62,6 +67,9 @@ captured with `"window": "sheet"`.
 | `{"authorshipDecision": "keep"\|"discard"}` | Shows the keep-or-discard sheet (a file whose marks may be misplaced) and answers it through its buttons. |
 | `{"close": true}` | Closes the document and checks that it, its window controller, session and coordinator are freed. |
 | `{"controlLeakProbe": true}` | The same check for a plain AppKit window (AppKit keeps closed windows for a while). |
+| `{"markEvery": {"stride": 300, "length": 100, "as": "ai"}}` | Marks `length` characters every `stride` (every third as Reference): thousands of authorship runs at once, for timing. Not undoable. |
+| `{"soak": {"steps": 300, "seed": 1, "fileEvery": 10, "toggles": true}}` | Random steps of every kind with the checks described under `soak.json` after each; fails on the first ten problems and records timings per kind of step. `toggles: false` leaves modes, themes and switches alone. |
+| `{"measureSave": true}` | Saves through NSDocument and records the total time, the longest main-thread gap meanwhile, the file size and whether the write ran off the main thread. |
 | `{"dump": true}`, `{"log": "text"}` | Diagnostics. |
 | `{"assert": {...}}` | `textEquals`, `textContains`, `textLacks`, `selection`, `selectedText`, `toolbarLit`, `headingTitle`, `chromeVisible`, `toolbarIgnoresClicksWhenHidden`, `inTable`, `theme`, `styled`, `coreMatchesText`, `edited`, `fullScreen`, `sheet`, `fontFamily`, `boldDiffers`, `columnCentered`, `caretVisible`, `spellingAllowedIn`, `spellingSuppressedIn`, `closedDocumentsFreed`, `viewMode`, `hidden` (the exact list of hidden source pieces), `decorations` (counts per kind), `collapsedLines`, `linkOpened`, `images` (picture decorations per phase: `loaded`, `failed`, `loading`), `assets` (files in `<document>.assets`), `pasted`, `focusing`, `syntaxing`, `focusLit` (the text of the focus ranges), `colors` (what the text at each needle is painted in: `none`, `dim`, a class; checked against the layout manager's own temporary attributes), `overlayConsistent` (every character's temporary colour equals what the layers say), `overlayStats` (logs the overlay's operation counts and the tagger's), `authorship` (`runs`: `[[needle, "me"\|"ai"\|"reference"\|"none"]]`, `marks`, `markRuns`, `display`, `sheet`, `pendingDecision`, `editable`), `file` (`contains`, `lacks`, `suffix`: what is on disk). `colors` also knows `author-ai` and `author-reference`. |
 
@@ -71,13 +79,15 @@ captured with `"window": "sheet"`.
 | --- | --- |
 | `smoke.json` | The M2 tour: typography, themes, chrome, commands, tables, closing. |
 | `live.json` | Live mode: a tour document with the caret in plain prose (no markup visible; bullets, checkboxes, rule, quote bar and picture drawn; fences collapsed), then entering bold, a link, a heading, a code block, an image paragraph, a quote, front matter and a setext heading; a checkbox click and its undo; typing in Live mode; Cmd-click on a link; Source and back; other themes; Settings. |
+| `look.json` | The M2 look by eye: the tour document in Source mode, top and bottom, in Light, Dark and Sepia, and the Settings window. |
 | `live-edge.json` | Nested quotes, headings and tasks in quotes, a fence in a list item, footnotes, reference links, hard breaks, raw HTML, an unclosed fence, in three themes. |
 | `live-look.json` | Live mode by eye: lists, tasks, quotes in lists and lists in quotes, headings and fences in lists, an empty code block, wrapping code and strikethrough, Hebrew and Japanese beside hidden markup, spelling marks; pictures standalone, inline, in a list item and a quote, broken, remote (served locally), tall, wide, twice, changed on disk; selections over all of it; three themes; dropping files and pasting image data (unique names); an untitled document's relative picture and the save panel when pasting into it. |
 | `focus.json` | Focus mode by eye (snapshots are bitmaps: the vector PDF rendering ignores temporary attributes): the caret in a paragraph, across a soft break, in a list item, a task, a code block, a quote, on a blank line; Source and Live, sentence and paragraph, Light, Dark and Sepia; bullets, boxes, bars, rules, strikethrough, inline-code chips and pictures receding with their text; focus switched off again. With `focusLit`, `colors` and `overlayConsistent` assertions. |
 | `syntax.json` | Parts-of-speech colours: all five classes, then nouns and verbs only, then the other three; with focus mode (dimmed words show no colour); Source and Live; Light, Dark and Sepia; switched off. |
 | `authorship.json` | Authorship by eye and by assertion: Paste As AI and Reference into a document, Mark As on a selection and its undo and redo, typing inside an AI run (the user's text splits it), bold inside AI text (the asterisks stay AI's), undo and redo through all of it, save, the block on disk, reopen, the display toggle, copy and paste carrying marks; then Light, Dark and Sepia in Source and Live, with focus on text of the user's own and on borrowed text, sentence scope, and syntax highlighting over it. Snapshots are bitmaps. |
 | `authorship-mismatch.json` | A file whose hash does not match, one with a malformed block, a valid one: the sheet's wording (captured with `"window": "sheet"`), nothing editable until answered, Keep (the document stays unedited, the file is written back as it was) and Discard (the document becomes edited, no block is written). |
-| `big-focus.json` | A 1 MB document, a fresh one per configuration: per-keystroke, per-caret-move and per-arrow-key main-thread cost with focus and syntax off, on, and both, in Source and Live (run with `RELEASE=1`). |
+| `soak.json` | Everything together at random in a 120 KB document (Live and Source, focus, syntax and authorship on and off, themes): typing, Return, Backspace, Paste As, Mark As, copy and paste, undo, redo, caret moves and scrolling, through `soak` steps. After every step: the core's text is the storage's, every character's temporary colour is what the layers say, the layers are what the attribution and the core's focus range say; every few steps the file the document would write reads back to the same marks. Records the main-thread time per kind of step. Then a save, reopening and a second soak. |
+| `../ui-big-focus.sh` (a shell script, not a JSON script) | A 1 MB document, a fresh one per configuration: per-keystroke, per-caret-move and per-arrow-key main-thread cost with focus and syntax off, on, and both, and with everything on (`all`: focus, syntax and ~3,300 authorship runs), in Source and Live; then a timed save (`measureSave`). Builds the release app with the harness itself. |
 | `big.json`, `big-live.json` | A 1 MB document: typing, caret moves, arrow keys and jumps in Source mode and in Live mode (run with `RELEASE=1`). |
 | `threshold.json` | Live mode either side of the whole-text query limit (run with `RELEASE=1`). |
 
