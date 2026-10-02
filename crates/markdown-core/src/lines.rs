@@ -29,6 +29,11 @@ impl LineIndex {
         Self { starts, len: b.len() }
     }
 
+    /// Start offset of `line`.
+    pub fn start(&self, line: usize) -> usize {
+        self.starts[line]
+    }
+
     pub fn count(&self) -> usize {
         self.starts.len()
     }

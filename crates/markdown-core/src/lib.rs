@@ -1,13 +1,17 @@
 //! Platform-neutral Markdown core. No UI or platform dependencies.
 
 mod analysis;
+pub mod autolink;
 mod dirty;
 mod document;
+mod edit;
 mod lines;
 mod offsets;
+pub mod theme;
 mod types;
 
 pub use document::Document;
+pub use theme::{builtin_themes, contrast_ratio, theme_by_id, Color, Colors, Theme};
 pub use types::*;
 
 /// Version of the core crate.

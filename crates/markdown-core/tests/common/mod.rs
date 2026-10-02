@@ -249,3 +249,124 @@ pub fn check_edit(old: &str, enc: OffsetEncoding, range: TextRange, with: &str) 
     }
     Ok(upd)
 }
+
+// ----- editing-command helpers ------------------------------------------------------------------
+
+pub const CARET: char = '\u{2038}'; // ‸
+pub const SEL_OPEN: char = '\u{ab}'; // «
+pub const SEL_CLOSE: char = '\u{bb}'; // »
+
+/// Split `‸` (caret) or `«...»` (selection) markers from a text: (plain text, byte selection).
+pub fn parse_marked(marked: &str) -> (String, (usize, usize)) {
+    let mut text = String::new();
+    let (mut s, mut e) = (None, None);
+    for c in marked.chars() {
+        match c {
+            CARET => {
+                s = Some(text.len());
+                e = Some(text.len());
+            }
+            SEL_OPEN => s = Some(text.len()),
+            SEL_CLOSE => e = Some(text.len()),
+            c => text.push(c),
+        }
+    }
+    let s = s.expect("no selection marker");
+    (text, (s, e.unwrap_or(s)))
+}
+
+pub fn render_marked(text: &str, sel: (usize, usize)) -> String {
+    let mut out = String::new();
+    for (i, c) in text.char_indices() {
+        if sel.0 == sel.1 && i == sel.0 {
+            out.push(CARET);
+        } else {
+            if i == sel.0 {
+                out.push(SEL_OPEN);
+            }
+            if i == sel.1 {
+                out.push(SEL_CLOSE);
+            }
+        }
+        out.push(c);
+    }
+    if sel.0 == sel.1 && sel.0 == text.len() {
+        out.push(CARET);
+    } else if sel.0 != sel.1 {
+        if sel.0 == text.len() {
+            out.push(SEL_OPEN);
+        }
+        if sel.1 == text.len() {
+            out.push(SEL_CLOSE);
+        }
+    }
+    out
+}
+
+/// Byte offset to unit offset in `enc` (independent implementation).
+pub fn byte_to_unit(text: &str, enc: OffsetEncoding, byte: usize) -> u32 {
+    text[..byte]
+        .chars()
+        .map(|c| match enc {
+            OffsetEncoding::Utf8 => c.len_utf8() as u32,
+            OffsetEncoding::Utf16 => c.len_utf16() as u32,
+            OffsetEncoding::Utf32 => 1,
+        })
+        .sum()
+}
+
+pub fn unit_to_byte(text: &str, enc: OffsetEncoding, unit: u32) -> usize {
+    let mut u = 0;
+    for (i, c) in text.char_indices() {
+        if u == unit {
+            return i;
+        }
+        u += match enc {
+            OffsetEncoding::Utf8 => c.len_utf8() as u32,
+            OffsetEncoding::Utf16 => c.len_utf16() as u32,
+            OffsetEncoding::Utf32 => 1,
+        };
+    }
+    assert_eq!(u, unit, "unit offset {unit} is not on a code point boundary of {text:?}");
+    text.len()
+}
+
+/// Apply an edit to `text` through `Document::replace` and return the new text and the
+/// selection as byte offsets, checking that the edit is valid and the selection in bounds.
+pub fn apply_edit(text: &str, enc: OffsetEncoding, edit: &TextEdit) -> Result<(String, (usize, usize)), String> {
+    let mut doc = Document::new(text, enc);
+    doc.replace(edit.range, &edit.replacement).map_err(|e| format!("replace failed: {e} for {edit:?}"))?;
+    let new = doc.text().to_owned();
+    let len = doc.len();
+    let ok = boundaries(&new, enc);
+    let sel = edit.selection;
+    if sel.start > sel.end || sel.end > len || ok.binary_search(&sel.start).is_err() || ok.binary_search(&sel.end).is_err() {
+        return Err(format!("selection {sel:?} out of bounds or off a boundary in {new:?} (len {len})"));
+    }
+    Ok((new.clone(), (unit_to_byte(&new, enc, sel.start), unit_to_byte(&new, enc, sel.end))))
+}
+
+pub const ALL_ENCODINGS: [OffsetEncoding; 3] = [OffsetEncoding::Utf8, OffsetEncoding::Utf16, OffsetEncoding::Utf32];
+
+/// Run `f(doc, selection)` on a marked text in every encoding; returns the marked result
+/// (or "None"). All encodings must agree.
+pub fn run_marked(
+    before: &str,
+    f: impl Fn(&Document, TextRange) -> Option<TextEdit>,
+) -> String {
+    let (text, sel) = parse_marked(before);
+    let mut results: Vec<String> = Vec::new();
+    for enc in ALL_ENCODINGS {
+        let doc = Document::new(&text, enc);
+        let range = TextRange::new(byte_to_unit(&text, enc, sel.0), byte_to_unit(&text, enc, sel.1));
+        results.push(match f(&doc, range) {
+            None => "None".to_owned(),
+            Some(edit) => match apply_edit(&text, enc, &edit) {
+                Ok((new, nsel)) => render_marked(&new, nsel),
+                Err(e) => panic!("{enc:?} {before:?}: {e}"),
+            },
+        });
+    }
+    assert!(results.iter().all(|r| *r == results[0]), "encodings disagree for {before:?}: {results:?}");
+    results.remove(0)
+}

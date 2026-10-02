@@ -70,3 +70,61 @@ fn one_megabyte_document() {
         assert!(t_replace < 30.0, "single-character replace took {t_replace:.2} ms");
     }
 }
+
+/// Editing commands on a 1 MB document, mid-text: each should be a few milliseconds at most.
+#[test]
+#[ignore]
+fn commands_on_one_megabyte() {
+    let text = realistic(1 << 20);
+    let doc = Document::new(&text, OffsetEncoding::Utf8);
+    let mid = text.len() / 2;
+    let find = |pat: &str| {
+        let i = mid + text[mid..].find(pat).unwrap();
+        TextRange::new(i as u32, i as u32)
+    };
+    let word = {
+        let r = find("emphasis");
+        TextRange::new(r.start, r.start + 8)
+    };
+    let table = find("| `c`");
+    let item = find("nested item");
+    let task = find("done item");
+    let mut rows: Vec<(&str, f64)> = Vec::new();
+    let mut time = |name: &'static str, f: &dyn Fn()| {
+        let mut v = Vec::new();
+        for _ in 0..11 {
+            let t = Instant::now();
+            f();
+            v.push(t.elapsed().as_secs_f64() * 1e3);
+        }
+        rows.push((name, med(v)));
+    };
+    time("format_state", &|| {
+        std::hint::black_box(doc.format_state(word));
+    });
+    time("strong", &|| {
+        std::hint::black_box(doc.format(FormatCommand::Strong, word));
+    });
+    time("heading", &|| {
+        std::hint::black_box(doc.format(FormatCommand::Heading { level: 2 }, item));
+    });
+    time("newline", &|| {
+        std::hint::black_box(doc.newline(task));
+    });
+    time("indent", &|| {
+        std::hint::black_box(doc.indent(item, false));
+    });
+    time("toggle_task", &|| {
+        std::hint::black_box(doc.toggle_task(task.start));
+    });
+    time("table next cell", &|| {
+        std::hint::black_box(doc.table_command(TableCommand::NextCell, table));
+    });
+    time("table_at", &|| {
+        std::hint::black_box(doc.table_at(table.start));
+    });
+    for (name, ms) in &rows {
+        println!("{name}: {ms:.3} ms");
+        assert!(*ms < 10.0, "{name} took {ms:.2} ms on a 1 MB document");
+    }
+}

@@ -348,7 +348,10 @@ dependencies = [
  "insta",
  "proptest",
  "pulldown-cmark",
+ "serde",
  "serde_json",
+ "toml",
+ "unicode-width",
 ]
 
 [[package]]

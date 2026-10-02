@@ -190,6 +190,18 @@ pub fn examine(text: &str) -> Report {
         }
     }
 
+    // Bare URLs (GFM extended autolinks, which pulldown-cmark 0.13 lacks) are `Link` spans that
+    // own no markup; their text is not prose even though pulldown reports it as text.
+    let owners: Vec<(usize, usize)> =
+        doc.markup_spans(None).iter().map(|m| (m.owner.start as usize, m.owner.end as usize)).collect();
+    for &(s, e, k) in &spans {
+        if k == SpanKind::Link && !owners.contains(&(s, e)) {
+            for c in &mut prose_expected[s..e] {
+                *c = false;
+            }
+        }
+    }
+
     // Prose is exactly the text that is rendered as prose (not code, URLs, alt text, HTML).
     let mut prose_got = vec![false; b.len()];
     for p in doc.prose_ranges(None) {
@@ -371,7 +383,7 @@ fn known_pulldown_quirks() {
 const TOKENS: &[&str] = &[
     "# ", "## ", "> ", "- ", "* ", "1. ", "- [ ] ", "- [x] ", "```", "```rs\n", "~~~", "---\n", "***", "\n", "\n\n",
     "\r\n", "  \n", "*", "**", "_", "~~", "`", "[", "](", ")", "![", "]", "[^1]", "[^1]: ", "|", "| a | b |\n", "|---|---|\n",
-    "<div>", "</div>", "<b>", "<http://a.b>", "\\", "\\*", "word ", "text", " ", "    ", "\t", "=== ", "===\n", "[r]: /u\n",
+    "<div>", "</div>", "<b>", "<http://a.b>", "www.a.b/c", "http://a.b/x_y", "(www.a.b)", "\\", "\\*", "word ", "text", " ", "    ", "\t", "=== ", "===\n", "[r]: /u\n",
     "[r]", "[r][]", "[t][r]", "\u{1F389}", "e\u{301}", "&amp;", "#", ":", "\"t\"", "'", "(", "<", ">", "\\\n", "x\\|y",
 ];
 

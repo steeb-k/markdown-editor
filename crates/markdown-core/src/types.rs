@@ -177,3 +177,138 @@ impl std::fmt::Display for EditError {
 }
 
 impl std::error::Error for EditError {}
+
+// ----- editing commands ---------------------------------------------------------------------
+
+/// A text change computed by an editing command. Commands never mutate the document: the
+/// shell applies the edit through its own text system (so undo, IME and accessibility keep
+/// working), selects `selection`, then calls [`crate::Document::replace`] with the same range
+/// and replacement.
+///
+/// `range` is in the text the command was asked about; `selection` is in the text *after*
+/// the edit. Edits are minimal: text common to the old and the new version is not part of
+/// `range`/`replacement`. An edit with an empty `range` and an empty `replacement` is a
+/// *selection change only* (the text stays as it is; e.g. moving to the next table cell).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextEdit {
+    pub range: TextRange,
+    pub replacement: String,
+    pub selection: TextRange,
+}
+
+/// Which list a line belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ListKind {
+    #[default]
+    None,
+    Bullet,
+    Ordered,
+    Task,
+}
+
+/// Column alignment of a table column (`:---`, `:---:`, `---:`, `---`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ColumnAlignment {
+    #[default]
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+/// An editing command for [`crate::Document::format`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FormatCommand {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    InlineCode,
+    /// Wrap the selection as `[selection](url)`, or remove the link around the caret.
+    Link,
+    /// Insert `![alt](destination)`. An empty `alt` falls back to a single-line selection.
+    Image { destination: String, alt: String },
+    /// ATX heading level 0 (none) to 6 on the selected lines; the same level again removes it.
+    Heading { level: u8 },
+    BlockQuote,
+    BulletList,
+    OrderedList,
+    TaskList,
+    CodeBlock,
+}
+
+/// What is active at the selection, for the toolbar's lit buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FormatState {
+    pub strong: bool,
+    pub emphasis: bool,
+    pub strikethrough: bool,
+    pub inline_code: bool,
+    pub link: bool,
+    /// 0 when the line is not a heading.
+    pub heading_level: u8,
+    pub in_quote: bool,
+    pub list: ListKind,
+    pub in_code_block: bool,
+    pub in_table: bool,
+}
+
+/// A table helper for [`crate::Document::table_command`].
+///
+/// Every command except `Insert` needs the start of the selection inside a table (its lines,
+/// container prefix included; the end of the last line counts) and returns one edit that also
+/// re-aligns the whole table: each column padded to its widest cell in display columns, one
+/// blank inside the pipes, leading and trailing pipes, alignment colons in the delimiter row,
+/// any container prefix (`> `, indentation) kept. Where the selection lands is documented per
+/// command; unless said otherwise it is a caret at the start of a cell's content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableCommand {
+    /// A header row, a delimiter row and `rows` (at most 1000) empty body rows, on their own
+    /// lines with a blank line around them where needed. `columns` is clamped to 1..=100.
+    /// Put at the caret's line when that is blank, before the line when the caret is at its
+    /// start, otherwise after it (or after the table, if the caret is in one). The caret goes
+    /// into the first header cell.
+    Insert { rows: u32, columns: u32 },
+    /// `None` on the header and delimiter rows. Caret in the new row, same column.
+    AddRowAbove,
+    /// On the header or delimiter row the new row becomes the first body row.
+    AddRowBelow,
+    /// Caret in the new column, same row (the header row if on the delimiter row).
+    AddColumnLeft,
+    AddColumnRight,
+    /// `None` on the header and delimiter rows. Caret in the row that took its place (the one
+    /// before it if it was last; the header if no body row is left), same column.
+    DeleteRow,
+    /// `None` for the last remaining column.
+    DeleteColumn,
+    /// Set the alignment of the caret's column; the selection is carried through unchanged.
+    SetAlignment(ColumnAlignment),
+    /// Select the content of the next cell (a caret if it is empty); from the last cell a body
+    /// row is appended and its first cell gets the caret. From the delimiter row: the first body
+    /// cell. If the text is already aligned the edit changes nothing: it has an empty range, an
+    /// empty replacement and only moves the selection.
+    NextCell,
+    /// Select the content of the previous cell. `None` in the first cell. From the delimiter
+    /// row: the last header cell.
+    PreviousCell,
+    /// Pad the whole table. `None` if it is aligned already, so it is idempotent. The shell calls
+    /// this when the caret has left a table: it passes the caret's old position (which must be
+    /// in the table) and can ignore the returned selection, which is that position carried
+    /// through the re-alignment.
+    Realign,
+}
+
+/// A table and, when the queried offset is inside it, the position of that offset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableInfo {
+    /// The whole table: from the first cell's line (container prefix excluded) to the end of
+    /// its last line.
+    pub range: TextRange,
+    /// Rows including the header, excluding the delimiter row.
+    pub rows: u32,
+    pub columns: u32,
+    /// 0 is the header. `None` on the delimiter row.
+    pub row: Option<u32>,
+    /// `None` if the offset is not in a cell (e.g. in the line's container prefix).
+    pub column: Option<u32>,
+    pub alignments: Vec<ColumnAlignment>,
+}

@@ -252,9 +252,10 @@ fn autolinks() {
 }
 
 #[test]
-fn bare_urls_are_not_links() {
-    // pulldown-cmark 0.13 has no GFM bare-URL autolinks.
-    assert_spans("see https://example.com now", &[]);
+fn bare_urls_are_links_without_markup() {
+    // pulldown-cmark 0.13 has no GFM bare-URL autolinks; the core finds them itself and
+    // reports a bare `Link` span with no markup (see tests/autolink.rs).
+    assert_spans("see https://example.com now", &[("Link", "https://example.com")]);
 }
 
 #[test]

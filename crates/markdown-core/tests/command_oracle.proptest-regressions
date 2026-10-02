@@ -1,0 +1,39 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a1e23b06bea47a4a300cd207794fcb6faf1069dfd38c2f6c3d142e08710b26f2 # shrinks to text = " ", a = 0, b = 0, kind = 1, enc_i = 0
+cc 3894bc00e6321c75dcc89a4a0a5c916774bff2608d6c966c76d3b22a1bdcf361 # shrinks to text = "\t1. # wordwordwordwordwordxword", a = 1, b = 1, enc_i = 0
+cc 209587d31fec5ee72669935d2804fb892871f99e4182b6245d8de3913d4a5b96 # shrinks to text = "```\n  ", a = 372701606, b = 2020324618, enc_i = 0
+cc e633d477d06c19801b600bbab64a6babce54f116950f610dcc527acf684326b7 # shrinks to text = "*word ,", a = 705489682, b = 162973987, kind = 1, enc_i = 0
+cc 9c27c6e7bb58f3cef70eacb145f6471e00cef70e18be5e6c94d75de7e6a08f4b # shrinks to text = "```\n \n# ", a = 0, b = 0, enc_i = 0
+cc 2c270fc4ae44156bed2373112e6755e4708c3b9252733cbe9e962bcbca30e50b # shrinks to text = "-     - [ ] ", a = 453922358, b = 1524104588, enc_i = 0
+cc 890c8fd26a909fc47e2043ab543f77bd1b3e229382a10b7ede9a78979bfb0d7a # shrinks to text = "\n\n\n\n\n\né## \n\n* ---\n<div>\n_# ```\n---\n", a = 1240835778, b = 3736870218, enc_i = 0
+cc fbb982621406d2f807cc76c55d46e004836f690db101436443f2572e190e3fd4 # shrinks to text = "\n\nwordwww.a.b word# ```\n```\nword \n\nxx`x- [ ] ## x\n\n\n\n~~~\n\n", a = 515526861, b = 2468879, enc_i = 0
+cc 6aad026b831ab37d61b058091e50160a6056aead41216a6e167b36a936c218e1 # shrinks to text = "- ,,_        ,word ```\n\n\n>     é## ", a = 1319591011, b = 108144751, enc_i = 0
+cc ec55213a465aed289a3b5d0bfbfeab536c457628163f9eba12c621da34a7d404 # shrinks to text = "> *\n  ```\n\n\nwordwordxwordword\n\nword", a = 474, b = 1805838, enc_i = 0
+cc 796066101d3e403e6f92d67e9efe0788f4de4808e5f251d55c96bd4b55993fa3 # shrinks to text = "é_u_ x`c` **st** ", a = 2017576998, b = 1180896462, kind = 0, enc_i = 0
+cc ed48380162365ddc740fe23805df25e7d903bbb6e15ee591cbd22f503b7ee4ec # shrinks to text = "word é## \n1. 🎉x🎉\n\n🎉## ", a = 2204918999, b = 1316078571, kind = 0, enc_i = 0
+cc dccdb0891a5eed2b4914cac0721045e984a609a04eb09284354ac080f7bf0a2a # shrinks to text = "*em* \n\n`c` éwww.a.b 🎉\n\n\n\nwordword 🎉\n\n\n\n- [ ] don't \n\n**st** ", a = 2758993340, b = 3419266986, kind = 0, enc_i = 0
+cc 78cad33ee85378112fa9af1b5636b75baf3cc4c932a50672032fb229347d3ff7 # shrinks to text = "\n\nword_u_ ", a = 2651044160, b = 487228258, kind = 0, enc_i = 0
+cc 8a31c7363b23e8944da748227b37a755cdfaa5e6bc166d3abae6309a5d946499 # shrinks to text = "xdon't 🎉**st** `c` \n\n 1. - [ ] 🎉don't ~~s~~ ", a = 3129574338, b = 2078912688, kind = 0, enc_i = 0
+cc a8722f63f3db0a2e530706ae67640e64b9b9035f1514ab0c7d5e17bf14a5cc21 # shrinks to text = "1. 1.   \n🎉\n\nxwww.a.b www.a.b ```\néx\n\n", a = 368841807, b = 96063812, kind = 0, enc_i = 0
+cc 19bb905039da5300d03bd13a27d60fe01db79647e84eb0633a31e7109a2b1dcc # shrinks to text = "🎉\n\n- 1. \n\n\n\n", a = 2305138385, b = 1045176981, kind = 0, enc_i = 0
+cc 59081f485a3e8dbeec83bfc0425a4f2bfcabf10e9336a5ec1a93dc8716edbb74 # shrinks to text = "e\u{301}`c` e\u{301}", a = 3598622994, b = 380803278, kind = 0, enc_i = 0
+cc dd390a8c5bcf0d3f32e40381cd5572c954d0b0eb72899d3cc5eb56805bc1f151 # shrinks to text = "**st** \n\n**st** - [ ] ## <div>\n🎉x🎉\n\n> é```\n`c` word## ## ```\n", a = 787438690, b = 878850169, kind = 0, enc_i = 0
+cc 15cfe8fdbced42cfa17ba2616676d6d0eeb8384f40f34ffa846202d215305e66 # shrinks to text = "- 1. ## word ", a = 3122627251, b = 1163415541, kind = 0, enc_i = 0
+cc 7f445b72d93fd06b13e085c3b5507e94c48fc3dea704c062c8da63a4cbe70e2d # shrinks to text = "**st** \n\n- [ ] \n\n```\n🎉word", a = 1493428996, b = 4032657712, kind = 1, enc_i = 0
+cc d2569224f983f27eb8b5a7187e6848777a883b2737e7dd68faa18e8fbef55406 # shrinks to text = "🎉~~s~~ word**st** \n\n*em* éxxéx", a = 4085543361, b = 1317717165, kind = 0, enc_i = 0
+cc 5ccdc469bb7805ad815a347c516f25e282985faed9f14836e0c9089c7caa3a78 # shrinks to text = "*## ](u)x```\n- word ```\n    ```\n", a = 74043151, b = 991399954, enc_i = 0
+cc 8baea03f81a59b25444e6d30f0a42e7acb70861f1f7c87b1bffcea70a0ec0b33 # shrinks to text = "e\u{301}*em* ", a = 641175619, b = 290689683, kind = 2, enc_i = 0
+cc 4af4371b6c9d401e159aeb01b3b6fb9eba53793c77d4142f81fea50d17b0855e # shrinks to text = "\n\n[l](u) **st** \r\ne\u{301}www.a.b \r\ndon't x- [ ] x🎉éé🎉🎉word**st** ```\n`c` ## x## ", a = 3991509523, b = 1380197828, kind = 1, enc_i = 0
+cc f4dd9b0c1bda1b96e5c5fa9022098bec1fb7d23c2f94a302782cee53d66afd03 # shrinks to text = "don't **st** <div>\ne\u{301}x🎉www.a.b **st** \n\n", a = 55647545, b = 1945840053, kind = 1, enc_i = 0
+cc 29ee6ecfc645bc98e071d38d801589476e0da2bcaa975b4139c11ba1c8fcd4f1 # shrinks to text = "- > ](u)`x\t\n\n```\nx\r\n- \n\ne\u{301}x\txdon't don't ", a = 2660679506, b = 3632276908, which = 0, enc_i = 0
+cc ea6deff9225c6a3fe2c9f89704147f4234f83b710a988fd3c2947d6f6f7022b8 # shrinks to text = "~~s~~ **st** 1. don't **st** e\u{301}_u_ `c` ## ~~s~~ \r\n🎉~~s~~ # \r\n*em* 🎉## word www.a.b *em* ", a = 4107346080, b = 463577176, kind = 0, enc_i = 0
+cc 6e0401814f508213eb183a61cc174e129feb2dced5fc9af4be4eb38707bf125a # shrinks to text = "x## xx\n\n**st** x`c` x**st** `c` don't é\r\nword\n\n\n\n🎉<div>\n~~s~~ x\n\n🎉", a = 80813795, b = 1972526540, kind = 1, enc_i = 0
+cc 28c4af2fdcfce3ae02df5462b81f496bf525814ce2d5aaf015e9c53ec6453764 # shrinks to text = "~~~\n    ~~~\n\n", a = 21448, b = 68469212, enc_i = 0
+cc 1b517eea2e3cb4f8ebbc5e845d9b55220c2692a5d28837523a80b9590d37c3da # shrinks to text = "\n\n🎉xé[l](u) *em* 🎉éé*em* ~~s~~ ## 🎉🎉_u_ ~~s~~ ## word don't `c` [l](u) ", a = 1768366778, b = 1433428933, kind = 0, enc_i = 0
+cc b4db909e77e67be7fccf8f84a2cd2f083d2c314bbbd6af77b927b6533150b5db # shrinks to text = "    word[l](u) don't 🎉**st** ", a = 1474975593, b = 4010040633, kind = 0, enc_i = 0
+cc c821ac8e16bbc0e994fd4b0a2d55a74b5c58d24d5f22488b31e1b01c184b01ba # shrinks to text = "word\n> <div>\n\t>  ", a = 0, b = 0, enc_i = 0

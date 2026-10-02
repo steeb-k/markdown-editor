@@ -26,7 +26,7 @@ fn md_tokens(max: usize) -> impl Strategy<Value = String> {
     const TOKENS: &[&str] = &[
         "# ", "## ", "> ", "- ", "* ", "1. ", "- [ ] ", "- [x] ", "```", "```rs\n", "~~~", "---\n", "***", "\n", "\n\n",
         "\r\n", "  \n", "*", "**", "_", "~~", "`", "[", "](", ")", "![", "]", "[^1]", "[^1]: ", "|", "| a | b |\n", "|---|---|\n",
-        "<div>", "</div>", "<b>", "<http://a.b>", "\\", "\\*", "word ", "text", " ", "    ", "=== ", "===\n", "[r]: /u\n",
+        "<div>", "</div>", "<b>", "<http://a.b>", "www.a.b/c", "http://a.b/x_y ", "(www.a.b)", "\\", "\\*", "word ", "text", " ", "    ", "=== ", "===\n", "[r]: /u\n",
         "[r]", "\u{1F389}", "\u{65E5}\u{672C}", "e\u{301}", "&amp;", "#",
     ];
     prop::collection::vec(prop::sample::select(TOKENS), 0..max).prop_map(|v| v.concat())

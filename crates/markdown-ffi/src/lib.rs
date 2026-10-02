@@ -116,6 +116,131 @@ impl std::fmt::Display for EditError {
 
 impl std::error::Error for EditError {}
 
+
+// ----- editing commands -----------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TextEdit {
+    pub range: Utf16Range,
+    pub replacement: String,
+    pub selection: Utf16Range,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ListKind {
+    None,
+    Bullet,
+    Ordered,
+    Task,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ColumnAlignment {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum FormatCommand {
+    Strong,
+    Emphasis,
+    Strikethrough,
+    InlineCode,
+    Link,
+    Image { destination: String, alt: String },
+    Heading { level: u8 },
+    BlockQuote,
+    BulletList,
+    OrderedList,
+    TaskList,
+    CodeBlock,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct FormatState {
+    pub strong: bool,
+    pub emphasis: bool,
+    pub strikethrough: bool,
+    pub inline_code: bool,
+    pub link: bool,
+    pub heading_level: u8,
+    pub in_quote: bool,
+    pub list: ListKind,
+    pub in_code_block: bool,
+    pub in_table: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TableCommand {
+    Insert { rows: u32, columns: u32 },
+    AddRowAbove,
+    AddRowBelow,
+    AddColumnLeft,
+    AddColumnRight,
+    DeleteRow,
+    DeleteColumn,
+    SetAlignment { alignment: ColumnAlignment },
+    NextCell,
+    PreviousCell,
+    Realign,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TableInfo {
+    pub range: Utf16Range,
+    pub rows: u32,
+    pub columns: u32,
+    pub row: Option<u32>,
+    pub column: Option<u32>,
+    pub alignments: Vec<ColumnAlignment>,
+}
+
+// ----- themes ---------------------------------------------------------------------------------------
+
+/// An sRGB color. Named `ThemeColor` here (the core calls it `Color`) because Swift would
+/// otherwise find it ambiguous with SwiftUI's `Color`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ThemeColor {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ThemeColors {
+    pub background: ThemeColor,
+    pub text: ThemeColor,
+    pub markup: ThemeColor,
+    pub heading: ThemeColor,
+    pub link: ThemeColor,
+    pub code_text: ThemeColor,
+    pub code_background: ThemeColor,
+    pub quote: ThemeColor,
+    pub selection: ThemeColor,
+    pub caret: ThemeColor,
+    pub focus_dim: ThemeColor,
+    pub pos_noun: ThemeColor,
+    pub pos_verb: ThemeColor,
+    pub pos_adjective: ThemeColor,
+    pub pos_adverb: ThemeColor,
+    pub pos_conjunction: ThemeColor,
+    pub author_ai: ThemeColor,
+    pub author_reference: ThemeColor,
+    pub rule: ThemeColor,
+    pub table_border: ThemeColor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Theme {
+    pub id: String,
+    pub name: String,
+    pub is_dark: bool,
+    pub colors: ThemeColors,
+}
+
 // ----- conversions (field-by-field, no logic) -----------------------------------------------
 
 impl From<Utf16Range> for core::TextRange {
@@ -253,6 +378,151 @@ impl From<EditError> for core::EditError {
     }
 }
 
+impl From<core::TextEdit> for TextEdit {
+    fn from(e: core::TextEdit) -> Self {
+        TextEdit { range: e.range.into(), replacement: e.replacement, selection: e.selection.into() }
+    }
+}
+
+impl From<core::ListKind> for ListKind {
+    fn from(k: core::ListKind) -> Self {
+        match k {
+            core::ListKind::None => ListKind::None,
+            core::ListKind::Bullet => ListKind::Bullet,
+            core::ListKind::Ordered => ListKind::Ordered,
+            core::ListKind::Task => ListKind::Task,
+        }
+    }
+}
+
+impl From<core::ColumnAlignment> for ColumnAlignment {
+    fn from(a: core::ColumnAlignment) -> Self {
+        match a {
+            core::ColumnAlignment::None => ColumnAlignment::None,
+            core::ColumnAlignment::Left => ColumnAlignment::Left,
+            core::ColumnAlignment::Center => ColumnAlignment::Center,
+            core::ColumnAlignment::Right => ColumnAlignment::Right,
+        }
+    }
+}
+
+impl From<ColumnAlignment> for core::ColumnAlignment {
+    fn from(a: ColumnAlignment) -> Self {
+        match a {
+            ColumnAlignment::None => core::ColumnAlignment::None,
+            ColumnAlignment::Left => core::ColumnAlignment::Left,
+            ColumnAlignment::Center => core::ColumnAlignment::Center,
+            ColumnAlignment::Right => core::ColumnAlignment::Right,
+        }
+    }
+}
+
+impl From<FormatCommand> for core::FormatCommand {
+    fn from(c: FormatCommand) -> Self {
+        match c {
+            FormatCommand::Strong => core::FormatCommand::Strong,
+            FormatCommand::Emphasis => core::FormatCommand::Emphasis,
+            FormatCommand::Strikethrough => core::FormatCommand::Strikethrough,
+            FormatCommand::InlineCode => core::FormatCommand::InlineCode,
+            FormatCommand::Link => core::FormatCommand::Link,
+            FormatCommand::Image { destination, alt } => core::FormatCommand::Image { destination, alt },
+            FormatCommand::Heading { level } => core::FormatCommand::Heading { level },
+            FormatCommand::BlockQuote => core::FormatCommand::BlockQuote,
+            FormatCommand::BulletList => core::FormatCommand::BulletList,
+            FormatCommand::OrderedList => core::FormatCommand::OrderedList,
+            FormatCommand::TaskList => core::FormatCommand::TaskList,
+            FormatCommand::CodeBlock => core::FormatCommand::CodeBlock,
+        }
+    }
+}
+
+impl From<core::FormatState> for FormatState {
+    fn from(s: core::FormatState) -> Self {
+        FormatState {
+            strong: s.strong,
+            emphasis: s.emphasis,
+            strikethrough: s.strikethrough,
+            inline_code: s.inline_code,
+            link: s.link,
+            heading_level: s.heading_level,
+            in_quote: s.in_quote,
+            list: s.list.into(),
+            in_code_block: s.in_code_block,
+            in_table: s.in_table,
+        }
+    }
+}
+
+impl From<TableCommand> for core::TableCommand {
+    fn from(c: TableCommand) -> Self {
+        match c {
+            TableCommand::Insert { rows, columns } => core::TableCommand::Insert { rows, columns },
+            TableCommand::AddRowAbove => core::TableCommand::AddRowAbove,
+            TableCommand::AddRowBelow => core::TableCommand::AddRowBelow,
+            TableCommand::AddColumnLeft => core::TableCommand::AddColumnLeft,
+            TableCommand::AddColumnRight => core::TableCommand::AddColumnRight,
+            TableCommand::DeleteRow => core::TableCommand::DeleteRow,
+            TableCommand::DeleteColumn => core::TableCommand::DeleteColumn,
+            TableCommand::SetAlignment { alignment } => core::TableCommand::SetAlignment(alignment.into()),
+            TableCommand::NextCell => core::TableCommand::NextCell,
+            TableCommand::PreviousCell => core::TableCommand::PreviousCell,
+            TableCommand::Realign => core::TableCommand::Realign,
+        }
+    }
+}
+
+impl From<core::TableInfo> for TableInfo {
+    fn from(t: core::TableInfo) -> Self {
+        TableInfo {
+            range: t.range.into(),
+            rows: t.rows,
+            columns: t.columns,
+            row: t.row,
+            column: t.column,
+            alignments: t.alignments.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<core::Color> for ThemeColor {
+    fn from(c: core::Color) -> Self {
+        ThemeColor { r: c.r, g: c.g, b: c.b, a: c.a }
+    }
+}
+
+impl From<core::theme::Colors> for ThemeColors {
+    fn from(c: core::theme::Colors) -> Self {
+        ThemeColors {
+            background: c.background.into(),
+            text: c.text.into(),
+            markup: c.markup.into(),
+            heading: c.heading.into(),
+            link: c.link.into(),
+            code_text: c.code_text.into(),
+            code_background: c.code_background.into(),
+            quote: c.quote.into(),
+            selection: c.selection.into(),
+            caret: c.caret.into(),
+            focus_dim: c.focus_dim.into(),
+            pos_noun: c.pos_noun.into(),
+            pos_verb: c.pos_verb.into(),
+            pos_adjective: c.pos_adjective.into(),
+            pos_adverb: c.pos_adverb.into(),
+            pos_conjunction: c.pos_conjunction.into(),
+            author_ai: c.author_ai.into(),
+            author_reference: c.author_reference.into(),
+            rule: c.rule.into(),
+            table_border: c.table_border.into(),
+        }
+    }
+}
+
+impl From<core::Theme> for Theme {
+    fn from(t: core::Theme) -> Self {
+        Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into() }
+    }
+}
+
 // ----- the document object ------------------------------------------------------------------
 
 /// A Markdown document. Every range crossing this API is in UTF-16 code units.
@@ -320,6 +590,44 @@ impl Document {
     pub fn images(&self) -> Vec<ImageRef> {
         self.with(|d| d.images().into_iter().map(ImageRef::from).collect())
     }
+
+    pub fn format(&self, command: FormatCommand, selection: Utf16Range) -> Option<TextEdit> {
+        self.with(|d| d.format(command.into(), selection.into()).map(TextEdit::from))
+    }
+
+    pub fn format_state(&self, selection: Utf16Range) -> FormatState {
+        self.with(|d| d.format_state(selection.into()).into())
+    }
+
+    pub fn newline(&self, selection: Utf16Range) -> Option<TextEdit> {
+        self.with(|d| d.newline(selection.into()).map(TextEdit::from))
+    }
+
+    pub fn indent(&self, selection: Utf16Range, outdent: bool) -> Option<TextEdit> {
+        self.with(|d| d.indent(selection.into(), outdent).map(TextEdit::from))
+    }
+
+    pub fn toggle_task(&self, at: u32) -> Option<TextEdit> {
+        self.with(|d| d.toggle_task(at).map(TextEdit::from))
+    }
+
+    pub fn table_command(&self, command: TableCommand, selection: Utf16Range) -> Option<TextEdit> {
+        self.with(|d| d.table_command(command.into(), selection.into()).map(TextEdit::from))
+    }
+
+    pub fn table_at(&self, offset: u32) -> Option<TableInfo> {
+        self.with(|d| d.table_at(offset).map(TableInfo::from))
+    }
+}
+
+#[uniffi::export]
+pub fn builtin_themes() -> Vec<Theme> {
+    core::builtin_themes().into_iter().map(Theme::from).collect()
+}
+
+#[uniffi::export]
+pub fn theme_by_id(id: String) -> Option<Theme> {
+    core::theme_by_id(&id).map(Theme::from)
 }
 
 #[uniffi::export]
@@ -337,6 +645,25 @@ mod tests {
         assert_eq!(d.text(), "h\u{e9}llo \u{1F389}");
         assert_eq!(d.len(), 8);
         assert!(!core_version().is_empty());
+    }
+
+    #[test]
+    fn commands_and_themes_cross_the_boundary() {
+        let d = Document::new("\u{1F389} word".into());
+        // Selection in UTF-16 units: the emoji is two of them.
+        let edit = d
+            .format(FormatCommand::Strong, Utf16Range { start: 3, end: 7 })
+            .expect("wraps the word");
+        assert_eq!(edit.replacement, "**word**");
+        assert_eq!(edit.selection, Utf16Range { start: 5, end: 9 });
+        d.replace(edit.range, edit.replacement.clone()).unwrap();
+        assert_eq!(d.text(), "\u{1F389} **word**");
+        assert!(d.format_state(Utf16Range { start: 6, end: 6 }).strong);
+        let t = Document::new("| a |\n|---|\n| b |".into());
+        assert_eq!(t.table_at(2).map(|i| (i.rows, i.columns)), Some((2, 1)));
+        assert!(t.table_command(TableCommand::SetAlignment { alignment: ColumnAlignment::Right }, Utf16Range { start: 2, end: 2 }).is_some());
+        assert_eq!(builtin_themes().len(), 3);
+        assert!(theme_by_id("sepia".into()).is_some());
     }
 
     #[test]

@@ -59,7 +59,7 @@ fn lcg(seed: &mut u64) -> u64 {
 const TOKENS: &[&str] = &[
     "# ", "## ", "> ", "- ", "* ", "1. ", "- [ ] ", "- [x] ", "```", "```rs\n", "~~~", "---\n", "***", "\n", "\n\n",
     "\r\n", "\r", "  \n", "*", "**", "_", "__", "~~", "`", "``", "[", "](", ")", "![", "]", "[^1]", "[^1]: ", "|",
-    "| a | b |\n", "|---|---|\n", "<div>", "</div>", "<b>", "<!--", "-->", "<http://a.b>", "\\", "\\*", "word ",
+    "| a | b |\n", "|---|---|\n", "<div>", "</div>", "<b>", "<!--", "-->", "<http://a.b>", "www.a.b/c", "https://a.b/x_y ", "\\", "\\*", "word ",
     "text", " ", "    ", "\t", "=== ", "===\n", "[r]: /u\n", "[r]", "[r][]", "[t][r]", "\u{1F389}", "e\u{301}",
     "&amp;", "&#", "#", ":", "\"t\"", "'", "(", "<", ">", "\\\n", "x\\|y", "\u{0}", "\u{FEFF}", "+++\n", "...\n",
 ];
@@ -209,4 +209,14 @@ fn random_documents_and_edits_never_panic() {
         }
         doc.replace(r, &with).unwrap();
     }
+}
+
+/// A tab-indented `>` line in a quoted HTML block: pulldown-cmark keeps it in the block
+/// without reporting its text; it must not become a quote marker overlapping the block.
+#[test]
+fn tab_indented_marker_inside_quoted_html_block() {
+    let text = "word\n> <div>\n\t>  ";
+    let doc = markdown_core::Document::new(text, markdown_core::OffsetEncoding::Utf8);
+    let spans = doc.spans(None);
+    assert!(spans.iter().any(|s| s.kind == markdown_core::SpanKind::Html));
 }

@@ -30,6 +30,7 @@ expression: report(&text)
 153..163 Strikethrough "~~struck~~"
 153..155 Markup "~~"
 161..163 Markup "~~"
+186..205 Link "https://example.com"
 221..225 FootnoteReference "[^1]"
 221..223 Markup "[^"
 224..225 Markup "]"
@@ -85,7 +86,8 @@ Paragraph 233..251 line 12 level None depth 1 "The footnote body."
 134..143 "done task"
 145..153 "This is "
 155..161 "struck"
-163..221 " text with an autolink https://example.com and a footnote."
+163..186 " text with an autolink "
+205..221 " and a footnote."
 233..251 "The footnote body."
 
 # images

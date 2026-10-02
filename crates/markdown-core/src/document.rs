@@ -205,7 +205,81 @@ impl Document {
         out.into_iter().map(|(_, r)| r).collect()
     }
 
+    // ----- editing commands (implemented in `crate::edit`) --------------------------------
+
+    /// Apply a formatting command to `selection`. `None` means nothing to do. The edit
+    /// applies cleanly with [`Document::replace`]; see [`TextEdit`].
+    pub fn format(&self, cmd: FormatCommand, selection: TextRange) -> Option<TextEdit> {
+        crate::edit::format(self, cmd, selection)
+    }
+
+    /// Which formats are active at `selection` (for the toolbar).
+    pub fn format_state(&self, selection: TextRange) -> FormatState {
+        crate::edit::format_state(self, selection)
+    }
+
+    /// The Return key: list and block quote continuation. `None`: insert a plain newline.
+    pub fn newline(&self, selection: TextRange) -> Option<TextEdit> {
+        crate::edit::newline(self, selection)
+    }
+
+    /// Tab (`outdent == false`) and Shift-Tab. `None`: the shell does its default.
+    pub fn indent(&self, selection: TextRange, outdent: bool) -> Option<TextEdit> {
+        crate::edit::indent(self, selection, outdent)
+    }
+
+    /// Flip the task item whose marker contains `at`, or else the one on `at`'s line.
+    pub fn toggle_task(&self, at: u32) -> Option<TextEdit> {
+        crate::edit::toggle_task(self, at)
+    }
+
+    /// A table helper. `Insert` works anywhere; every other command needs the start of
+    /// `selection` inside a table (`None` otherwise) and re-aligns the whole table.
+    pub fn table_command(&self, cmd: TableCommand, selection: TextRange) -> Option<TextEdit> {
+        crate::edit::table_command(self, cmd, selection)
+    }
+
+    /// The table containing `offset` (the end of its last line included), if any.
+    pub fn table_at(&self, offset: u32) -> Option<TableInfo> {
+        crate::edit::table_at(self, offset)
+    }
+
     // ----- offset plumbing --------------------------------------------------------------
+
+    pub(crate) fn analysis(&self) -> &Analysis {
+        &self.analysis
+    }
+
+    /// Unit offset to byte offset, snapping to the code point boundary at or before it
+    /// (`ceil == false`) or at or after it (`ceil == true`); clamped to the text.
+    pub(crate) fn byte_snapped(&self, unit: u32, ceil: bool) -> usize {
+        match self.map.locate_unit(&self.text, unit as usize) {
+            None => self.text.len(),
+            Some((b, true)) => b,
+            Some((b, false)) => {
+                if ceil {
+                    b + self.text[b..].chars().next().map_or(0, char::len_utf8)
+                } else {
+                    b
+                }
+            }
+        }
+    }
+
+    pub(crate) fn unit_of(&self, byte: usize) -> u32 {
+        self.to_unit(byte)
+    }
+
+    /// Length of `s` in the document's offset unit.
+    pub(crate) fn units_in(&self, s: &str) -> u32 {
+        s.chars()
+            .map(|c| match self.encoding {
+                OffsetEncoding::Utf8 => c.len_utf8(),
+                OffsetEncoding::Utf16 => c.len_utf16(),
+                OffsetEncoding::Utf32 => 1,
+            })
+            .sum::<usize>() as u32
+    }
 
     fn unit_to_byte(&self, unit: u32) -> Result<usize, EditError> {
         match self.map.locate_unit(&self.text, unit as usize) {

@@ -10,8 +10,9 @@ use pulldown_cmark::{
     CodeBlockKind, Event, LinkType, MetadataBlockKind, Options, Parser, Tag, TagEnd,
 };
 
+use crate::autolink;
 use crate::lines::LineIndex;
-use crate::types::{BlockKind, MarkupScope, SpanKind};
+use crate::types::{BlockKind, ColumnAlignment, MarkupScope, SpanKind};
 
 /// Markup bookkeeping kept next to each `Markup` span for Live mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +92,26 @@ pub(crate) struct IImage {
     pub standalone: bool,
 }
 
+/// One table row (header or body): the line without its container prefix and the cells the
+/// parser reported (raw ranges, including the blanks around the content).
+#[derive(Debug, Clone)]
+pub(crate) struct IRow {
+    pub start: usize,
+    pub end: usize,
+    pub cells: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ITable {
+    pub start: usize,
+    pub end: usize,
+    pub alignments: Vec<ColumnAlignment>,
+    /// Header row first, then body rows. The delimiter row is not among them.
+    pub rows: Vec<IRow>,
+    /// The `|---|---|` line without its container prefix.
+    pub delimiter: Option<(usize, usize)>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Analysis {
     /// Sorted by (start asc, end desc, kind rank); disjoint or properly nested.
@@ -100,6 +121,7 @@ pub(crate) struct Analysis {
     pub blocks: Vec<IBlock>,
     pub prose: Vec<(usize, usize)>,
     pub images: Vec<IImage>,
+    pub tables: Vec<ITable>,
     pub lines: LineIndex,
 }
 
@@ -108,7 +130,8 @@ const MAX_QUOTE_MARKUP_DEPTH: usize = 32;
 
 fn options() -> Options {
     // GFM-style bare URL autolinks (`https://example.com` without angle brackets) are
-    // not offered by pulldown-cmark 0.13; only `<...>` autolinks are recognised.
+    // not offered by pulldown-cmark 0.13; only `<...>` autolinks are recognised. The core
+    // finds bare URLs itself (see `autolink`).
     Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_STRIKETHROUGH
@@ -170,6 +193,12 @@ struct Builder<'a> {
     blocks: Vec<IBlock>,
     prose: Vec<(usize, usize)>,
     images: Vec<IImage>,
+    tables: Vec<ITable>,
+    cur_table: Option<ITable>,
+    /// The current run of source-contiguous plain text, searched for bare URLs.
+    run: Option<(usize, usize)>,
+    /// Ranges of bare URLs (excluded from prose).
+    bare_urls: Vec<(usize, usize)>,
 
     quote_depth: usize,
     container_depth: usize,
@@ -215,6 +244,10 @@ impl<'a> Builder<'a> {
             blocks: Vec::new(),
             prose: Vec::new(),
             images: Vec::new(),
+            tables: Vec::new(),
+            cur_table: None,
+            run: None,
+            bare_urls: Vec::new(),
             quote_depth: 0,
             container_depth: 0,
             in_table: false,
@@ -357,7 +390,20 @@ impl<'a> Builder<'a> {
         self.prev_end = end.max(self.extended_end.take().unwrap_or(0));
     }
 
+    /// Search the finished text run for bare URLs.
+    fn flush_run(&mut self) {
+        if let Some((s, e)) = self.run.take() {
+            for a in autolink::find_in(self.text, s, e) {
+                self.push(a.start, a.end, SpanKind::Link);
+                self.bare_urls.push((a.start, a.end));
+            }
+        }
+    }
+
     fn dispatch(&mut self, ev: Event<'_>, r: Range<usize>) {
+        if !matches!(ev, Event::Text(_)) {
+            self.flush_run();
+        }
         if matches!(ev, Event::Text(_) | Event::Code(_) | Event::Html(_) | Event::InlineHtml(_)) && r.start < r.end {
             self.texts.push((r.start, r.end));
         }
@@ -377,6 +423,17 @@ impl<'a> Builder<'a> {
                         self.images[i].alt.push_str(&t);
                     }
                     self.touch_inline(&r, !t.trim().is_empty(), None);
+                    if self.link_stack.is_empty() {
+                        match &mut self.run {
+                            Some(run) if run.1 == r.start => run.1 = r.end,
+                            _ => {
+                                self.flush_run();
+                                self.run = Some((r.start, r.end));
+                            }
+                        }
+                    } else {
+                        self.flush_run();
+                    }
                 }
             }
             Event::Code(t) => {
@@ -511,7 +568,7 @@ impl<'a> Builder<'a> {
                 self.footnote_def_markup(t);
                 self.container_depth += 1;
             }
-            Tag::Table(_) => {
+            Tag::Table(aligns) => {
                 self.flush_para();
                 let t = self.trim_eol(&r);
                 self.push(t.0, t.1, SpanKind::Table);
@@ -519,6 +576,21 @@ impl<'a> Builder<'a> {
                 self.push_block(BlockKind::Table, t, None, d);
                 self.in_table = true;
                 self.table_range = t;
+                self.cur_table = Some(ITable {
+                    start: t.0,
+                    end: t.1,
+                    alignments: aligns
+                        .iter()
+                        .map(|a| match a {
+                            pulldown_cmark::Alignment::None => ColumnAlignment::None,
+                            pulldown_cmark::Alignment::Left => ColumnAlignment::Left,
+                            pulldown_cmark::Alignment::Center => ColumnAlignment::Center,
+                            pulldown_cmark::Alignment::Right => ColumnAlignment::Right,
+                        })
+                        .collect(),
+                    rows: Vec::new(),
+                    delimiter: None,
+                });
             }
             Tag::TableHead | Tag::TableRow => self.row_cells.clear(),
             Tag::TableCell => {
@@ -624,12 +696,22 @@ impl<'a> Builder<'a> {
             }
             TagEnd::Table => {
                 self.in_table = false;
+                if let Some(t) = self.cur_table.take() {
+                    self.tables.push(t);
+                }
             }
             TagEnd::TableHead => {
+                self.record_row(&r);
                 self.row_pipes(&r);
-                self.delimiter_row(&r);
+                let d = self.delimiter_row(&r);
+                if let Some(t) = &mut self.cur_table {
+                    t.delimiter = d;
+                }
             }
-            TagEnd::TableRow => self.row_pipes(&r),
+            TagEnd::TableRow => {
+                self.record_row(&r);
+                self.row_pipes(&r);
+            }
             TagEnd::TableCell => self.leaf_open = false,
             TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough => {
                 self.inline_depth = self.inline_depth.saturating_sub(1);
@@ -736,7 +818,13 @@ impl<'a> Builder<'a> {
             let (ls, le) = self.lines.line_range(line, self.b);
             if let Some((ms, me)) = nth_quote_marker(self.b, ls, le, nth) {
                 let i = self.texts.partition_point(|t| t.1 <= ms);
-                if self.texts.get(i).is_none_or(|t| t.0 >= me) {
+                // pulldown-cmark 0.13 sometimes puts a tab-indented `>` line inside an HTML or
+                // code block of the quote without reporting its text; four columns of
+                // indentation there make it block content, not a marker.
+                let indent = self.b[ls..ms].iter().fold(0, |c, &x| if x == b'\t' { (c / 4 + 1) * 4 } else { c + 1 });
+                let in_block = indent >= 4
+                    && self.spans.iter().any(|sp| matches!(sp.kind, SpanKind::Html | SpanKind::CodeBlock) && sp.start < ms && ms < sp.end);
+                if !in_block && self.texts.get(i).is_none_or(|t| t.0 >= me) {
                     self.markup(ms, me, (ls, le), MarkupScope::Line);
                 }
             }
@@ -889,11 +977,22 @@ impl<'a> Builder<'a> {
         self.row_cells.clear();
     }
 
-    fn delimiter_row(&mut self, head: &Range<usize>) {
+    /// Remember the row for the table model. The parser appends an empty cell positioned at the
+    /// row's end to rows that have fewer cells than the header; those are not real cells.
+    fn record_row(&mut self, r: &Range<usize>) {
+        let (s, e) = self.trim_eol(r);
+        let cells: Vec<(usize, usize)> =
+            self.row_cells.iter().copied().filter(|&(cs, ce)| !(cs == ce && cs >= e) && ce <= self.b.len()).collect();
+        if let Some(t) = &mut self.cur_table {
+            t.rows.push(IRow { start: s, end: e, cells });
+        }
+    }
+
+    fn delimiter_row(&mut self, head: &Range<usize>) -> Option<(usize, usize)> {
         let (_, he) = self.trim_eol(head);
         let l = self.lines.line_of(he.saturating_sub(1)) + 1;
         if l >= self.lines.count() {
-            return;
+            return None;
         }
         let (ls, le) = self.lines.line_range(l, self.b);
         let mut s = ls;
@@ -912,7 +1011,9 @@ impl<'a> Builder<'a> {
                     self.markup(k, k + 1, owner, MarkupScope::Block);
                 }
             }
+            return Some((s, e));
         }
+        None
     }
 
     // ----- inline markup --------------------------------------------------------------
@@ -1146,6 +1247,7 @@ impl<'a> Builder<'a> {
     }
 
     fn finish(mut self, defs: &[(usize, usize)]) -> Analysis {
+        self.flush_run();
         self.flush_para();
         self.link_definitions(defs);
         // Inline events arrive in document order; keep the list sorted regardless.
@@ -1162,13 +1264,14 @@ impl<'a> Builder<'a> {
             m = m.max(s.end);
             prefix_max_end.push(m);
         }
-        let prose = prose_ranges(&self.prose, &spans);
+        let prose = prose_ranges(&self.prose, &spans, &self.bare_urls);
         Analysis {
             spans,
             prefix_max_end,
             blocks: self.blocks,
             prose,
             images: self.images,
+            tables: self.tables,
             lines: self.lines,
         }
     }
@@ -1284,13 +1387,18 @@ fn non_prose(kind: SpanKind) -> bool {
 }
 
 /// Text ranges with every non-prose span subtracted, adjacent pieces merged.
-fn prose_ranges(texts: &[(usize, usize)], spans: &[ISpan]) -> Vec<(usize, usize)> {
-    // Union of exclusion intervals, sorted by start.
+fn prose_ranges(texts: &[(usize, usize)], spans: &[ISpan], bare_urls: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    // Union of exclusion intervals, sorted by start: non-prose spans and bare URLs.
+    let mut raw: Vec<(usize, usize)> = spans.iter().filter(|s| non_prose(s.kind)).map(|s| (s.start, s.end)).collect();
+    if !bare_urls.is_empty() {
+        raw.extend_from_slice(bare_urls);
+        raw.sort_unstable();
+    }
     let mut excl: Vec<(usize, usize)> = Vec::new();
-    for s in spans.iter().filter(|s| non_prose(s.kind)) {
+    for (start, end) in raw {
         match excl.last_mut() {
-            Some(last) if s.start <= last.1 => last.1 = last.1.max(s.end),
-            _ => excl.push((s.start, s.end)),
+            Some(last) if start <= last.1 => last.1 = last.1.max(end),
+            _ => excl.push((start, end)),
         }
     }
     let mut out: Vec<(usize, usize)> = Vec::new();
