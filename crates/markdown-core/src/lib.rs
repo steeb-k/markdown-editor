@@ -6,8 +6,10 @@ mod conceal;
 mod dirty;
 mod document;
 mod edit;
+mod focus;
 mod lines;
 mod offsets;
+mod pos;
 pub mod theme;
 mod types;
 

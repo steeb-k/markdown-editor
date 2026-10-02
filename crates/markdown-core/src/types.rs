@@ -379,3 +379,65 @@ pub struct Concealment {
     pub collapsed: Vec<TextRange>,
     pub decorations: Vec<Decoration>,
 }
+
+// ----- focus mode and parts of speech ---------------------------------------------------------
+
+/// How much text focus mode keeps at full strength.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FocusScope {
+    /// The sentence (UAX #29) at the caret; a heading or list item holds its own sentences.
+    Sentence,
+    /// The leaf block at the caret: a paragraph, a heading, one list item's own paragraph, a
+    /// whole code block, table or front matter.
+    Paragraph,
+}
+
+/// The classes of words the editor can colour, for a writing app. A platform tagger maps its
+/// own tags onto these; every other word class stays uncoloured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PosClass {
+    Noun,
+    Verb,
+    Adjective,
+    Adverb,
+    Conjunction,
+}
+
+/// A word and its class. As input to [`PosUnit::map_tags`] the range is in the unit's joined
+/// text (see [`PosUnit`]); as output it is in the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PosTag {
+    pub range: TextRange,
+    pub class: PosClass,
+}
+
+/// The prose of one leaf block, which a shell tags as one text.
+///
+/// The text to tag is the pieces of `prose` joined: a piece directly follows the one before
+/// it, except where `separated[i]` is true, which puts one space (one offset unit) between
+/// piece `i - 1` and piece `i` (a soft line break, a table cell boundary). Pieces on one line
+/// stay joined across inline markup, so a word cut by emphasis (`un**believ**able`) is still
+/// one word. Offsets in the joined text count the same units as the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PosUnit {
+    /// The block (or, for prose outside any block, the prose itself).
+    pub range: TextRange,
+    /// Ranges of the document, sorted and disjoint, free of markup, code, URLs and front matter.
+    pub prose: Vec<TextRange>,
+    /// Same length as `prose`; `separated[0]` is false.
+    pub separated: Vec<bool>,
+}
+
+/// Everything a shell wants after the selection moved, in one call (see
+/// [`crate::Document::selection_state`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionState {
+    /// `Some` when it was asked for (Live mode).
+    pub concealment: Option<Concealment>,
+    pub format_state: FormatState,
+    /// The table holding the start of the selection.
+    pub table: Option<TableInfo>,
+    /// `Some` when a scope was given (focus mode on): the ranges kept at full strength, sorted,
+    /// disjoint and not touching. Empty: dim everything.
+    pub focus: Option<Vec<TextRange>>,
+}

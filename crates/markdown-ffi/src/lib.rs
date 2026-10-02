@@ -228,6 +228,44 @@ pub struct TableInfo {
     pub alignments: Vec<ColumnAlignment>,
 }
 
+// ----- focus mode and parts of speech ---------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FocusScope {
+    Sentence,
+    Paragraph,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PosClass {
+    Noun,
+    Verb,
+    Adjective,
+    Adverb,
+    Conjunction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct PosTag {
+    pub range: Utf16Range,
+    pub class: PosClass,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PosUnit {
+    pub range: Utf16Range,
+    pub prose: Vec<Utf16Range>,
+    pub separated: Vec<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SelectionState {
+    pub concealment: Option<Concealment>,
+    pub format_state: FormatState,
+    pub table: Option<TableInfo>,
+    pub focus: Option<Vec<Utf16Range>>,
+}
+
 // ----- themes ---------------------------------------------------------------------------------------
 
 /// An sRGB color. Named `ThemeColor` here (the core calls it `Color`) because Swift would
@@ -542,6 +580,74 @@ impl From<core::TableInfo> for TableInfo {
     }
 }
 
+impl From<FocusScope> for core::FocusScope {
+    fn from(s: FocusScope) -> Self {
+        match s {
+            FocusScope::Sentence => core::FocusScope::Sentence,
+            FocusScope::Paragraph => core::FocusScope::Paragraph,
+        }
+    }
+}
+
+impl From<PosClass> for core::PosClass {
+    fn from(c: PosClass) -> Self {
+        match c {
+            PosClass::Noun => core::PosClass::Noun,
+            PosClass::Verb => core::PosClass::Verb,
+            PosClass::Adjective => core::PosClass::Adjective,
+            PosClass::Adverb => core::PosClass::Adverb,
+            PosClass::Conjunction => core::PosClass::Conjunction,
+        }
+    }
+}
+
+impl From<core::PosClass> for PosClass {
+    fn from(c: core::PosClass) -> Self {
+        match c {
+            core::PosClass::Noun => PosClass::Noun,
+            core::PosClass::Verb => PosClass::Verb,
+            core::PosClass::Adjective => PosClass::Adjective,
+            core::PosClass::Adverb => PosClass::Adverb,
+            core::PosClass::Conjunction => PosClass::Conjunction,
+        }
+    }
+}
+
+impl From<PosTag> for core::PosTag {
+    fn from(t: PosTag) -> Self {
+        core::PosTag { range: t.range.into(), class: t.class.into() }
+    }
+}
+
+impl From<core::PosTag> for PosTag {
+    fn from(t: core::PosTag) -> Self {
+        PosTag { range: t.range.into(), class: t.class.into() }
+    }
+}
+
+impl From<core::PosUnit> for PosUnit {
+    fn from(u: core::PosUnit) -> Self {
+        PosUnit { range: u.range.into(), prose: u.prose.into_iter().map(Into::into).collect(), separated: u.separated }
+    }
+}
+
+impl From<PosUnit> for core::PosUnit {
+    fn from(u: PosUnit) -> Self {
+        core::PosUnit { range: u.range.into(), prose: u.prose.into_iter().map(Into::into).collect(), separated: u.separated }
+    }
+}
+
+impl From<core::SelectionState> for SelectionState {
+    fn from(s: core::SelectionState) -> Self {
+        SelectionState {
+            concealment: s.concealment.map(Into::into),
+            format_state: s.format_state.into(),
+            table: s.table.map(Into::into),
+            focus: s.focus.map(|f| f.into_iter().map(Into::into).collect()),
+        }
+    }
+}
+
 impl From<core::Color> for ThemeColor {
     fn from(c: core::Color) -> Self {
         ThemeColor { r: c.r, g: c.g, b: c.b, a: c.a }
@@ -657,6 +763,24 @@ impl Document {
         self.with(|d| d.concealment(selection.into(), within.map(Into::into)).into())
     }
 
+    pub fn focus_range(&self, selection: Utf16Range, scope: FocusScope) -> Vec<Utf16Range> {
+        self.with(|d| d.focus_range(selection.into(), scope.into()).into_iter().map(Utf16Range::from).collect())
+    }
+
+    pub fn pos_units(&self, within: Option<Utf16Range>) -> Vec<PosUnit> {
+        self.with(|d| d.pos_units(within.map(Into::into)).into_iter().map(PosUnit::from).collect())
+    }
+
+    pub fn selection_state(
+        &self,
+        selection: Utf16Range,
+        within: Option<Utf16Range>,
+        conceal: bool,
+        focus: Option<FocusScope>,
+    ) -> SelectionState {
+        self.with(|d| d.selection_state(selection.into(), within.map(Into::into), conceal, focus.map(Into::into)).into())
+    }
+
     pub fn format(&self, command: FormatCommand, selection: Utf16Range) -> Option<TextEdit> {
         self.with(|d| d.format(command.into(), selection.into()).map(TextEdit::from))
     }
@@ -684,6 +808,19 @@ impl Document {
     pub fn table_at(&self, offset: u32) -> Option<TableInfo> {
         self.with(|d| d.table_at(offset).map(TableInfo::from))
     }
+}
+
+/// Words of a unit's joined text (ranges in its coordinates) as document ranges.
+#[uniffi::export]
+pub fn pos_map_tags(unit: PosUnit, words: Vec<PosTag>) -> Vec<PosTag> {
+    let words: Vec<core::PosTag> = words.into_iter().map(Into::into).collect();
+    core::PosUnit::from(unit).map_tags(&words).into_iter().map(PosTag::from).collect()
+}
+
+/// Length of a unit's joined text in UTF-16 units.
+#[uniffi::export]
+pub fn pos_joined_len(unit: PosUnit) -> u32 {
+    core::PosUnit::from(unit).joined_len()
 }
 
 #[uniffi::export]
@@ -742,6 +879,22 @@ mod tests {
         assert!(c.decorations.iter().any(|d| d.kind == DecorationKind::Checkbox { checked: true }));
         let inside = d.concealment(Utf16Range { start: 6, end: 6 }, Some(Utf16Range { start: 0, end: 12 }));
         assert!(inside.hidden.is_empty());
+    }
+
+    #[test]
+    fn focus_and_parts_of_speech_cross_the_boundary() {
+        let d = Document::new("\u{1F389} One. Two **b**\n\nNext.".into());
+        let at = Utf16Range { start: 9, end: 9 };
+        let f = d.focus_range(at, FocusScope::Sentence);
+        assert_eq!(f, [Utf16Range { start: 8, end: 17 }]);
+        let st = d.selection_state(at, None, true, Some(FocusScope::Paragraph));
+        assert_eq!(st.focus, Some(vec![Utf16Range { start: 0, end: 17 }]));
+        assert!(st.concealment.is_some());
+        let units = d.pos_units(None);
+        assert_eq!(units.len(), 2);
+        assert_eq!(pos_joined_len(units[0].clone()), 13);
+        let tags = pos_map_tags(units[0].clone(), vec![PosTag { range: Utf16Range { start: 3, end: 6 }, class: PosClass::Noun }]);
+        assert_eq!(tags, [PosTag { range: Utf16Range { start: 3, end: 6 }, class: PosClass::Noun }]);
     }
 
     #[test]

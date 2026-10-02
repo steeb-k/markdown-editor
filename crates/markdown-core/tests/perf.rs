@@ -128,3 +128,52 @@ fn commands_on_one_megabyte() {
         assert!(*ms < 10.0, "{name} took {ms:.2} ms on a 1 MB document");
     }
 }
+
+#[test]
+#[ignore]
+fn focus_queries_on_one_megabyte() {
+    let text = realistic(1 << 20);
+    let doc = Document::new(&text, OffsetEncoding::Utf16);
+    let len = doc.len();
+    let mut carets = vec![];
+    let mut p = 1;
+    while p < len {
+        carets.push(p);
+        p += 9973;
+    }
+    for (name, scope) in [("sentence", FocusScope::Sentence), ("paragraph", FocusScope::Paragraph)] {
+        let mut times = vec![];
+        for &c in &carets {
+            let t = Instant::now();
+            let _ = doc.focus_range(TextRange::new(c, c), scope);
+            times.push(t.elapsed().as_secs_f64() * 1e6);
+        }
+        let max = times.iter().cloned().fold(0.0, f64::max);
+        println!("focus_range {name}: median {:.1} us, max {:.1} us over {} carets", med(times), max, carets.len());
+    }
+    let w = TextRange::new(len / 2, len / 2 + 30_000);
+    let t = Instant::now();
+    let st = doc.selection_state(TextRange::new(len / 2, len / 2), Some(w), true, Some(FocusScope::Sentence));
+    println!("selection_state (conceal + format + table + focus, 30k window): {:.1} us ({} hidden)", t.elapsed().as_secs_f64() * 1e6, st.concealment.unwrap().hidden.len());
+    let t = Instant::now();
+    let r = doc.focus_range(TextRange::new(0, len), FocusScope::Sentence);
+    println!("select all, sentence scope, whole document: {:.1} ms ({} ranges)", t.elapsed().as_secs_f64() * 1e3, r.len());
+    let t = Instant::now();
+    let _ = doc.format_state(TextRange::new(0, len));
+    println!("(format_state of select all, for comparison: {:.1} ms)", t.elapsed().as_secs_f64() * 1e3);
+    let t = Instant::now();
+    let r = doc.selection_state(TextRange::new(0, len), Some(w), false, Some(FocusScope::Sentence)).focus.unwrap();
+    println!("select all, windowed: {:.1} us ({} ranges)", t.elapsed().as_secs_f64() * 1e6, r.len());
+    let t = Instant::now();
+    let units = doc.pos_units(None);
+    println!("pos_units whole document: {:.1} ms ({} units)", t.elapsed().as_secs_f64() * 1e3, units.len());
+    let t = Instant::now();
+    let units = doc.pos_units(Some(w));
+    println!("pos_units 30k window: {:.1} us ({} units)", t.elapsed().as_secs_f64() * 1e6, units.len());
+    // One paragraph of half a megabyte.
+    let giant = "A sentence goes here. Another one follows it, and it keeps going.\n".repeat(8000);
+    let g = Document::new(&giant, OffsetEncoding::Utf16);
+    let t = Instant::now();
+    let r = g.focus_range(TextRange::new(200_000, 200_000), FocusScope::Sentence);
+    println!("one {} KB paragraph, sentence: {:.1} us {:?}", giant.len() / 1024, t.elapsed().as_secs_f64() * 1e6, r);
+}

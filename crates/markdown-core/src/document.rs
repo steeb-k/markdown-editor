@@ -213,6 +213,40 @@ impl Document {
         crate::conceal::compute(self, selection, within)
     }
 
+    /// What focus mode keeps at full strength for `selection`: sorted, disjoint ranges that do
+    /// not touch. Empty when the caret is on a blank line or between blocks (everything is dimmed).
+    /// See [`FocusScope`] and the `focus` module for what a sentence is.
+    pub fn focus_range(&self, selection: TextRange, scope: FocusScope) -> Vec<TextRange> {
+        crate::focus::focus_ranges(self, selection, scope, None)
+    }
+
+    /// The prose of every leaf block that intersects `within` (`None`: all of them), one unit
+    /// per block, for a platform tagger. The pieces of all units are exactly
+    /// [`Document::prose_ranges`] of the same text. See [`PosUnit`].
+    pub fn pos_units(&self, within: Option<TextRange>) -> Vec<PosUnit> {
+        crate::pos::pos_units(self, within)
+    }
+
+    /// Everything a shell wants after the selection moved, in one call: the concealment (when
+    /// `conceal`), the format state, the table at the selection and the focus ranges (when
+    /// `focus` is given). `within` restricts the concealment, and the units the focus ranges
+    /// are computed for, to a window of the text; results elsewhere are not computed.
+    pub fn selection_state(
+        &self,
+        selection: TextRange,
+        within: Option<TextRange>,
+        conceal: bool,
+        focus: Option<FocusScope>,
+    ) -> SelectionState {
+        let lo = selection.start.min(selection.end);
+        SelectionState {
+            concealment: conceal.then(|| self.concealment(selection, within)),
+            format_state: self.format_state(selection),
+            table: self.table_at(lo),
+            focus: focus.map(|scope| crate::focus::focus_ranges(self, selection, scope, within)),
+        }
+    }
+
     /// The link containing `offset` (the character at it) and its destination, for Cmd-click.
     pub fn link_at(&self, offset: u32) -> Option<LinkTarget> {
         crate::conceal::link_at(self, offset)
