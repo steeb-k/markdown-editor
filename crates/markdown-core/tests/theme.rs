@@ -96,6 +96,14 @@ fn text_meets_wcag_aa() {
             let r = contrast_ratio(dim, c.background);
             assert!(r >= 1.5 && r < contrast_ratio(c.text, c.background), "{}: {name} is {r:.2}:1", t.id);
         }
+        // Borrowed text (AI, Reference) is readable (4.5:1, above) but recedes: quieter than the
+        // user's own text, and told apart from it, and from each other, by hue.
+        for (name, fg) in [("author_ai", c.author_ai), ("author_reference", c.author_reference)] {
+            let r = contrast_ratio(fg, c.background);
+            assert!(r < contrast_ratio(c.text, c.background), "{}: {name} is {r:.2}:1, not quieter than the text", t.id);
+            assert_ne!(fg, c.text, "{}: {name} looks like the text", t.id);
+        }
+        assert_ne!(c.author_ai, c.author_reference, "{}", t.id);
         // Light themes have light pages and dark text, and the other way round.
         assert_eq!(t.is_dark, c.background.luminance() < c.text.luminance(), "{}", t.id);
         assert_eq!(t.is_dark, c.background.luminance() < 0.2, "{}", t.id);

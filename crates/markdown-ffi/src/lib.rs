@@ -7,6 +7,9 @@ use markdown_core as core;
 
 uniffi::setup_scaffolding!();
 
+mod authorship;
+pub use authorship::*;
+
 // ----- records and enums ------------------------------------------------------------------
 
 /// Half-open range in UTF-16 code units. Named `Utf16Range` here (the core calls it

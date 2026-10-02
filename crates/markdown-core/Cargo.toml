@@ -8,6 +8,7 @@ edition = "2024"
 # tests/oracle.rs pins its known rendering gaps; re-run the oracle when upgrading.
 # `getopts` (default) is only for pulldown-cmark's own command-line tool.
 pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+sha2 = "0.11"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.6"
 unicode-segmentation = "1.13.3"

@@ -1,6 +1,7 @@
 //! Platform-neutral Markdown core. No UI or platform dependencies.
 
 mod analysis;
+pub mod authorship;
 pub mod autolink;
 mod conceal;
 mod dirty;
