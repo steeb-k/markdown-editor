@@ -6,13 +6,16 @@ Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-a
 
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
-# an oracle against pulldown-cmark's event stream)
+# an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes)
 cargo test --workspace
 # Heavier fuzzing: the `fuzz` profile is optimized but keeps debug assertions, so the span
 # sanitizer's "nothing was dropped" check stays armed.
 # PROPTEST_CASES=200000 cargo test --profile fuzz -p markdown-core --test properties
 # ORACLE_CASES=1000000 cargo test --profile fuzz -p markdown-core --test oracle
 # FUZZ_CASES=1000000 cargo test --profile fuzz -p markdown-core --test robustness -- --include-ignored random_documents
+# PROPTEST_CASES=100000 cargo test --profile fuzz -p markdown-core --test command_props      # editing commands and tables
+# PROPTEST_CASES=100000 cargo test --profile fuzz -p markdown-core --test command_oracle     # commands judged by pulldown-cmark
+# SWEEP_STRIDE=1 cargo test --profile fuzz -p markdown-core --test command_props every_command  # every command on every selection
 # INSTA_UPDATE=always cargo test -p markdown-core --test fixtures       # accept changed snapshots (review the diff!)
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
@@ -28,6 +31,12 @@ scripts/macos/bundle.sh               # or --release, or --universal
 open build/Markdown.app
 
 # Real signing: CODESIGN_IDENTITY="Developer ID Application: ..." scripts/macos/bundle.sh --release
+
+# Drive the real app from a JSON script (no Accessibility permission needed): snapshots + log.json
+scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 ```
+
+UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
 
 Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/MarkdownCore/`, `build/`, `target/`.

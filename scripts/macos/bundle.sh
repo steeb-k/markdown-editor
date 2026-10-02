@@ -4,6 +4,8 @@
 #   scripts/macos/bundle.sh              debug, host arch, ad-hoc signed
 #   scripts/macos/bundle.sh --release    release, host arch
 #   scripts/macos/bundle.sh --universal  release, arm64 + x86_64 (per-arch builds, lipo'd)
+#   scripts/macos/bundle.sh --release --ui-script   release with the UI-script harness compiled in
+#                                        (debug builds always have it; see scripts/macos/ui/README.md)
 #   CODESIGN_IDENTITY="Developer ID Application: ..." scripts/macos/bundle.sh --release
 set -euo pipefail
 
@@ -14,12 +16,14 @@ APP="$BUILD/Markdown.app"
 
 CONFIG=debug
 UNIVERSAL=0
+UI_SCRIPT=0
 for arg in "$@"; do
   case "$arg" in
     --release) CONFIG=release ;;
     --debug) CONFIG=debug ;;
     --universal) CONFIG=release; UNIVERSAL=1 ;;
-    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    --ui-script) UI_SCRIPT=1 ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -28,6 +32,9 @@ export MACOSX_DEPLOYMENT_TARGET=14.0
 
 CORE_ARGS=(--"$CONFIG")
 SWIFT_ARGS=(-c "$CONFIG")
+if [ "$UI_SCRIPT" = 1 ]; then
+  SWIFT_ARGS+=(-Xswiftc -DUI_SCRIPT)
+fi
 if [ "$UNIVERSAL" = 1 ]; then
   CORE_ARGS=(--universal)
 fi
@@ -58,6 +65,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Markdown" "$APP/Contents/MacOS/Markdown"
 cp "$APP_PKG/Resources/Info.plist" "$APP/Contents/Info.plist"
+# Bundled writing fonts (the reference editor, SIL OFL) and their license; the app falls back to system
+# fonts when they are missing. Info.plist's ATSApplicationFontsPath points at this folder.
+if [ -d "$APP_PKG/Resources/Fonts" ]; then
+  mkdir -p "$APP/Contents/Resources/Fonts"
+  cp "$APP_PKG"/Resources/Fonts/* "$APP/Contents/Resources/Fonts/"
+else
+  echo "warning: $APP_PKG/Resources/Fonts missing; the app will use system fonts" >&2
+fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 echo "==> signing"

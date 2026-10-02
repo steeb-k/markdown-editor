@@ -1,0 +1,104 @@
+[
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md"
+ },
+ {
+  "resize": [
+   900,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "theme": "light",
+   "edited": false,
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "01-light-top"
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "02-light-bottom"
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "dump": true
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "theme": "dark"
+  }
+ },
+ {
+  "snapshot": "03-dark-bottom"
+ },
+ {
+  "scroll": "top"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "04-dark-top"
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "05-sepia-top"
+ },
+ {
+  "settingsWindow": "show"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "06-settings",
+  "window": "settings"
+ },
+ {
+  "settingsWindow": "hide"
+ }
+]

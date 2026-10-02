@@ -1,0 +1,94 @@
+import AppKit
+import SwiftUI
+
+/// Re-publishes `Settings` changes to SwiftUI.
+final class SettingsModel: ObservableObject {
+    let settings: Settings
+    private var token: NSObjectProtocol?
+    init(settings: Settings) {
+        self.settings = settings
+        token = NotificationCenter.default.addObserver(forName: Settings.didChangeNotification, object: settings, queue: .main) { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+}
+
+/// Receives the font panel's choice for "Custom…" (only the family is taken; size is a setting).
+final class FontPanelTarget: NSObject {
+    static let shared = FontPanelTarget()
+    var settings: Settings = .shared
+    @objc func changeFont(_ sender: NSFontManager?) {
+        guard let family = sender?.convert(NSFont.systemFont(ofSize: 13)).familyName else { return }
+        settings.customFontFamily = family
+        settings.fontChoice = .custom
+    }
+}
+
+struct SettingsView: View {
+    @ObservedObject var model: SettingsModel
+    private var s: Settings { model.settings }
+
+    var body: some View {
+        Form {
+            Picker("Theme", selection: Binding(get: { s.theme }, set: { s.theme = $0 })) {
+                ForEach(ThemeChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Picker("Font", selection: Binding(get: { s.fontChoice }, set: { s.fontChoice = $0 })) {
+                ForEach(FontChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            if s.fontChoice == .custom {
+                HStack {
+                    Picker("Family", selection: Binding(get: { s.customFontFamily }, set: { s.customFontFamily = $0 })) {
+                        if s.customFontFamily.isEmpty { Text("Choose…").tag("") }
+                        ForEach(FontStore.installedFamilies, id: \.self) { Text($0).tag($0) }
+                    }
+                    Button("Font Panel…") {
+                        FontPanelTarget.shared.settings = s
+                        NSFontManager.shared.target = FontPanelTarget.shared
+                        NSFontManager.shared.setSelectedFont(NSFont.systemFont(ofSize: 13), isMultiple: false)
+                        NSFontManager.shared.orderFrontFontPanel(nil)
+                    }
+                }
+            }
+            if !FontStore.bundledFontsAvailable, [.iaMono, .iaDuo, .iaQuattro].contains(s.fontChoice) {
+                Text("The bundled fonts were not found; a system font is used instead.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Stepper(value: Binding(get: { s.fontSize }, set: { s.fontSize = $0 }), in: Settings.fontSizeRange, step: 1) {
+                Text("Font size: \(Int(s.fontSize)) pt")
+            }
+            Stepper(value: Binding(get: { s.lineWidth }, set: { s.lineWidth = $0 }), in: Settings.lineWidthRange, step: 2) {
+                Text("Line width: \(s.lineWidth) characters")
+            }
+            Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
+            Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
+            Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))
+        }
+        .formStyle(.grouped)
+        .frame(width: 440)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+public final class SettingsWindowController: NSWindowController {
+    public static let shared = SettingsWindowController(settings: .shared)
+
+    public init(settings: Settings) {
+        let host = NSHostingController(rootView: SettingsView(model: SettingsModel(settings: settings)))
+        let window = NSWindow(contentViewController: host)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("MarkdownSettings")
+        super.init(window: window)
+    }
+
+    public required init?(coder: NSCoder) { fatalError("not supported") }
+
+    public func show() {
+        if window?.isVisible != true { window?.center() }
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+}

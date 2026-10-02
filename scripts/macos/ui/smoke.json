@@ -1,0 +1,675 @@
+[
+ {
+  "log": "--- open, look, scroll under the title bar"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "spellCheck": true,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md"
+ },
+ {
+  "resize": [
+   900,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "edited": false,
+   "columnCentered": true,
+   "chromeVisible": true
+  }
+ },
+ {
+  "snapshot": "01-open"
+ },
+ {
+  "scroll": 330
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "02-scrolled-under-titlebar"
+ },
+ {
+  "log": "--- spell checking only in prose"
+ },
+ {
+  "assert": {
+   "spellingAllowedIn": "misspeled word",
+   "spellingSuppressedIn": "mispeled wrod",
+   "spellingSuppressedIn ": "x"
+  }
+ },
+ {
+  "assert": {
+   "spellingSuppressedIn": "helo wrold"
+  }
+ },
+ {
+  "assert": {
+   "spellingSuppressedIn": "a-misspeled-path"
+  }
+ },
+ {
+  "assert": {
+   "spellingSuppressedIn": "title: A tour"
+  }
+ },
+ {
+  "log": "--- typing hides the chrome; pointer brings it back"
+ },
+ {
+  "selectText": "another one: teh.",
+  "offset": 17
+ },
+ {
+  "type": " Typed **bold** words"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "toolbarIgnoresClicksWhenHidden": true,
+   "textContains": "teh. Typed **bold** words",
+   "edited": true
+  }
+ },
+ {
+  "snapshot": "03-typing-chrome-hidden"
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "selectText": "**bold**",
+  "offset": 4
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "toolbarLit": [
+    "Strong"
+   ]
+  }
+ },
+ {
+  "snapshot": "04-chrome-back-strong-lit"
+ },
+ {
+  "log": "--- commands through the menus (responder chain) and undo"
+ },
+ {
+  "selectText": "calm"
+ },
+ {
+  "action": "toggleEmphasis:"
+ },
+ {
+  "assert": {
+   "textContains": "feel *calm*.",
+   "selectedText": "calm"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "toolbarLit": [
+    "Emphasis"
+   ]
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "assert": {
+   "textContains": "feel calm."
+  }
+ },
+ {
+  "redo": true
+ },
+ {
+  "assert": {
+   "textContains": "feel *calm*."
+  }
+ },
+ {
+  "selectText": "The quiet page",
+  "offset": 3
+ },
+ {
+  "action": "setHeadingLevel:",
+  "tag": 2
+ },
+ {
+  "assert": {
+   "textContains": "## The quiet page"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "headingTitle": "Heading 2"
+  }
+ },
+ {
+  "log": "--- Return and Tab in lists"
+ },
+ {
+  "selectText": "- A short item.",
+  "offset": 15
+ },
+ {
+  "type": "\n"
+ },
+ {
+  "assert": {
+   "textContains": "- A short item.\n- \n"
+  }
+ },
+ {
+  "type": "\t"
+ },
+ {
+  "assert": {
+   "textContains": "- A short item.\n  - \n"
+  }
+ },
+ {
+  "type": "child\n\n"
+ },
+ {
+  "assert": {
+   "textContains": "  - child\n- \n"
+  }
+ },
+ {
+  "type": "\n"
+ },
+ {
+  "assert": {
+   "textContains": "  - child\n\n- A much"
+  }
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "--- tables: tab between cells, realign on leave, undo is not sticky"
+ },
+ {
+  "selectText": "| alpha",
+  "offset": 7
+ },
+ {
+  "type": "-and-more"
+ },
+ {
+  "assert": {
+   "textContains": "| alpha-and-more | 1 | first |"
+  }
+ },
+ {
+  "selectText": "The end.",
+  "offset": 3
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "textContains": "| alpha-and-more |     1 | first |"
+  }
+ },
+ {
+  "snapshot": "05-table-realigned"
+ },
+ {
+  "undo": true
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "textContains": "| alpha-and-more | 1 | first |"
+  }
+ },
+ {
+  "selectText": "| alpha-and-more",
+  "offset": 4
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "selectText": "The end.",
+  "offset": 3
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "textContains": "| alpha-and-more | 1 | first |"
+  }
+ },
+ {
+  "selectText": "| alpha-and-more",
+  "offset": 4
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "type": "\t"
+ },
+ {
+  "assert": {
+   "selectedText": "1",
+   "inTable": true
+  }
+ },
+ {
+  "action": "insertTable:"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "sheet": true
+  }
+ },
+ {
+  "snapshot": "06-insert-table-sheet",
+  "window": "sheet"
+ },
+ {
+  "sheet": "end"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "sheet": false,
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "--- themes"
+ },
+ {
+  "scroll": "top"
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "theme": "dark"
+  }
+ },
+ {
+  "snapshot": "07-dark"
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "snapshot": "08-sepia"
+ },
+ {
+  "setting": {
+   "theme": "system"
+  }
+ },
+ {
+  "appearance": "light"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "theme": "light"
+  }
+ },
+ {
+  "appearance": "dark"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "theme": "dark"
+  }
+ },
+ {
+  "snapshot": "09-system-dark"
+ },
+ {
+  "appearance": "system"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "log": "--- fonts"
+ },
+ {
+  "setting": {
+   "fontChoice": "iaMono"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "boldDiffers": true,
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "10-font-ia-mono"
+ },
+ {
+  "setting": {
+   "fontChoice": "iaDuo"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "boldDiffers": true,
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "11-font-ia-duo"
+ },
+ {
+  "setting": {
+   "fontChoice": "systemSerif"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "boldDiffers": true,
+   "columnCentered": true
+  }
+ },
+ {
+  "scroll": "end"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "12-font-serif-tables"
+ },
+ {
+  "setting": {
+   "fontChoice": "systemMono"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "boldDiffers": true
+  }
+ },
+ {
+  "snapshot": "13-font-system-mono"
+ },
+ {
+  "setting": {
+   "fontChoice": "custom",
+   "customFontFamily": "Helvetica Neue"
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "boldDiffers": true,
+   "fontFamily": "Helvetica Neue"
+  }
+ },
+ {
+  "snapshot": "14-font-custom"
+ },
+ {
+  "setting": {
+   "fontChoice": "iaQuattro"
+  }
+ },
+ {
+  "scroll": "top"
+ },
+ {
+  "log": "--- size, measure, window"
+ },
+ {
+  "setting": {
+   "fontSize": 22
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "15-size-22"
+ },
+ {
+  "setting": {
+   "fontSize": 17,
+   "lineWidth": 50
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "16-measure-50"
+ },
+ {
+  "setting": {
+   "lineWidth": 72
+  }
+ },
+ {
+  "resize": [
+   480,
+   700
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "17-narrow"
+ },
+ {
+  "resize": [
+   1400,
+   900
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "18-wide"
+ },
+ {
+  "fullscreen": true
+ },
+ {
+  "assert": {
+   "columnCentered": true
+  }
+ },
+ {
+  "snapshot": "19-fullscreen"
+ },
+ {
+  "fullscreen": false
+ },
+ {
+  "resize": [
+   900,
+   820
+  ]
+ },
+ {
+  "log": "--- settings and tabs"
+ },
+ {
+  "settingsWindow": "show"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "20-settings",
+  "window": "settings"
+ },
+ {
+  "settingsWindow": "hide"
+ },
+ {
+  "newTab": true
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "type": "# New tab\n\nSome text."
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "snapshot": "21-new-tab"
+ },
+ {
+  "log": "--- closing frees everything"
+ },
+ {
+  "close": true
+ },
+ {
+  "switchTo": 0
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "close": true
+ },
+ {
+  "assert": {
+   "closedDocumentsFreed": 1
+  }
+ },
+ {
+  "controlLeakProbe": true
+ }
+]

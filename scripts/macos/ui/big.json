@@ -1,0 +1,22 @@
+[
+  {"log": "1 MB document: open, scroll, type; run in a release build (RELEASE=1) for timings"},
+  {"setting": {"theme": "light", "fontChoice": "iaQuattro", "spellCheck": true}},
+  {"openGenerated": {"from": "scripts/macos/ui/fixtures/tour.md", "minLength": 1000000}},
+  {"resize": [900, 820]},
+  {"waitStyled": 120},
+  {"assert": {"coreMatchesText": true}},
+  {"snapshot": "big-01-open"},
+  {"selectText": "The end.", "offset": 8},
+  {"wait": 0.5},
+  {"measureTyping": {"count": 150, "interval": 0.06}},
+  {"waitStyled": 60},
+  {"assert": {"coreMatchesText": true, "caretVisible": true}},
+  {"snapshot": "big-02-typed-middle"},
+  {"scroll": "end"},
+  {"wait": 0.5},
+  {"selectText": "print(greeting", "offset": 5},
+  {"measureTyping": {"count": 60, "interval": 0.02}},
+  {"waitStyled": 60},
+  {"assert": {"coreMatchesText": true}},
+  {"snapshot": "big-03-fast-typing"}
+]

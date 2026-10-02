@@ -26,6 +26,12 @@
 	<string>public.app-category.productivity</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>ATSApplicationFontsPath</key>
+	<string>Fonts</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>CFBundleDocumentTypes</key>
@@ -33,6 +39,8 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Markdown Document</string>
+			<key>NSDocumentClass</key>
+			<string>MarkdownKit.MarkdownDocument</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
@@ -45,6 +53,8 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Plain Text Document</string>
+			<key>NSDocumentClass</key>
+			<string>MarkdownKit.MarkdownDocument</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>

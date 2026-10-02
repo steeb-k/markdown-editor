@@ -1,0 +1,351 @@
+import AppKit
+import MarkdownCore
+
+/// One document's text system and analysis pipeline: storage -> layout manager -> container
+/// (all TextKit 1, built explicitly), the coordinator that owns the core `Document` off the
+/// main thread, and the styler. It is the storage's delegate: it forwards character edits to
+/// the coordinator and applies the resulting spans. Main thread only.
+public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDelegate {
+    public let settings: Settings
+    public let storage = NSTextStorage()
+    public let layoutManager = EditorLayoutManager()
+    public let container = NSTextContainer(size: NSSize(width: 600, height: CGFloat.greatestFiniteMagnitude))
+    public let coordinator: AnalysisCoordinator
+    public let styler: Styler
+    public private(set) var appearance: EditorAppearance
+    public private(set) weak var textView: EditorTextView?
+
+    /// The format state at the selection, refreshed off the main thread on every selection change.
+    public private(set) var formatState: FormatState = EditorSession.emptyFormatState
+    public private(set) var activeTable: NSRange?
+    public var onFormatStateChange: (() -> Void)?
+    public var onStyled: (() -> Void)?
+    public var onAppearanceChange: (() -> Void)?
+
+    /// Set by the text view: the character range on screen (styled first), and whether an IME
+    /// is composing (restyling would erase its marks).
+    public var visibleRange: () -> NSRange = { NSRange(location: 0, length: 0) }
+    public var isComposing: () -> Bool = { false }
+    public var forcedAppearance: NSAppearance?
+    /// The saved file's URL, for paths relative to the document.
+    public var documentURL: () -> URL? = { nil }
+
+    public static let chunkSize = 12_000
+    public static let emptyFormatState = FormatState(
+        strong: false, emphasis: false, strikethrough: false, inlineCode: false, link: false,
+        headingLevel: 0, inQuote: false, list: .none, inCodeBlock: false, inTable: false)
+
+    private var log: [(seq: Int, change: TextChange)] = []
+    private var debt = RangeSet()
+    private var debtInFlight = false
+    private var inDelegate = false
+    private var isStyling = false
+    var isApplyingEdit = false
+    private var selectionToken = 0
+    /// The table holding the caret has been edited (not just visited) since the caret entered it.
+    public private(set) var activeTableEdited = false
+    private var lastUserEdit: NSRange?
+    private var isRealigning = false
+    private var observers: [NSObjectProtocol] = []
+
+    public init(settings: Settings = .shared, forcedAppearance: NSAppearance? = nil) {
+        self.settings = settings
+        self.forcedAppearance = forcedAppearance
+        coordinator = AnalysisCoordinator()
+        appearance = EditorAppearance(settings: settings, appearance: forcedAppearance)
+        styler = Styler(appearance: appearance)
+        super.init()
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+        layoutManager.allowsNonContiguousLayout = true
+        container.lineFragmentPadding = 0
+        container.widthTracksTextView = true
+        storage.delegate = self
+        coordinator.onResult = { [weak self] in self?.handle($0) }
+        observers.append(NotificationCenter.default.addObserver(
+            forName: Settings.didChangeNotification, object: settings, queue: .main
+        ) { [weak self] _ in self?.settingsChanged() })
+    }
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        // AppKit can keep a closed window's text view alive for a while; it must not call back
+        // into a session that is gone (the delegate reference is unowned).
+        textView?.delegate = nil
+    }
+
+    // MARK: text view
+
+    public func makeTextView() -> EditorTextView {
+        let tv = EditorTextView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), textContainer: container)
+        tv.session = self
+        tv.delegate = self
+        // TextKit 1 ownership runs storage -> layout manager -> container; the view only points
+        // back. If AppKit holds on to the view after the session is gone, the view must still
+        // have a whole text system, so it keeps the storage alive too.
+        tv.textSystem = storage
+        textView = tv
+        visibleRange = { [weak tv] in tv?.visibleCharacterRange() ?? NSRange(location: 0, length: 0) }
+        isComposing = { [weak tv] in tv?.hasMarkedText() ?? false }
+        tv.configure(appearance: appearance, settings: settings)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(selectionChanged(_:)),
+            name: NSTextView.didChangeSelectionNotification, object: tv)
+        return tv
+    }
+
+    /// Replaces the whole text (document load, revert). Not undoable; the coordinator learns
+    /// of it as an ordinary edit and styling is owed for the whole text.
+    public func load(_ text: String) {
+        let attributed = NSAttributedString(string: text, attributes: appearance.baseAttributes())
+        storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: attributed)
+        textView?.undoManager?.removeAllActions()
+        activeTable = nil
+        formatState = Self.emptyFormatState
+    }
+
+    public var text: String { storage.string }
+
+    // MARK: storage delegate
+
+    public func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                            range editedRange: NSRange, changeInLength delta: Int) {
+        // Attribute-only edits (the styler's own, find highlights...) never reach the core.
+        guard editedMask.contains(.editedCharacters), !isStyling else { return }
+        let change = TextChange(old: NSRange(location: editedRange.location, length: editedRange.length - delta),
+                                newLength: editedRange.length)
+        let replacement = storage.mutableString.substring(with: editedRange)
+        debt.shift(through: change)
+        debt.clamp(toLength: storage.length)
+        if let t = activeTable { activeTable = RangeMath.shift(t, through: change) }
+        // What counts as editing a table (so leaving it realigns): typing and commands, not undo
+        // or redo (undoing a realign must not bring it straight back) and not the realign itself.
+        let um = textView?.undoManager
+        if !isRealigning, um?.isUndoing != true, um?.isRedoing != true {
+            let edited = NSRange(location: change.old.location, length: change.newLength)
+            lastUserEdit = edited
+            if let t = activeTable, touches(t, edited) { activeTableEdited = true }
+        } else if let e = lastUserEdit {
+            lastUserEdit = RangeMath.shift(e, through: change)
+        }
+        let seq = coordinator.submit(range: change.old, replacement: replacement)
+        log.append((seq, change))
+        inDelegate = true
+        coordinator.waitForResult(seq: seq)
+        inDelegate = false
+    }
+
+    // MARK: results
+
+    private func handle(_ result: AnalysisResult) {
+        var range = result.range
+        for e in log where e.seq > result.seq { range = RangeMath.shift(range, through: e.change) }
+        log.removeAll { $0.seq <= result.seq }
+        if result.seq == coordinator.latestSeq {
+            if let spans = result.spans, !isComposing() {
+                apply(spans, prose: result.prose, in: result.range)
+                debt.subtract(result.range)
+            } else {
+                debt.add(result.range)
+            }
+        } else {
+            debt.add(range) // stale: never applied; owed to the next styling
+        }
+        scheduleDebt()
+    }
+
+    /// Instrumentation: main-thread time spent applying styles so far.
+    public private(set) var totalStyleTime: TimeInterval = 0
+    public private(set) var longestStyle: TimeInterval = 0
+
+    private func apply(_ spans: [Span], prose: [Utf16Range], in range: NSRange) {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        defer {
+            let d = CFAbsoluteTimeGetCurrent() - t0
+            totalStyleTime += d
+            longestStyle = max(longestStyle, d)
+        }
+        isStyling = true
+        styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange), insideProcessing: inDelegate)
+        isStyling = false
+        textView?.refreshTypingAttributes()
+        onStyled?()
+    }
+
+    private func scheduleDebt() {
+        if inDelegate { DispatchQueue.main.async { [weak self] in self?.kickDebt() } } else { kickDebt() }
+    }
+
+    /// Styles the next chunk of what is owed: the visible part first, then the rest. Runs only
+    /// while the queue is idle and nothing is composing; each chunk is its own run-loop turn.
+    public func kickDebt() {
+        guard !debt.isEmpty, !debtInFlight, coordinator.isIdle, !isComposing() else { return }
+        debt.clamp(toLength: storage.length)
+        guard let first = debt.ranges.first else { return }
+        var chunk = debt.intersection(with: visibleRange()).first ?? first
+        if chunk.length > Self.chunkSize { chunk.length = Self.chunkSize }
+        debtInFlight = true
+        coordinator.spans(in: chunk) { [weak self] result in
+            guard let self else { return }
+            debtInFlight = false
+            if result.seq == coordinator.latestSeq, !isComposing(), let spans = result.spans {
+                apply(spans, prose: result.prose, in: RangeMath.clamp(result.range, toLength: storage.length))
+                debt.subtract(result.range)
+            }
+            DispatchQueue.main.async { [weak self] in self?.kickDebt() }
+        }
+    }
+
+    /// True when no styling is owed or in flight.
+    public var isStyled: Bool { debt.isEmpty && !debtInFlight && coordinator.isIdle }
+    public var owedStyling: [NSRange] { debt.ranges }
+
+    /// Spins the run loop until styling has caught up (tests, and the launch screenshot).
+    @discardableResult
+    public func waitUntilStyled(timeout: TimeInterval = 20) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            coordinator.deliverPending()
+            if isStyled { return true }
+            kickDebt()
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+        }
+        return isStyled
+    }
+
+    // MARK: appearance
+
+    private func settingsChanged() {
+        let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance())
+        applyAppearance(new)
+    }
+
+    /// Re-reads settings and the effective appearance (System theme follows the OS live).
+    public func refreshAppearance() {
+        applyAppearance(EditorAppearance(settings: settings, appearance: currentSystemAppearance()))
+    }
+
+    func currentSystemAppearance() -> NSAppearance? {
+        forcedAppearance ?? textView?.effectiveAppearance
+    }
+
+    private func applyAppearance(_ new: EditorAppearance) {
+        let changed = new.theme.id != appearance.theme.id || new.fonts.body != appearance.fonts.body
+            || new.fonts.mono != appearance.fonts.mono || new.maxCharacters != appearance.maxCharacters
+            || new.choice != appearance.choice
+        appearance = new
+        styler.appearance = new
+        textView?.configure(appearance: new, settings: settings)
+        if changed {
+            debt.add(NSRange(location: 0, length: storage.length))
+            kickDebt()
+        }
+        onAppearanceChange?()
+    }
+
+    // MARK: selection
+
+    @objc private func selectionChanged(_ note: Notification) {
+        guard let tv = textView, !isApplyingEdit else { return }
+        selectionChanged(in: tv)
+    }
+
+    func selectionChanged(in tv: EditorTextView) {
+        selectionToken += 1
+        let token = selectionToken
+        tv.refreshTypingAttributes()
+        let selection = tv.selectedRange()
+
+        if let table = activeTable, !tableContains(table, selection), canRealign(tv) {
+            activeTable = nil
+            if activeTableEdited { realign(table, token: token) }
+            activeTableEdited = false
+        }
+
+        let u = Utf16Range(start: UInt32(selection.location), end: UInt32(NSMaxRange(selection)))
+        coordinator.async({ doc in (doc.formatState(selection: u), doc.tableAt(offset: u.start)) }) { [weak self] info, processed in
+            guard let self, token == selectionToken, processed == coordinator.latestSeq else { return }
+            formatState = info.0
+            let table = info.1?.nsRange
+            if table != activeTable {
+                // A table just entered counts as edited if the last edit (typed before the
+                // query came back) was in it.
+                activeTableEdited = table.map { t in self.lastUserEdit.map { self.touches(t, $0) } ?? false } ?? false
+            }
+            activeTable = table
+            onFormatStateChange?()
+        }
+    }
+
+    private func touches(_ a: NSRange, _ b: NSRange) -> Bool {
+        b.location <= NSMaxRange(a) && NSMaxRange(b) >= a.location
+    }
+
+    private func tableContains(_ t: NSRange, _ sel: NSRange) -> Bool {
+        sel.location >= t.location && NSMaxRange(sel) <= NSMaxRange(t)
+    }
+
+    private func canRealign(_ tv: EditorTextView) -> Bool {
+        if tv.hasMarkedText() { return false }
+        if let um = tv.undoManager, um.isUndoing || um.isRedoing { return false }
+        if NSEvent.pressedMouseButtons != 0 { return false }
+        return true
+    }
+
+    /// The caret left `table`: pad it, as its own undo step, without moving the caret.
+    private func realign(_ table: NSRange, token: Int) {
+        let at = UInt32(table.location)
+        coordinator.async({ doc in
+            doc.tableCommand(command: .realign, selection: Utf16Range(start: at, end: at))
+        }) { [weak self] edit, processed in
+            guard let self, let tv = textView, processed == coordinator.latestSeq,
+                  let edit, canRealign(tv) else { return }
+            let range = NSRange(location: Int(edit.range.start), length: Int(edit.range.end - edit.range.start))
+            guard range.length > 0 || !edit.replacement.isEmpty else { return }
+            let change = TextChange(old: range, newLength: (edit.replacement as NSString).length)
+            let sel = tv.selectedRange()
+            let a = RangeMath.shiftPoint(sel.location, through: change)
+            let b = RangeMath.shiftPoint(NSMaxRange(sel), through: change)
+            tv.undoManager?.beginUndoGrouping()
+            tv.breakUndoCoalescing()
+            isApplyingEdit = true
+            isRealigning = true
+            _ = tv.replaceThroughUndo(range: range, with: edit.replacement)
+            tv.setSelectedRange(NSRange(location: a, length: b - a))
+            isRealigning = false
+            isApplyingEdit = false
+            lastUserEdit = nil
+            tv.breakUndoCoalescing()
+            tv.undoManager?.setActionName("Align Table")
+            tv.undoManager?.endUndoGrouping()
+            selectionChanged(in: tv)
+        }
+    }
+}
+
+extension EditorSession {
+    // MARK: spell checking
+
+    /// Spelling marks only on the core's prose ranges: never in code, URLs, markup or front
+    /// matter (the styler tags prose with `.markdownProse`).
+    public func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
+        value == 0 || allowsSpellChecking(in: affectedCharRange) ? value : 0
+    }
+
+    public func allowsSpellChecking(in r: NSRange) -> Bool {
+        guard r.length > 0, NSMaxRange(r) <= storage.length else { return false }
+        var all = true
+        storage.enumerateAttribute(.markdownProse, in: r, options: []) { v, _, stop in
+            if v == nil { all = false; stop.pointee = true }
+        }
+        return all
+    }
+}
+
+extension Utf16Range {
+    var nsRange: NSRange { NSRange(location: Int(start), length: Int(end - start)) }
+}
+
+extension TableInfo {
+    var nsRange: NSRange { NSRange(location: Int(range.start), length: Int(range.end - range.start)) }
+}
