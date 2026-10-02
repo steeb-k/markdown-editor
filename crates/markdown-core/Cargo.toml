@@ -1,0 +1,15 @@
+[package]
+name = "markdown-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Pinned: span derivation works around this version's range quirks (see analysis.rs) and
+# tests/oracle.rs pins its known rendering gaps; re-run the oracle when upgrading.
+# `getopts` (default) is only for pulldown-cmark's own command-line tool.
+pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+
+[dev-dependencies]
+insta = "1.48.0"
+proptest = "1.11.0"
+serde_json = "1.0.151"

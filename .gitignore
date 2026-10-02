@@ -1,0 +1,9 @@
+target/
+.build/
+build/
+.DS_Store
+.swiftpm/
+# generated FFI artifacts
+apps/macos/Frameworks/
+apps/macos/Sources/MarkdownCore/
+.claude/

@@ -1,0 +1,24 @@
+[package]
+name = "markdown-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "markdown_ffi"
+crate-type = ["staticlib", "lib"]
+
+# The bindings generator is a build tool, not part of the library: keeping uniffi's `cli`
+# feature (and with it uniffi_bindgen, askama, ...) out of the static library's build makes
+# the per-arch release builds several times faster. scripts/build-core.sh runs it with
+# `--features cli`.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["uniffi/cli"]
+
+[dependencies]
+markdown-core = { version = "0.1.0", path = "../markdown-core" }
+uniffi = "0.32.2"

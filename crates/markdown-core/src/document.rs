@@ -1,0 +1,287 @@
+use std::cmp::Reverse;
+
+use crate::analysis::{analyze, Analysis};
+use crate::dirty::dirty_range;
+use crate::offsets::OffsetMap;
+use crate::types::*;
+
+/// A Markdown document: text, offset table and analysis, re-derived after every edit.
+///
+/// Every range crossing this API is in the document's [`OffsetEncoding`] unit.
+#[derive(Debug, Clone)]
+pub struct Document {
+    text: String,
+    encoding: OffsetEncoding,
+    map: OffsetMap,
+    analysis: Analysis,
+    revision: u64,
+}
+
+impl Document {
+    pub fn new(text: &str, encoding: OffsetEncoding) -> Self {
+        Self {
+            text: text.to_owned(),
+            encoding,
+            map: OffsetMap::new(text, encoding),
+            analysis: analyze(text),
+            revision: 0,
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn encoding(&self) -> OffsetEncoding {
+        self.encoding
+    }
+
+    /// Length of the text in the document's offset unit.
+    pub fn len(&self) -> u32 {
+        self.map.len_units().min(u32::MAX as usize) as u32
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// Starts at 0, incremented by every `replace` and `set_text`.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Replace `range` with `with`. Returns the range of the new text that needs
+    /// restyling. Never panics: bad ranges are reported as [`EditError`] and leave the
+    /// document unchanged.
+    pub fn replace(&mut self, range: TextRange, with: &str) -> Result<Update, EditError> {
+        if range.start > range.end {
+            return Err(EditError::InvertedRange);
+        }
+        let bs = self.unit_to_byte(range.start)?;
+        let be = self.unit_to_byte(range.end)?;
+        let new_len = self.text.len() - (be - bs) + with.len();
+        if new_len > u32::MAX as usize {
+            return Err(EditError::TooLarge);
+        }
+        // Build and analyze the new state before touching `self`, so that even a panic in
+        // the analysis (a bug; the FFI layer reports it and keeps the object) cannot leave
+        // the text and its analysis out of step.
+        let mut text = String::with_capacity(new_len);
+        text.push_str(&self.text[..bs]);
+        text.push_str(with);
+        text.push_str(&self.text[be..]);
+        let new = analyze(&text);
+        let map = OffsetMap::new(&text, self.encoding);
+        let (ds, de) = dirty_range(&self.analysis, &new, bs, be, with.len(), text.len());
+        self.text = text;
+        self.analysis = new;
+        self.map = map;
+        self.revision += 1;
+        let dirty = TextRange::new(self.to_unit(ds), self.to_unit(de));
+        Ok(Update { dirty, revision: self.revision })
+    }
+
+    /// Replace the whole text. The dirty range is the whole new text.
+    pub fn set_text(&mut self, text: &str) -> Update {
+        let analysis = analyze(text);
+        self.map = OffsetMap::new(text, self.encoding);
+        self.text = text.to_owned();
+        self.analysis = analysis;
+        self.revision += 1;
+        Update { dirty: TextRange::new(0, self.len()), revision: self.revision }
+    }
+
+    /// Spans intersecting `within` (all spans for `None`), sorted by start ascending then
+    /// end descending; any two are disjoint or properly nested. An empty `within`
+    /// returns the spans containing that position.
+    pub fn spans(&self, within: Option<TextRange>) -> Vec<Span> {
+        let idx = self.span_indices(within);
+        let spans = &self.analysis.spans[idx.0..idx.1];
+        let w = self.within_bytes(within);
+        let picked: Vec<_> = spans.iter().filter(|s| w.is_none_or(|w| hits(s.start, s.end, w))).collect();
+        let pairs: Vec<(usize, usize)> = picked.iter().map(|s| (s.start, s.end)).collect();
+        let conv = self.convert_nested(&pairs);
+        picked
+            .iter()
+            .zip(conv)
+            .map(|(s, (a, b))| Span { range: TextRange::new(a, b), kind: s.kind })
+            .collect()
+    }
+
+    /// `Markup` spans with the owner and scope Live mode needs to conceal them.
+    pub fn markup_spans(&self, within: Option<TextRange>) -> Vec<MarkupSpan> {
+        let idx = self.span_indices(within);
+        let w = self.within_bytes(within);
+        let picked: Vec<_> = self.analysis.spans[idx.0..idx.1]
+            .iter()
+            .filter(|s| s.meta.is_some() && w.is_none_or(|w| hits(s.start, s.end, w)))
+            .collect();
+        // Convert spans and owners in one go: spans first (nested sweep), owners via the
+        // general (non-monotone) path.
+        let pairs: Vec<(usize, usize)> = picked.iter().map(|s| (s.start, s.end)).collect();
+        let conv = self.convert_nested(&pairs);
+        let mut cur = self.map.cursor(&self.text);
+        picked
+            .iter()
+            .zip(conv)
+            .map(|(s, (a, b))| {
+                let m = s.meta.unwrap();
+                let os = cur.to(m.owner.0) as u32;
+                let oe = cur.to(m.owner.1) as u32;
+                MarkupSpan {
+                    range: TextRange::new(a, b),
+                    owner: TextRange::new(os, oe),
+                    scope: m.scope,
+                    in_table: m.in_table,
+                }
+            })
+            .collect()
+    }
+
+    /// Leaf blocks in document order.
+    pub fn blocks(&self) -> Vec<Block> {
+        let pairs: Vec<(usize, usize)> = self.analysis.blocks.iter().map(|b| (b.start, b.end)).collect();
+        let conv = self.convert_nested(&pairs);
+        self.analysis
+            .blocks
+            .iter()
+            .zip(conv)
+            .map(|(b, (s, e))| Block {
+                kind: b.kind,
+                range: TextRange::new(s, e),
+                line: b.line,
+                heading_level: b.heading_level,
+                depth: b.depth,
+            })
+            .collect()
+    }
+
+    /// Human-language text only, adjacent pieces merged, clipped to `within`.
+    pub fn prose_ranges(&self, within: Option<TextRange>) -> Vec<TextRange> {
+        let w = self.within_bytes(within);
+        let prose = &self.analysis.prose;
+        let (lo, hi) = match w {
+            Some(w) => (
+                prose.partition_point(|p| p.1 <= w.0),
+                prose.partition_point(|p| p.0 < w.1.max(w.0 + 1)),
+            ),
+            None => (0, prose.len()),
+        };
+        let pairs: Vec<(usize, usize)> = prose[lo..hi]
+            .iter()
+            .map(|&(s, e)| match w {
+                Some(w) => (s.max(w.0), e.min(w.1)),
+                None => (s, e),
+            })
+            .filter(|&(s, e)| s < e)
+            .collect();
+        self.convert_nested(&pairs).into_iter().map(|(s, e)| TextRange::new(s, e)).collect()
+    }
+
+    pub fn images(&self) -> Vec<ImageRef> {
+        let mut order: Vec<usize> = (0..self.analysis.images.len()).collect();
+        order.sort_by_key(|&i| (self.analysis.images[i].start, Reverse(self.analysis.images[i].end)));
+        let pairs: Vec<(usize, usize)> =
+            order.iter().map(|&i| (self.analysis.images[i].start, self.analysis.images[i].end)).collect();
+        let conv = self.convert_nested(&pairs);
+        let mut out: Vec<(usize, ImageRef)> = order
+            .iter()
+            .zip(conv)
+            .map(|(&i, (s, e))| {
+                let im = &self.analysis.images[i];
+                (
+                    i,
+                    ImageRef {
+                        range: TextRange::new(s, e),
+                        destination: im.destination.clone(),
+                        alt: im.alt.clone(),
+                        title: im.title.clone(),
+                        standalone: im.standalone,
+                    },
+                )
+            })
+            .collect();
+        out.sort_by_key(|(i, _)| *i);
+        out.into_iter().map(|(_, r)| r).collect()
+    }
+
+    // ----- offset plumbing --------------------------------------------------------------
+
+    fn unit_to_byte(&self, unit: u32) -> Result<usize, EditError> {
+        match self.map.locate_unit(&self.text, unit as usize) {
+            None => Err(EditError::OutOfBounds),
+            Some((b, true)) => Ok(b),
+            Some((_, false)) => Err(EditError::NotOnCodePointBoundary),
+        }
+    }
+
+    fn to_unit(&self, byte: usize) -> u32 {
+        self.map.byte_to_unit(&self.text, byte) as u32
+    }
+
+    /// Query range in bytes, clamped to the text; endpoints inside a code point snap
+    /// outward. `None` for "everything". An inverted range yields an empty window.
+    fn within_bytes(&self, within: Option<TextRange>) -> Option<(usize, usize)> {
+        let w = within?;
+        let total = self.text.len();
+        let floor = |u: u32| match self.map.locate_unit(&self.text, u as usize) {
+            Some((b, _)) => b,
+            None => total,
+        };
+        let ceil = |u: u32| match self.map.locate_unit(&self.text, u as usize) {
+            Some((b, true)) => b,
+            Some((b, false)) => b + self.text[b..].chars().next().map_or(0, char::len_utf8),
+            None => total,
+        };
+        if w.start > w.end {
+            return Some((0, 0));
+        }
+        Some((floor(w.start), ceil(w.end)))
+    }
+
+    /// Candidate index window in `analysis.spans` for a byte window.
+    fn span_indices(&self, within: Option<TextRange>) -> (usize, usize) {
+        let a = &self.analysis;
+        match self.within_bytes(within) {
+            None => (0, a.spans.len()),
+            Some((ws, we)) => {
+                let lo = a.prefix_max_end.partition_point(|&m| m <= ws);
+                let hi = a.spans.partition_point(|s| s.start < we.max(ws + 1));
+                (lo.min(hi), hi)
+            }
+        }
+    }
+
+    /// Convert byte ranges that are sorted by (start asc, end desc) and properly nested
+    /// (or disjoint) in a single forward sweep of the text.
+    fn convert_nested(&self, items: &[(usize, usize)]) -> Vec<(u32, u32)> {
+        let mut cur = self.map.cursor(&self.text);
+        let mut out = vec![(0u32, 0u32); items.len()];
+        let mut stack: Vec<(usize, usize)> = Vec::new(); // (end byte, index)
+        for (i, &(s, e)) in items.iter().enumerate() {
+            while let Some(&(end, idx)) = stack.last() {
+                if end <= s {
+                    out[idx].1 = cur.to(end) as u32;
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+            out[i].0 = cur.to(s) as u32;
+            stack.push((e, i));
+        }
+        while let Some((end, idx)) = stack.pop() {
+            out[idx].1 = cur.to(end) as u32;
+        }
+        out
+    }
+}
+
+/// Span `[s, e)` intersects window `w`; an empty window selects spans containing it.
+fn hits(s: usize, e: usize, w: (usize, usize)) -> bool {
+    if w.0 == w.1 {
+        s <= w.0 && w.0 < e
+    } else {
+        s < w.1 && e > w.0
+    }
+}

@@ -1,0 +1,91 @@
+---
+source: crates/markdown-core/tests/fixtures.rs
+expression: report(&text)
+---
+# spans (utf16 range, kind, text)
+0..5 Heading { level: 1 } "# GFM"
+0..2 Markup "# "
+7..110 Table "| Left | Center | Right |\n| :--- | :----: | ----: |\n| a    | b      | c     |\n| 1    | 2      | 3     |"
+7..8 Markup "|"
+14..15 Markup "|"
+23..24 Markup "|"
+31..32 Markup "|"
+33..58 TableDelimiterRow "| :--- | :----: | ----: |"
+33..34 Markup "|"
+40..41 Markup "|"
+49..50 Markup "|"
+57..58 Markup "|"
+59..60 Markup "|"
+66..67 Markup "|"
+75..76 Markup "|"
+83..84 Markup "|"
+85..86 Markup "|"
+92..93 Markup "|"
+101..102 Markup "|"
+109..110 Markup "|"
+112..113 ListMarker { ordered: false } "-"
+114..117 TaskMarker { checked: false } "[ ]"
+128..129 ListMarker { ordered: false } "-"
+130..133 TaskMarker { checked: true } "[x]"
+153..163 Strikethrough "~~struck~~"
+153..155 Markup "~~"
+161..163 Markup "~~"
+221..225 FootnoteReference "[^1]"
+221..223 Markup "[^"
+224..225 Markup "]"
+227..251 FootnoteDefinition "[^1]: The footnote body."
+227..229 Markup "[^"
+230..232 Markup "]:"
+
+# markup (range, owner, scope, in_table)
+0..2 owner 0..5 Line
+7..8 owner 7..110 Block in_table
+14..15 owner 7..110 Block in_table
+23..24 owner 7..110 Block in_table
+31..32 owner 7..110 Block in_table
+33..34 owner 7..110 Block in_table
+40..41 owner 7..110 Block in_table
+49..50 owner 7..110 Block in_table
+57..58 owner 7..110 Block in_table
+59..60 owner 7..110 Block in_table
+66..67 owner 7..110 Block in_table
+75..76 owner 7..110 Block in_table
+83..84 owner 7..110 Block in_table
+85..86 owner 7..110 Block in_table
+92..93 owner 7..110 Block in_table
+101..102 owner 7..110 Block in_table
+109..110 owner 7..110 Block in_table
+153..155 owner 153..163 Inline
+161..163 owner 153..163 Inline
+221..223 owner 221..225 Inline
+224..225 owner 221..225 Inline
+227..229 owner 227..251 Line
+230..232 owner 227..251 Line
+
+# blocks
+Heading 0..5 line 0 level Some(1) depth 0 "# GFM"
+Table 7..110 line 2 level None depth 0 "| Left | Center | Right |\n| :--- | :----: | ----: |\n| a    | b      | c     |\n| 1    | 2      | 3     |"
+Paragraph 118..127 line 7 level None depth 1 "open task"
+Paragraph 134..143 line 8 level None depth 1 "done task"
+Paragraph 145..225 line 10 level None depth 0 "This is ~~struck~~ text with an autolink https://example.com and a footnote.[^1]"
+Paragraph 233..251 line 12 level None depth 1 "The footnote body."
+
+# prose
+2..5 "GFM"
+9..13 "Left"
+16..22 "Center"
+25..30 "Right"
+61..62 "a"
+68..69 "b"
+77..78 "c"
+87..88 "1"
+94..95 "2"
+103..104 "3"
+118..127 "open task"
+134..143 "done task"
+145..153 "This is "
+155..161 "struck"
+163..221 " text with an autolink https://example.com and a footnote."
+233..251 "The footnote body."
+
+# images

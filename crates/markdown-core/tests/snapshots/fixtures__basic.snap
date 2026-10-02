@@ -1,0 +1,103 @@
+---
+source: crates/markdown-core/tests/fixtures.rs
+expression: report(&text)
+---
+# spans (utf16 range, kind, text)
+0..13 Heading { level: 1 } "# Heading One"
+0..2 Markup "# "
+32..42 Emphasis "*emphasis*"
+32..33 Markup "*"
+41..42 Markup "*"
+44..54 Strong "**strong**"
+44..46 Markup "**"
+52..54 Markup "**"
+56..69 InlineCode "`inline code`"
+56..57 Markup "`"
+68..69 Markup "`"
+77..112 Link "[link](https://example.com \"title\")"
+77..78 Markup "["
+82..84 Markup "]("
+84..111 LinkDestination "https://example.com \"title\""
+111..112 Markup ")"
+134..137 HardBreak "  \n"
+156..164 Heading { level: 2 } "## Lists"
+156..159 Markup "## "
+166..167 ListMarker { ordered: false } "-"
+172..173 ListMarker { ordered: false } "-"
+180..181 ListMarker { ordered: false } "-"
+189..191 ListMarker { ordered: true } "1."
+198..200 ListMarker { ordered: true } "2."
+209..242 BlockQuote "> A block quote\n> over two lines."
+209..211 Markup "> "
+225..227 Markup "> "
+244..247 ThematicBreak "---"
+249..268 CodeBlock "```\nplain fence\n```"
+249..252 Markup "```"
+265..268 Markup "```"
+274..287 CodeBlock "indented code"
+289..327 Image "![alt text](images/pic.png \"An image\")"
+289..291 Markup "!["
+299..301 Markup "]("
+301..326 LinkDestination "images/pic.png \"An image\""
+326..327 Markup ")"
+329..348 Html "<div>raw html</div>"
+
+# markup (range, owner, scope, in_table)
+0..2 owner 0..13 Line
+32..33 owner 32..42 Inline
+41..42 owner 32..42 Inline
+44..46 owner 44..54 Inline
+52..54 owner 44..54 Inline
+56..57 owner 56..69 Inline
+68..69 owner 56..69 Inline
+77..78 owner 77..112 Inline
+82..84 owner 77..112 Inline
+111..112 owner 77..112 Inline
+156..159 owner 156..164 Line
+209..211 owner 209..224 Line
+225..227 owner 225..242 Line
+249..252 owner 249..252 Line
+265..268 owner 265..268 Line
+289..291 owner 289..327 Inline
+299..301 owner 289..327 Inline
+326..327 owner 289..327 Inline
+
+# blocks
+Heading 0..13 line 0 level Some(1) depth 0 "# Heading One"
+Paragraph 15..154 line 2 level None depth 0 "A paragraph with *emphasis*, **strong**, `inline code`, and a [link](https://example.com \"title\").\nA hard break follows  \non the next line."
+Heading 156..164 line 6 level Some(2) depth 0 "## Lists"
+Paragraph 168..171 line 8 level None depth 1 "one"
+Paragraph 174..177 line 9 level None depth 1 "two"
+Paragraph 182..188 line 10 level None depth 2 "nested"
+Paragraph 192..197 line 11 level None depth 1 "first"
+Paragraph 201..207 line 12 level None depth 1 "second"
+Paragraph 211..242 line 14 level None depth 1 "A block quote\n> over two lines."
+ThematicBreak 244..247 line 17 level None depth 0 "---"
+CodeBlock 249..268 line 19 level None depth 0 "```\nplain fence\n```"
+CodeBlock 274..287 line 23 level None depth 0 "indented code"
+Paragraph 289..327 line 25 level None depth 0 "![alt text](images/pic.png \"An image\")"
+HtmlBlock 329..348 line 27 level None depth 0 "<div>raw html</div>"
+
+# prose
+2..13 "Heading One"
+15..32 "A paragraph with "
+33..41 "emphasis"
+42..44 ", "
+46..52 "strong"
+54..56 ", "
+69..77 ", and a "
+78..82 "link"
+112..113 "."
+114..134 "A hard break follows"
+137..154 "on the next line."
+159..164 "Lists"
+168..171 "one"
+174..177 "two"
+182..188 "nested"
+192..197 "first"
+201..207 "second"
+211..224 "A block quote"
+227..242 "over two lines."
+
+# images
+ImageRef { range: TextRange { start: 289, end: 327 }, destination: "images/pic.png", alt: "alt text", title: Some("An image"), standalone: true }

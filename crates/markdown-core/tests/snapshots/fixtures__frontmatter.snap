@@ -1,0 +1,38 @@
+---
+source: crates/markdown-core/tests/fixtures.rs
+expression: report(&text)
+---
+# spans (utf16 range, kind, text)
+0..48 FrontMatter "---\ntitle: Example\ntags: [a, b]\ndraft: false\n---"
+0..3 Markup "---"
+45..48 Markup "---"
+50..60 Heading { level: 1 } "# Document"
+50..52 Markup "# "
+62..110 CodeBlock "```rust\nfn main() {\n    println!(\"hello\");\n}\n```"
+62..65 Markup "```"
+65..69 CodeInfo "rust"
+107..110 Markup "```"
+112..146 CodeBlock "~~~python\nprint(\"tilde fence\")\n~~~"
+112..115 Markup "~~~"
+115..121 CodeInfo "python"
+143..146 Markup "~~~"
+
+# markup (range, owner, scope, in_table)
+0..3 owner 0..3 Line
+45..48 owner 45..48 Line
+50..52 owner 50..60 Line
+62..65 owner 62..69 Line
+107..110 owner 107..110 Line
+112..115 owner 112..121 Line
+143..146 owner 143..146 Line
+
+# blocks
+FrontMatter 0..48 line 0 level None depth 0 "---\ntitle: Example\ntags: [a, b]\ndraft: false\n---"
+Heading 50..60 line 6 level Some(1) depth 0 "# Document"
+CodeBlock 62..110 line 8 level None depth 0 "```rust\nfn main() {\n    println!(\"hello\");\n}\n```"
+CodeBlock 112..146 line 14 level None depth 0 "~~~python\nprint(\"tilde fence\")\n~~~"
+
+# prose
+52..60 "Document"
+
+# images

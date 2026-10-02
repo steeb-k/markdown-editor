@@ -1,0 +1,41 @@
+---
+source: crates/markdown-core/tests/fixtures.rs
+expression: report(&text)
+---
+# spans (utf16 range, kind, text)
+0..12 Heading { level: 1 } "# Unicode 🎉"
+0..2 Markup "# "
+68..74 Strong "**太字**"
+68..70 Markup "**"
+72..74 Markup "**"
+81..82 ListMarker { ordered: false } "-"
+88..89 ListMarker { ordered: false } "-"
+95..98 Emphasis "*✨*"
+95..96 Markup "*"
+97..98 Markup "*"
+
+# markup (range, owner, scope, in_table)
+0..2 owner 0..12 Line
+68..70 owner 68..74 Inline
+72..74 owner 68..74 Inline
+95..96 owner 95..98 Inline
+97..98 owner 95..98 Inline
+
+# blocks
+Heading 0..12 line 0 level Some(1) depth 0 "# Unicode 🎉"
+Paragraph 16..77 line 2 level None depth 0 "Emoji: 👩\u{200d}💻 🇯🇵 🎉\r\nCombining: e\u{301} n\u{303} a\u{308}\r\nCJK: 日本語の**太字**。中文"
+Paragraph 83..86 line 6 level None depth 1 "リスト"
+Paragraph 90..98 line 7 level None depth 1 "café *✨*"
+
+# prose
+2..12 "Unicode 🎉"
+16..36 "Emoji: 👩\u{200d}💻 🇯🇵 🎉"
+38..57 "Combining: e\u{301} n\u{303} a\u{308}"
+59..68 "CJK: 日本語の"
+70..72 "太字"
+74..77 "。中文"
+83..86 "リスト"
+90..95 "café "
+96..97 "✨"
+
+# images

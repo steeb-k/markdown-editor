@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/markdown-core", "crates/markdown-ffi"]
+
+[profile.release]
+# `panic` must stay "unwind": markdown-core contains parser panics with catch_unwind.
+lto = true
+codegen-units = 1
+
+# Optimized, but with debug assertions (the span sanitizer's "nothing dropped" check) and
+# overflow checks: for long fuzz/property runs, e.g.
+# `PROPTEST_CASES=50000 cargo test --profile fuzz -p markdown-core --test properties`.
+[profile.fuzz]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true
+lto = false
+codegen-units = 16
