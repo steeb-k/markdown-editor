@@ -10,6 +10,11 @@ public final class EditorLayoutManager: NSLayoutManager {
     static let blockOutset = NSSize(width: 12, height: 6)
     static let blockCornerRadius: CGFloat = 6
 
+    /// What paints over the stored colours (focus dimming...). Hand-drawn things ask it whether
+    /// they are dimmed: they never see temporary attributes.
+    weak var overlay: OverlayCompositor?
+    /// Instrumentation: how many times AppKit finished a layout pass (focus mode must add none).
+    var layoutCompletions = 0
     /// What Live mode currently conceals and decorates. Set through `setLive`.
     public internal(set) var live = LiveState()
     /// Characters whose glyphs `drawGlyphs` skips because a decoration is drawn in their place.
@@ -41,6 +46,8 @@ public final class EditorLayoutManager: NSLayoutManager {
 
     /// Height of a collapsed line (a concealed fence or delimiter), and the breathing room
     /// above and below a drawn image.
+    /// How much of an inline-code chip outside the focus range is drawn.
+    static let dimmedBackgroundStrength: CGFloat = 0.4
     static let collapsedHeight: CGFloat = 2
     static let fenceCollapsedHeight: CGFloat = 8
     static let imagePadding: CGFloat = 6

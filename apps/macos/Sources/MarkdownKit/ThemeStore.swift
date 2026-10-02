@@ -7,6 +7,8 @@ public struct ThemePalette {
     public let isDark: Bool
     public let background, text, markup, heading, link, codeText, codeBackground, quote: NSColor
     public let selection, caret, focusDim, rule, tableBorder: NSColor
+    public let posNoun, posVerb, posAdjective, posAdverb, posConjunction: NSColor
+    public let authorAI, authorReference: NSColor
 }
 
 public final class ThemeStore {
@@ -49,7 +51,9 @@ public final class ThemeStore {
             background: k(c.background), text: k(c.text), markup: k(c.markup), heading: k(c.heading),
             link: k(c.link), codeText: k(c.codeText), codeBackground: k(c.codeBackground), quote: k(c.quote),
             selection: k(c.selection), caret: k(c.caret), focusDim: k(c.focusDim), rule: k(c.rule),
-            tableBorder: k(c.tableBorder))
+            tableBorder: k(c.tableBorder),
+            posNoun: k(c.posNoun), posVerb: k(c.posVerb), posAdjective: k(c.posAdjective), posAdverb: k(c.posAdverb),
+            posConjunction: k(c.posConjunction), authorAI: k(c.authorAi), authorReference: k(c.authorReference))
     }
 
     /// The window appearance that makes native chrome match the theme (nil: follow the system).

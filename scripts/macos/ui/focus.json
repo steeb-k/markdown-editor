@@ -1,0 +1,491 @@
+[
+ {
+  "log": "--- Focus mode: sentence and paragraph scope, Source and Live, Light and Dark"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/focus.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   1000
+  ]
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "The quick brown fox",
+  "offset": 6,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusing": false,
+   "colors": {
+    "quick": "none"
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "00-source-focus-off",
+  "bitmap": true
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusing": true,
+   "focusLit": [
+    "The quick brown fox jumps over the lazy dog, and then it quietly sleeps. "
+   ],
+   "colors": {
+    "quick": "none",
+    "Writing is easier": "dim",
+    "Dr. Smith": "dim"
+   },
+   "overlayConsistent": true,
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "01-source-sentence-in-paragraph",
+  "bitmap": true
+ },
+ {
+  "selectText": "A second sentence follows here",
+  "offset": 30,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusLit": [
+    "A second sentence follows here and wraps onto another line so that a sentence across a soft break can be judged by eye. "
+   ],
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "02-source-sentence-soft-break",
+  "bitmap": true
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "03-source-sentence-in-list-item",
+  "bitmap": true
+ },
+ {
+  "selectText": "An open task that",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "04-source-sentence-in-task",
+  "bitmap": true
+ },
+ {
+  "selectText": "print(greeting)",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusLit": [
+    "```swift\nlet greeting = \"hello\"\nprint(greeting)\n```"
+   ]
+  }
+ },
+ {
+  "snapshot": "05-source-sentence-in-code-block",
+  "bitmap": true
+ },
+ {
+  "selectText": "Text under the picture",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "command": "moveLeft:",
+  "edits": false
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusLit": []
+  }
+ },
+ {
+  "snapshot": "06-source-blank-line-everything-dimmed",
+  "bitmap": true
+ },
+ {
+  "selectText": "A quote that carries",
+  "offset": 10,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "07-source-sentence-in-quote",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "scope": "paragraph"
+  }
+ },
+ {
+  "selectText": "The quick brown fox",
+  "offset": 6,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusLit": [
+    "Writing is easier when only one sentence shouts. The quick brown fox jumps over the lazy dog, and then it quietly sleeps. A second sentence follows here and wraps onto another line so that a sentence across a soft break can be judged by eye. Dr. Smith agreed; however, nobody listened!"
+   ],
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "08-source-paragraph",
+  "bitmap": true
+ },
+ {
+  "selectText": "A nested bullet",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "09-source-paragraph-nested-list-item",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "scope": "sentence"
+  }
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitImages": 5
+ },
+ {
+  "selectText": "The quick brown fox",
+  "offset": 6,
+  "length": 0
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "overlayConsistent": true,
+   "decorations": {
+    "bullet": 2,
+    "checkbox": 2,
+    "rule": 1,
+    "image": 1,
+    "quoteBar": 1
+   }
+  }
+ },
+ {
+  "snapshot": "10-live-sentence-in-paragraph",
+  "bitmap": true
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "11-live-sentence-in-list-item",
+  "bitmap": true
+ },
+ {
+  "selectText": "A finished task",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "12-live-task-lit-others-dim",
+  "bitmap": true
+ },
+ {
+  "selectText": "A quote that carries",
+  "offset": 10,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "13-live-sentence-in-quote",
+  "bitmap": true
+ },
+ {
+  "selectText": "a struck phrase",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "14-live-quote-second-paragraph-strike-and-code",
+  "bitmap": true
+ },
+ {
+  "selectText": "Text under the picture",
+  "offset": 5,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "15-live-paragraph-under-picture",
+  "bitmap": true
+ },
+ {
+  "selectText": "print(greeting)",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "16-live-code-block",
+  "bitmap": true
+ },
+ {
+  "selectText": "The end of the page",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "17-live-last-paragraph-rule-and-picture-dim",
+  "bitmap": true
+ },
+ {
+  "selectText": "Text under the picture",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "command": "moveLeft:",
+  "edits": false
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "18-live-blank-line-everything-dimmed",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "scope": "paragraph"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "19-live-paragraph-in-list-item",
+  "bitmap": true
+ },
+ {
+  "selectText": "The quick brown fox",
+  "offset": 6,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "20-live-paragraph",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "21-dark-live-paragraph",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "scope": "sentence"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "22-dark-live-sentence-list",
+  "bitmap": true
+ },
+ {
+  "selectText": "A quote that carries",
+  "offset": 10,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "23-dark-live-sentence-quote",
+  "bitmap": true
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "The quick brown fox",
+  "offset": 6,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "24-dark-source-sentence",
+  "bitmap": true
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "25-sepia-source-sentence",
+  "bitmap": true
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusing": false,
+   "colors": {
+    "Writing is easier": "none"
+   },
+   "overlayConsistent": true,
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "26-sepia-focus-turned-off",
+  "bitmap": true
+ },
+ {
+  "settingsWindow": "show"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "27-settings",
+  "window": "settings"
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ }
+]

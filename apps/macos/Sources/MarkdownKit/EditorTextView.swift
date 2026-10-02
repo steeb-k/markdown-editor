@@ -130,12 +130,15 @@ public final class EditorTextView: NSTextView {
 
     public override func unmarkText() {
         super.unmarkText()
+        session?.overlay.apply()
         session?.kickDebt()
         session?.refreshLive()
     }
 
     public override func didChangeText() {
         super.didChangeText()
+        // The overlay moved with the text; what was typed gets its colour before it is drawn.
+        session?.overlay.apply()
         if !hasMarkedText() {
             session?.kickDebt()
             session?.refreshLive()

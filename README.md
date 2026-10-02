@@ -7,7 +7,7 @@ Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-a
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
 # an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes,
-# Live-mode concealment)
+# Live-mode concealment, focus ranges and part-of-speech units)
 cargo test --workspace
 # Heavier fuzzing: the `fuzz` profile is optimized but keeps debug assertions, so the span
 # sanitizer's "nothing was dropped" check stays armed.
@@ -37,7 +37,10 @@ open build/Markdown.app
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
 scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour -> build/ui/live/
 scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by eye: pictures, selections, drop/paste
+scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
+scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-focus.json  # 1 MB: focus and syntax off vs on
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).

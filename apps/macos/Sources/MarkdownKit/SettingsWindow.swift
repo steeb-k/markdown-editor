@@ -64,6 +64,14 @@ struct SettingsView: View {
             Picker("Default view", selection: Binding(get: { s.defaultViewMode }, set: { s.defaultViewMode = $0 })) {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            Toggle("Start windows in focus mode", isOn: Binding(get: { s.focusMode }, set: { s.focusMode = $0 }))
+            Picker("Focus on", selection: Binding(get: { s.focusScope }, set: { s.focusScope = $0 })) {
+                ForEach(FocusScopeChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Toggle("Start windows with syntax highlighting", isOn: Binding(get: { s.syntaxHighlight }, set: { s.syntaxHighlight = $0 }))
+            ForEach(SyntaxClass.allCases, id: \.self) { c in
+                Toggle("Highlight \(c.title.lowercased())", isOn: Binding(get: { s.syntaxClass(c) }, set: { s.setSyntaxClass(c, $0) }))
+            }
             Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
             Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
             Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))

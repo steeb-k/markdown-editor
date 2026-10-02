@@ -5,7 +5,7 @@ import MarkdownCore
 
 /// Live mode under random use: edits, pastes, undo and redo, commands, every kind of caret and
 /// selection move, mode, theme and font changes. After every step the invariants hold.
-final class LiveStressTests: XCTestCase {
+class LiveStressTests: XCTestCase {
     static let base = """
     ---
     title: Stress
@@ -111,6 +111,33 @@ final class LiveStressTests: XCTestCase {
             j -= 1
         }
         return false
+    }
+
+    /// With focus mode on: the focus range is the core's answer for the selection, and every
+    /// character's temporary colour is what the layers (focus dimming over parts of speech) say.
+    static func overlayProblems(_ e: Editor) -> [String] {
+        guard e.session.focusEnabled else { return [] }
+        var out: [String] = []
+        let sel = e.tv.selectedRange()
+        let scope: FocusScope = e.session.settings.focusScope == .sentence ? .sentence : .paragraph
+        let want = e.session.coordinator.sync { doc in
+            doc.focusRange(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), scope: scope).map(\.nsRange)
+        }
+        if e.session.overlay.layers.focus != want { out.append("focus range \(String(describing: e.session.overlay.layers.focus)) is not the core's \(want)") }
+        let o = e.session.overlay
+        o.apply()
+        let window = o.appliedWindow
+        let composed = OverlayCompositor.compose(o.layers, in: window)
+        let ns = e.string as NSString
+        var run = 0
+        for i in window.location..<min(NSMaxRange(window), ns.length) {
+            while run < composed.count, NSMaxRange(composed[run].range) <= i { run += 1 }
+            let paint = run < composed.count && composed[run].range.location <= i ? composed[run].paint : nil
+            let actual = (e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: i, effectiveRange: nil) as? NSColor)?.hexString
+            let expected = paint.flatMap { o.color(for: $0)?.hexString }
+            if actual != expected { out.append("character \(i) is painted \(String(describing: actual)), the layers say \(String(describing: expected))"); break }
+        }
+        return out
     }
 
     /// What the core says now, for the editor's selection and query window.
@@ -245,7 +272,9 @@ final class LiveStressTests: XCTestCase {
                 XCTAssertEqual(e.lm.live, Self.fresh(e), "concealment is not the core's answer: \(context)")
                 let glyphs = Self.glyphProblems(e)
                 XCTAssertEqual(glyphs, [], context)
-                if !glyphs.isEmpty || e.lm.live != Self.fresh(e) { return }
+                let overlay = Self.overlayProblems(e)
+                XCTAssertEqual(overlay, [], context)
+                if !glyphs.isEmpty || !overlay.isEmpty || e.lm.live != Self.fresh(e) { return }
             }
             XCTAssertEqual(e.session.coordinator.mirrorMismatches, 0)
         }

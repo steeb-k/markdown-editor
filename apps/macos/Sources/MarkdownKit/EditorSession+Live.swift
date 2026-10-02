@@ -117,35 +117,64 @@ extension EditorSession {
         return NSRange(location: start, length: end - start)
     }
 
-    /// Re-queries the concealment for the current selection and applies it. Cheap when nothing
-    /// changed (the layout manager compares states and invalidates only what differs).
+    /// Re-queries what depends on the selection and the text and applies it: the concealment
+    /// (Live mode) and the focus range (focus mode). Cheap when nothing changed (the layout
+    /// manager compares states and invalidates only what differs; the overlay applies only the
+    /// difference).
     ///
     /// `synchronous` answers on the spot even when the queue is busy (it waits for the analysis
     /// of the edits submitted so far): for text about to be shown, which must not be drawn with
     /// concealment carried over from before the last edits.
     public func refreshLive(force: Bool = false, synchronous: Bool = false) {
-        guard viewMode == .live, let tv = textView, !isComposing() else { return }
+        refreshState(synchronous: synchronous)
+    }
+
+    /// The one question the session asks the analysis queue about the selection: concealment (when
+    /// Live), focus range (when focusing), the format state and the table, in a single call.
+    /// `selectionChange`: the selection just moved, so the format state and table are wanted too.
+    func refreshState(synchronous: Bool = false, selectionChange: Bool = false) {
+        guard let tv = textView else { return }
+        let t0 = CFAbsoluteTimeGetCurrent()
+        defer { timeInStateQueries += CFAbsoluteTimeGetCurrent() - t0 }
+        let composing = isComposing()
+        let live = viewMode == .live && !composing
+        let scope: FocusScope? = focusEnabled && !composing ? focusScopeForCore : nil
+        guard live || scope != nil || selectionChange else { return }
         livePending = false
         liveToken += 1
         let token = liveToken
+        let selectionToken = self.selectionToken
         let window = liveQueryWindow()
         let sel = tv.selectedRange()
         let selection = Utf16Range(start: UInt32(min(sel.location, storage.length)), end: UInt32(min(NSMaxRange(sel), storage.length)))
         let within = Utf16Range(start: UInt32(window.location), end: UInt32(NSMaxRange(window)))
         let coordinator = self.coordinator
-        let query: (Document) -> (Concealment, [ImageRef]) = { doc in
-            let c = doc.concealment(selection: selection, within: within)
-            let hasImage = c.decorations.contains { if case .image = $0.kind { return true } else { return false } }
-            return (c, hasImage ? coordinator.cachedImages(of: doc) : [])
+        let query: (Document) -> (SelectionState, [ImageRef]) = { doc in
+            let state = doc.selectionState(selection: selection, within: within, conceal: live, focus: scope)
+            let hasImage = state.concealment?.decorations.contains { if case .image = $0.kind { return true } else { return false } } ?? false
+            return (state, hasImage ? coordinator.cachedImages(of: doc) : [])
         }
-        liveQueries += 1
+        stateQueries += 1
+        if live { liveQueries += 1 }
+        func finish(_ result: (SelectionState, [ImageRef]), processed: Int) {
+            let (state, images) = result
+            let current = token == liveToken && processed == coordinator.latestSeq
+            if current, live, viewMode == .live, let c = state.concealment {
+                applyLive(c, images: images, window: window)
+            }
+            if current, scope != nil, focusEnabled {
+                applyFocus(state.focus)
+            }
+            if selectionChange, selectionToken == self.selectionToken, processed == coordinator.latestSeq {
+                applyFormatState(state)
+            }
+        }
         if coordinator.isIdle || synchronous {
-            let (c, images) = coordinator.sync(query)
-            applyLive(c, images: images, window: window)
+            finish(coordinator.sync(query), processed: coordinator.latestSeq)
         } else {
             coordinator.async(query) { [weak self] result, processed in
-                guard let self, token == liveToken, processed == coordinator.latestSeq, viewMode == .live else { return }
-                applyLive(result.0, images: result.1, window: window)
+                guard self != nil else { return }
+                finish(result, processed: processed)
             }
         }
     }
@@ -200,6 +229,8 @@ extension EditorSession {
     /// (at most 60% of what it shows): when that changes, the picture lines are laid out again,
     /// or they would keep the old room while being drawn at the new size.
     func viewportChanged() {
+        overlay.apply()
+        if syntaxEnabled { pos.viewportChanged() }
         let budget = imageBudget()
         if budget != lastImageBudget {
             lastImageBudget = budget

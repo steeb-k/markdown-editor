@@ -173,6 +173,23 @@ final class UIScriptRunner {
             session?.setViewMode(ViewMode(rawValue: mode) ?? .source)
             record(["viewMode": mode], ok: session?.viewMode.rawValue == mode)
             done()
+        } else if let f = step["focus"] as? [String: Any] {
+            if let scope = f["scope"] as? String, let c = FocusScopeChoice(rawValue: scope) { Settings.shared.focusScope = c }
+            if let on = f["on"] as? Bool { session?.setFocusEnabled(on) }
+            session?.refreshState(synchronous: true)
+            record(["focus": f], ok: session != nil)
+            done()
+        } else if let f = step["syntax"] as? [String: Any] {
+            if let classes = f["classes"] as? [String] {
+                for c in SyntaxClass.allCases { Settings.shared.setSyntaxClass(c, classes.contains(c.rawValue)) }
+            }
+            if let on = f["on"] as? Bool { session?.setSyntaxEnabled(on) }
+            record(["syntax": f], ok: session != nil)
+            done()
+        } else if step["waitSyntax"] != nil {
+            let ok = session?.pos.waitUntilSettled(timeout: num("waitSyntax") ?? 30) ?? false
+            record(["waitSyntax": ok, "tagged units": session?.pos.taggerInvocations ?? 0], ok: ok)
+            done()
         } else if let n = step["clickCheckbox"] as? Int {
             var ok = false
             if let tv = textView, let lm = tv.layoutManager as? EditorLayoutManager, let tc = tv.textContainer {
@@ -291,14 +308,18 @@ final class UIScriptRunner {
             sender.tag = step["tag"] as? Int ?? 0
             let sel = Selector(action)
             var ok = false
-            asEvent {
+            let send = {
                 ok = NSApp.sendAction(sel, to: nil, from: sender)
-                if !ok, let tv = textView, tv.responds(to: sel) { ok = NSApp.sendAction(sel, to: tv, from: sender) }
+                if !ok, let tv = self.textView, tv.responds(to: sel) { ok = NSApp.sendAction(sel, to: tv, from: sender) }
             }
+            // An action that edits runs as one undo group, like an event would. One that does not
+            // (`"edits": false`: view toggles) must not: a closed empty group marks the document edited.
+            if step["edits"] as? Bool == false { send() } else { asEvent(send) }
             record(["action": action], ok: ok)
             done()
         } else if let command = str("command") {
-            asEvent { textView?.doCommand(by: Selector(command)) }
+            let run: () -> Void = { self.textView?.doCommand(by: Selector(command)) }
+            if step["edits"] as? Bool == false { run() } else { asEvent(run) }
             record(["command": command], ok: textView != nil)
             done()
         } else if let s = step["setting"] as? [String: Any] {
@@ -532,6 +553,9 @@ final class UIScriptRunner {
         if let v = s["showFormattingToolbar"] as? Bool { st.showFormattingToolbar = v }
         if let v = s["autoHideChrome"] as? Bool { st.autoHideChrome = v }
         if let v = s["defaultViewMode"] as? String, let m = ViewMode(rawValue: v) { st.defaultViewMode = m }
+        if let v = s["focusMode"] as? Bool { st.focusMode = v }
+        if let v = s["focusScope"] as? String, let m = FocusScopeChoice(rawValue: v) { st.focusScope = m }
+        if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
     }
 
     // MARK: input
@@ -630,6 +654,8 @@ final class UIScriptRunner {
         var i = 0
         let alphabet = Array("the quick brown fox jumps over the lazy dog ")
         let wait0 = session?.coordinator.totalWaitTime ?? 0, style0 = session?.totalStyleTime ?? 0
+        let state0 = session?.timeInStateQueries ?? 0, pos0 = session?.pos.timeOnMain ?? 0
+        let overlayEdit0 = session?.overlay.timeFollowingEdits ?? 0, overlayApply0 = session?.overlay.timeApplying ?? 0
         func step() {
             guard i < count else {
                 heartbeat.invalidate()
@@ -643,6 +669,10 @@ final class UIScriptRunner {
                     "mean_style_ms": ((session?.totalStyleTime ?? 0) - style0) / Double(count) * 1000,
                     "mean_ms": perKey.reduce(0, +) / Double(max(1, perKey.count)) * 1000,
                     "longest_style_ms": (session?.longestStyle ?? 0) * 1000,
+                    "mean_state_query_ms": ((session?.timeInStateQueries ?? 0) - state0) / Double(count) * 1000,
+                    "mean_pos_main_ms": ((session?.pos.timeOnMain ?? 0) - pos0) / Double(count) * 1000,
+                    "mean_overlay_edit_ms": ((session?.overlay.timeFollowingEdits ?? 0) - overlayEdit0) / Double(count) * 1000,
+                    "mean_overlay_apply_ms": ((session?.overlay.timeApplying ?? 0) - overlayApply0) / Double(count) * 1000,
                 ]
                 let limit = (m["maxMs"] as? NSNumber)?.doubleValue
                 record(["measureTyping": stats], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
@@ -675,7 +705,8 @@ final class UIScriptRunner {
                 let stats: [String: Any] = [
                     "moves": perMove.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000,
                     "mean_ms": perMove.reduce(0, +) / Double(max(1, perMove.count)) * 1000,
-                    "live_queries": session?.liveQueries ?? 0,
+                    "live_queries": session?.liveQueries ?? 0, "state_queries": session?.stateQueries ?? 0,
+                    "overlay_ops": session?.overlay.operations ?? 0, "overlay_chars": session?.overlay.charactersTouched ?? 0,
                 ]
                 let limit = (m["maxMs"] as? NSNumber)?.doubleValue
                 record(["measureCaret": stats], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
@@ -887,6 +918,13 @@ final class UIScriptRunner {
 
     // MARK: assertions
 
+    private static func sameColor(_ a: NSColor?, _ b: NSColor?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        guard let x = a.usingColorSpace(.sRGB), let y = b.usingColorSpace(.sRGB) else { return false }
+        return abs(x.redComponent - y.redComponent) < 0.003 && abs(x.greenComponent - y.greenComponent) < 0.003
+            && abs(x.blueComponent - y.blueComponent) < 0.003 && abs(x.alphaComponent - y.alphaComponent) < 0.003
+    }
+
     private func assertions(_ a: [String: Any]) {
         let text = session?.text ?? ""
         if let v = a["textEquals"] as? String { check("textEquals", text == v, text) }
@@ -928,6 +966,62 @@ final class UIScriptRunner {
             let top = (w.contentView?.bounds.height ?? 0) - bar
             let bottom = c.toolbar.isHidden ? 0 : c.toolbar.frame.maxY
             check("caret visible", inWindow.minY >= bottom && inWindow.maxY <= top, "caret \(inWindow) clear area \(bottom)...\(top)")
+        }
+        if let v = a["focusLit"] as? [String], let s = session {
+            let ns = text as NSString
+            let got = (s.overlay.layers.focus ?? []).map { ns.substring(with: RangeMath.clamp($0, toLength: ns.length)) }
+            check("focusLit \(v)", got == v, "\(got)")
+        }
+        if let v = a["focusing"] as? Bool, let s = session { check("focusing \(v)", s.overlay.isFocusing == v) }
+        if let v = a["syntaxing"] as? Bool, let s = session { check("syntaxing \(v)", s.pos.isEnabled == v) }
+        if let v = a["colors"] as? [String: String], let s = session, let lm = s.textView?.layoutManager {
+            // What the text at each needle is painted in: `none` (the stored colour), `dim`, a class.
+            s.overlay.apply()
+            var bad: [String] = []
+            for (needle, want) in v {
+                let r = (text as NSString).range(of: needle)
+                guard r.location != NSNotFound else { bad.append("\(needle): not found"); continue }
+                let paint = s.overlay.appliedPaint(at: r.location)
+                let name: String
+                switch paint {
+                case nil: name = "none"
+                case .dim?: name = "dim"
+                case .pos(let c)?: name = "\(c)"
+                case .authorship(let a)?: name = "author-\(a)"
+                }
+                let actual = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: r.location, effectiveRange: nil) as? NSColor
+                let expected = paint.flatMap { s.overlay.color(for: $0) }
+                let agrees = Self.sameColor(actual, expected)
+                if name != want || !agrees { bad.append("\(needle): \(name) (layout manager \(agrees ? "agrees" : "differs")), wanted \(want)") }
+            }
+            check("colors \(v)", bad.isEmpty, "\(bad)")
+        }
+        if a["overlayConsistent"] != nil, let s = session, let lm = s.textView?.layoutManager {
+            // Every character's temporary colour is what the composition of the layers says.
+            s.overlay.apply()
+            let window = s.overlay.appliedWindow
+            let wanted = OverlayCompositor.compose(s.overlay.layers, in: window)
+            var wrong = 0
+            var first = ""
+            var i = window.location
+            var runIndex = 0
+            while i < NSMaxRange(window) {
+                while runIndex < wanted.count, NSMaxRange(wanted[runIndex].range) <= i { runIndex += 1 }
+                let paint = runIndex < wanted.count && wanted[runIndex].range.location <= i ? wanted[runIndex].paint : nil
+                let actual = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: i, effectiveRange: nil) as? NSColor
+                let expected = paint.flatMap { s.overlay.color(for: $0) }
+                if !(Self.sameColor(actual, expected)) {
+                    wrong += 1
+                    if first.isEmpty { first = "first at \(i): \(String(describing: paint))" }
+                }
+                i += 1
+            }
+            check("overlay consistent with its layers over \(window)", wrong == 0, "\(wrong) characters differ; \(first)")
+        }
+        if a["overlayStats"] != nil, let s = session {
+            record(["overlay": ["applications": s.overlay.applications, "operations": s.overlay.operations, "characters": s.overlay.charactersTouched,
+                                "tagger_invocations": s.pos.taggerInvocations, "cache_hits": s.pos.cacheHits, "cache_misses": s.pos.cacheMisses,
+                                "state_queries": s.stateQueries]], ok: true)
         }
         if let v = a["viewMode"] as? String { check("viewMode \(v)", session?.viewMode.rawValue == v, session?.viewMode.rawValue ?? "nil") }
         if let v = a["hidden"] as? [String], let s = session {

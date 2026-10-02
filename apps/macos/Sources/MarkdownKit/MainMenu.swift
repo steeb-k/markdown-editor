@@ -144,6 +144,19 @@ enum MainMenu {
             _ = item(m, "Source", #selector(EditorTextView.showSourceMode(_:)), "1", [.command, .option])
             _ = item(m, "Live", #selector(EditorTextView.showLiveMode(_:)), "2", [.command, .option])
             m.addItem(.separator())
+            _ = item(m, "Focus Mode", #selector(EditorTextView.toggleFocusMode(_:)), "d")
+            nested(m, "Focus Scope") { f in
+                _ = item(f, "Sentence", #selector(EditorTextView.setFocusScope(_:)), tag: 0)
+                _ = item(f, "Paragraph", #selector(EditorTextView.setFocusScope(_:)), tag: 1)
+            }
+            nested(m, "Syntax Highlight") { h in
+                _ = item(h, "Highlight Parts of Speech", #selector(EditorTextView.toggleSyntaxHighlight(_:)), "d", [.command, .shift])
+                h.addItem(.separator())
+                for (i, c) in SyntaxClass.allCases.enumerated() {
+                    _ = item(h, c.title, #selector(EditorTextView.toggleSyntaxClass(_:)), tag: i)
+                }
+            }
+            m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
             m.addItem(.separator())
             _ = item(m, "Make Text Bigger", #selector(AppDelegate.biggerText(_:)), "+")

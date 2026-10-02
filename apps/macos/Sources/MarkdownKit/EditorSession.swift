@@ -29,6 +29,23 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// A query for newly visible text is scheduled (see `visibleRangeChanged`).
     var scrollRefreshPending = false
 
+    /// Everything drawn over the stored colours: focus dimming, parts of speech (and, later,
+    /// authorship), composed with a fixed precedence. See `OverlayCompositor`.
+    public let overlay = OverlayCompositor()
+    /// Parts-of-speech highlighting.
+    public private(set) lazy var pos = PosHighlighter(session: self)
+    /// This window's focus mode and syntax highlighting (the defaults come from `Settings`).
+    public internal(set) var focusEnabled: Bool
+    public internal(set) var syntaxEnabled: Bool
+    public var onFocusToolsChange: (() -> Void)?
+    /// Instrumentation: queries to the analysis queue made for the selection (see `refreshState`).
+    var stateQueries = 0
+    /// Instrumentation: main-thread time spent asking and applying (seconds).
+    var timeInStateQueries: TimeInterval = 0
+    /// The scope and classes the overlay was last told about (to notice a change in `Settings`).
+    var appliedFocusScope: FocusScopeChoice
+    var appliedSyntaxClasses: Set<SyntaxClass>
+
     /// The format state at the selection, refreshed off the main thread on every selection change.
     public private(set) var formatState: FormatState = EditorSession.emptyFormatState
     public private(set) var activeTable: NSRange?
@@ -58,10 +75,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     private var inDelegate = false
     private var isStyling = false
     var isApplyingEdit = false
-    private var selectionToken = 0
+    var selectionToken = 0
     /// The table holding the caret has been edited (not just visited) since the caret entered it.
     public private(set) var activeTableEdited = false
-    private var lastUserEdit: NSRange?
+    var lastUserEdit: NSRange?
     private var isRealigning = false
     private var observers: [NSObjectProtocol] = []
 
@@ -72,9 +89,14 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         appearance = EditorAppearance(settings: settings, appearance: forcedAppearance)
         styler = Styler(appearance: appearance)
         viewMode = settings.defaultViewMode
+        focusEnabled = settings.focusMode
+        syntaxEnabled = settings.syntaxHighlight
+        appliedFocusScope = settings.focusScope
+        appliedSyntaxClasses = settings.syntaxClasses
         styler.liveMode = viewMode == .live
         super.init()
         configureLive()
+        configureOverlay()
         storage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(container)
         layoutManager.allowsNonContiguousLayout = true
@@ -111,6 +133,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         NotificationCenter.default.addObserver(
             self, selector: #selector(selectionChanged(_:)),
             name: NSTextView.didChangeSelectionNotification, object: tv)
+        if syntaxEnabled { pos.configure(enabled: true, classes: settings.syntaxClasses) }
         return tv
     }
 
@@ -124,6 +147,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         formatState = Self.emptyFormatState
         liveWindow = NSRange(location: 0, length: 0)
         layoutManager.setLive(LiveState())
+        overlay.reset()
+        if syntaxEnabled { pos.reset() }
+        if focusEnabled { refreshState() }
     }
 
     public var text: String { storage.string }
@@ -140,6 +166,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         debt.shift(through: change)
         debt.clamp(toLength: storage.length)
         layoutManager.shiftLive(through: change)
+        overlay.noteEdit(change)
+        if syntaxEnabled { pos.noteEdit(change) }
         liveWindow = RangeMath.shift(liveWindow, through: change)
         if let t = activeTable { activeTable = RangeMath.shift(t, through: change) }
         // What counts as editing a table (so leaving it realigns): typing and commands, not undo
@@ -254,6 +282,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     private func settingsChanged() {
         let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance())
         applyAppearance(new)
+        applyFocusToolSettings()
     }
 
     /// Re-reads settings and the effective appearance (System theme follows the OS live).
@@ -273,6 +302,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         styler.appearance = new
         layoutManager.palette = new.palette
         layoutManager.bodyFont = new.fonts.body
+        overlay.palette = new.palette
         textView?.configure(appearance: new, settings: settings)
         if changed {
             debt.add(NSRange(location: 0, length: storage.length))
@@ -293,27 +323,28 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let token = selectionToken
         tv.refreshTypingAttributes()
         let selection = tv.selectedRange()
-        refreshLive()
-
+        // The table the caret has just left (the answer below replaces it).
         if let table = activeTable, !tableContains(table, selection), canRealign(tv) {
             activeTable = nil
             if activeTableEdited { realign(table, token: token) }
             activeTableEdited = false
         }
+        // One round trip to the analysis queue: concealment (Live), focus range (focus mode), format
+        // state and table. Answered on the spot when the queue is idle.
+        refreshState(selectionChange: true)
+    }
 
-        let u = Utf16Range(start: UInt32(selection.location), end: UInt32(NSMaxRange(selection)))
-        coordinator.async({ doc in (doc.formatState(selection: u), doc.tableAt(offset: u.start)) }) { [weak self] info, processed in
-            guard let self, token == selectionToken, processed == coordinator.latestSeq else { return }
-            formatState = info.0
-            let table = info.1?.nsRange
-            if table != activeTable {
-                // A table just entered counts as edited if the last edit (typed before the
-                // query came back) was in it.
-                activeTableEdited = table.map { t in self.lastUserEdit.map { self.touches(t, $0) } ?? false } ?? false
-            }
-            activeTable = table
-            onFormatStateChange?()
+    /// What the selection query said about the format state and the table.
+    func applyFormatState(_ state: SelectionState) {
+        formatState = state.formatState
+        let table = state.table?.nsRange
+        if table != activeTable {
+            // A table just entered counts as edited if the last edit (typed before the
+            // query came back) was in it.
+            activeTableEdited = table.map { t in self.lastUserEdit.map { self.touches(t, $0) } ?? false } ?? false
         }
+        activeTable = table
+        onFormatStateChange?()
     }
 
     private func touches(_ a: NSRange, _ b: NSRange) -> Bool {

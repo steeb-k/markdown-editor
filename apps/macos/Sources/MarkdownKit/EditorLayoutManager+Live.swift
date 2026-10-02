@@ -141,6 +141,10 @@ extension EditorLayoutManager: NSLayoutManagerDelegate {
         }
     }
 
+    public func layoutManager(_ lm: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?, atEnd layoutFinishedFlag: Bool) {
+        layoutCompletions += 1
+    }
+
     // MARK: glyphs
 
     public func layoutManager(_ lm: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
@@ -425,7 +429,24 @@ extension EditorLayoutManager {
     }
 
     public override func fillBackgroundRectArray(_ rectArray: UnsafePointer<NSRect>, count rectCount: Int,
-                                                 forCharacterRange charRange: NSRange, color: NSColor) {
+                                                 forCharacterRange charRange: NSRange, color original: NSColor) {
+        var color = original
+        // Focus mode: an inline-code chip outside the focus range recedes with its text (the
+        // temporary colours AppKit uses for glyphs do not reach backgrounds). A run that the
+        // focus range cuts is drawn in its pieces.
+        if let o = overlay, o.isFocusing {
+            let parts = o.pieces(of: charRange)
+            if parts.count > 1, let tc = textContainers.first {
+                for part in parts {
+                    var n = 0
+                    guard let rects = self.rectArray(forCharacterRange: part.range, withinSelectedCharacterRange: NSRange(location: NSNotFound, length: 0),
+                                                in: tc, rectCount: &n), n > 0 else { continue }
+                    fillBackgroundRectArray(rects, count: n, forCharacterRange: part.range, color: original)
+                }
+                return
+            }
+            if parts.first?.dimmed == true { color = color.withAlphaComponent(color.alphaComponent * Self.dimmedBackgroundStrength) }
+        }
         let hiddenHere = RangeList.firstIndex(endingAfter: charRange.location, in: live.hidden)
         guard hiddenHere < live.hidden.count, live.hidden[hiddenHere].location < NSMaxRange(charRange), textContainers.first != nil else {
             super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
@@ -469,7 +490,10 @@ extension EditorLayoutManager {
             guard ci < storage.length else { continue }
             let attrs = storage.attributes(at: ci, effectiveRange: nil)
             let font = (attrs[.font] as? NSFont) ?? bodyFont
-            let color = (attrs[.strikethroughColor] as? NSColor) ?? (attrs[.foregroundColor] as? NSColor) ?? .textColor
+            // A temporary colour (focus dimming, parts of speech) is what the text is drawn in.
+            let color = (attrs[.strikethroughColor] as? NSColor)
+                ?? (temporaryAttribute(.foregroundColor, atCharacterIndex: ci, effectiveRange: nil) as? NSColor)
+                ?? (attrs[.foregroundColor] as? NSColor) ?? .textColor
             let x = xRange(of: run, fragment: lineGlyphRange, line: lineRect, used: lineFragmentUsedRect(forGlyphAt: run.location, effectiveRange: nil))
             let baseline = lineRect.minY + location(forGlyphAt: run.location).y
             let y = (baseline - font.xHeight * 0.5).rounded() + 0.5

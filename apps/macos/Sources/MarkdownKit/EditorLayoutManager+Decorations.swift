@@ -10,12 +10,15 @@ extension EditorLayoutManager {
         guard !live.decorations.isEmpty, let tc = textContainers.first, let palette else { return }
         let chars = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
         for d in live.decorations where d.range.location < NSMaxRange(chars) && chars.location < NSMaxRange(d.range) {
+            // Focus mode: a decoration outside the focus range recedes with its text (a quote bar
+            // line by line, see `drawQuoteBar`).
+            let dimmed = overlay?.isDimmed(d.range) ?? false
             switch d.kind {
-            case .bullet: drawBullet(d, in: tc, origin: origin, palette: palette)
-            case .checkbox(let checked): drawCheckbox(d, checked: checked, in: tc, origin: origin, palette: palette)
-            case .rule: drawRule(d, in: tc, origin: origin, palette: palette)
+            case .bullet: drawBullet(d, dimmed: dimmed, in: tc, origin: origin, palette: palette)
+            case .checkbox(let checked): drawCheckbox(d, checked: checked, dimmed: dimmed, in: tc, origin: origin, palette: palette)
+            case .rule: drawRule(d, dimmed: dimmed, in: tc, origin: origin, palette: palette)
             case .quoteBar(let depth): drawQuoteBar(d, depth: depth, in: tc, origin: origin, palette: palette)
-            case .image(let destination, let alt): drawImage(d, destination: destination, alt: alt, in: tc, origin: origin, palette: palette)
+            case .image(let destination, let alt): drawImage(d, destination: destination, alt: alt, dimmed: dimmed, in: tc, origin: origin, palette: palette)
             }
         }
     }
@@ -39,6 +42,9 @@ extension EditorLayoutManager {
         let font = (storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont) ?? bodyFont
         return Anchor(line: line, glyphs: glyphs, baseline: baseline, font: font)
     }
+
+    /// How much of a picture outside the focus range is drawn.
+    static let dimmedPictureStrength: CGFloat = 0.3
 
     static func checkboxSide(for font: NSFont) -> CGFloat { (font.pointSize * 0.74).rounded() }
 
@@ -77,21 +83,21 @@ extension EditorLayoutManager {
 
     // MARK: drawing
 
-    private func drawBullet(_ d: LiveDecoration, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
+    private func drawBullet(_ d: LiveDecoration, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let a = anchor(of: d.range, in: tc) else { return }
         let diameter = max(4, (a.font.pointSize * 0.3).rounded())
         let x = a.glyphs.minX + a.font.pointSize * 0.06
         let y = a.baseline - a.font.xHeight * 0.5 - diameter / 2
-        palette.text.withAlphaComponent(0.85).setFill()
+        (dimmed ? palette.focusDim : palette.text.withAlphaComponent(0.85)).setFill()
         NSBezierPath(ovalIn: NSRect(x: x + origin.x, y: y + origin.y, width: diameter, height: diameter)).fill()
     }
 
-    private func drawCheckbox(_ d: LiveDecoration, checked: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
+    private func drawCheckbox(_ d: LiveDecoration, checked: Bool, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let frame = checkboxFrame(of: d, in: tc) else { return }
         let r = frame.offsetBy(dx: origin.x, dy: origin.y)
         let box = NSBezierPath(roundedRect: r.insetBy(dx: 0.75, dy: 0.75), xRadius: 3.5, yRadius: 3.5)
         if checked {
-            palette.link.setFill()
+            (dimmed ? palette.focusDim : palette.link).setFill()
             box.fill()
             let check = NSBezierPath()
             check.move(to: NSPoint(x: r.minX + r.width * 0.27, y: r.minY + r.height * 0.52))
@@ -104,12 +110,12 @@ extension EditorLayoutManager {
             check.stroke()
         } else {
             box.lineWidth = 1.25
-            palette.markup.setStroke()
+            (dimmed ? palette.focusDim : palette.markup).setStroke()
             box.stroke()
         }
     }
 
-    private func drawRule(_ d: LiveDecoration, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
+    private func drawRule(_ d: LiveDecoration, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let a = anchor(of: NSRange(location: hostCharacter(of: d.range), length: 1), in: tc) else { return }
         let y = (a.baseline - a.font.xHeight * 0.5).rounded() + 0.5
         let x0 = a.line.minX + origin.x
@@ -117,7 +123,7 @@ extension EditorLayoutManager {
         path.move(to: NSPoint(x: x0, y: y + origin.y))
         path.line(to: NSPoint(x: x0 + tc.size.width, y: y + origin.y))
         path.lineWidth = 1
-        palette.rule.setStroke()
+        (dimmed ? palette.rule.withAlphaComponent(0.55) : palette.rule).setStroke()
         path.stroke()
     }
 
@@ -131,10 +137,11 @@ extension EditorLayoutManager {
         let barWidth: CGFloat = 3
         let x = (CGFloat(depth) * step + step * 0.22).rounded()
         var run: NSRect?
+        var runDimmed = false
         func flush() {
             guard let r = run else { return }
             let bar = NSRect(x: x + origin.x, y: r.minY + origin.y, width: barWidth, height: r.height)
-            palette.markup.withAlphaComponent(0.55).setFill()
+            (runDimmed ? palette.focusDim.withAlphaComponent(0.55) : palette.markup.withAlphaComponent(0.55)).setFill()
             NSBezierPath(roundedRect: bar, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
             run = nil
         }
@@ -147,7 +154,9 @@ extension EditorLayoutManager {
             while q < storage.length, ns.character(at: q) == 0x20 || ns.character(at: q) == 0x09 { q += 1 }
             let drawn = q < storage.length && ns.character(at: q) == 0x3E && live.isHidden(q)
             if drawn {
-                if let r = run, abs(rect.minY - r.maxY) < 1.5 { run = r.union(rect) } else { flush(); run = rect }
+                // A bar recedes line by line: where its line is outside the focus range.
+                let dimmed = overlay?.isDimmed(chars) ?? false
+                if let r = run, abs(rect.minY - r.maxY) < 1.5, dimmed == runDimmed { run = r.union(rect) } else { flush(); run = rect; runDimmed = dimmed }
             } else {
                 flush()
             }
@@ -155,7 +164,7 @@ extension EditorLayoutManager {
         flush()
     }
 
-    private func drawImage(_ d: LiveDecoration, destination: String, alt: String, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
+    private func drawImage(_ d: LiveDecoration, destination: String, alt: String, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let a = anchor(of: NSRange(location: hostCharacter(of: d.range), length: 1), in: tc) else { return }
         let budget = imageBudget(for: d.range)
         let entry = imageEntry?(destination, budget) ?? ImageController.Entry(phase: .loading, image: nil, size: ImageController.placeholderSize(budget))
@@ -166,15 +175,15 @@ extension EditorLayoutManager {
         defer { NSGraphicsContext.restoreGraphicsState() }
         if let image = entry.image {
             clip.addClip()
-            NSImage(cgImage: image, size: frame.size).draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1,
+            NSImage(cgImage: image, size: frame.size).draw(in: frame, from: .zero, operation: .sourceOver, fraction: dimmed ? Self.dimmedPictureStrength : 1,
                                                           respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
             return
         }
         // A quiet placeholder: a tinted panel and, once the image is known to be missing, its name.
-        palette.codeBackground.setFill()
+        (dimmed ? palette.codeBackground.withAlphaComponent(0.5) : palette.codeBackground).setFill()
         clip.fill()
         let symbol = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
-        let tint = palette.markup.withAlphaComponent(entry.phase == .loading ? 0.45 : 0.8)
+        let tint = (dimmed ? palette.focusDim : palette.markup).withAlphaComponent(entry.phase == .loading ? 0.45 : 0.8)
         var textTop = frame.midY
         if let symbol {
             let cfg = NSImage.SymbolConfiguration(pointSize: 18, weight: .light)
@@ -199,7 +208,7 @@ extension EditorLayoutManager {
             para.lineBreakMode = .byTruncatingTail
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: max(10, bodyFont.pointSize * 0.72)),
-                .foregroundColor: palette.markup, .paragraphStyle: para,
+                .foregroundColor: dimmed ? palette.focusDim : palette.markup, .paragraphStyle: para,
             ]
             (caption as NSString).draw(in: NSRect(x: frame.minX + 12, y: textTop, width: frame.width - 24, height: 16), withAttributes: attrs)
         }

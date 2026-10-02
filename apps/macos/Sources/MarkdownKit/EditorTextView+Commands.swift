@@ -55,6 +55,32 @@ extension EditorTextView {
     @objc public func showSourceMode(_ sender: Any?) { session?.setViewMode(.source) }
     @objc public func showLiveMode(_ sender: Any?) { session?.setViewMode(.live) }
 
+    // MARK: Focus tools
+
+    @objc public func toggleFocusMode(_ sender: Any?) {
+        guard let session else { return }
+        session.setFocusEnabled(!session.focusEnabled)
+    }
+
+    /// Tag 0: sentence, 1: paragraph. A setting: it applies to every window.
+    @objc public func setFocusScope(_ sender: Any?) {
+        let tag = (sender as? NSMenuItem)?.tag ?? (sender as? NSControl)?.tag ?? 0
+        session?.settings.focusScope = tag == 1 ? .paragraph : .sentence
+    }
+
+    @objc public func toggleSyntaxHighlight(_ sender: Any?) {
+        guard let session else { return }
+        session.setSyntaxEnabled(!session.syntaxEnabled)
+    }
+
+    /// The tag is the class's position in `SyntaxClass.allCases`. A setting: every window.
+    @objc public func toggleSyntaxClass(_ sender: Any?) {
+        let tag = (sender as? NSMenuItem)?.tag ?? 0
+        guard let settings = session?.settings, SyntaxClass.allCases.indices.contains(tag) else { return }
+        let c = SyntaxClass.allCases[tag]
+        settings.setSyntaxClass(c, !settings.syntaxClass(c))
+    }
+
     // MARK: Table
 
     @objc public func insertTable(_ sender: Any?) {
@@ -135,6 +161,15 @@ extension EditorTextView {
         guard let action else { return nil }
         if action == #selector(showSourceMode(_:)) { return (true, session?.viewMode == .source) }
         if action == #selector(showLiveMode(_:)) { return (true, session?.viewMode == .live) }
+        if action == #selector(toggleFocusMode(_:)) { return (true, session?.focusEnabled == true) }
+        if action == #selector(setFocusScope(_:)) {
+            return (true, session?.settings.focusScope == (tag == 1 ? .paragraph : .sentence))
+        }
+        if action == #selector(toggleSyntaxHighlight(_:)) { return (true, session?.syntaxEnabled == true) }
+        if action == #selector(toggleSyntaxClass(_:)) {
+            guard SyntaxClass.allCases.indices.contains(tag), let session else { return (false, false) }
+            return (session.syntaxEnabled, session.settings.syntaxClass(SyntaxClass.allCases[tag]))
+        }
         let editable = isEditable && !hasMarkedText()
         let s = session?.formatState ?? EditorSession.emptyFormatState
         if Self.tableActions.contains(action) {

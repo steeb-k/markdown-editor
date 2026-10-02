@@ -15,12 +15,22 @@ enum Fixtures {
     }
 }
 
+/// Suites that run again with focus mode and syntax highlighting on (see `LiveCaretFocusToolsTests`)
+/// set this for their duration: every editor they make starts with both on.
+enum TestMode {
+    nonisolated(unsafe) static var focusTools = false
+}
+
 func isolatedSettings() -> Settings {
     let name = "markdown-tests-\(UUID().uuidString)"
     let d = UserDefaults(suiteName: name)!
     d.removePersistentDomain(forName: name)
     // Most tests are about styled source; Live mode tests ask for it.
     d.set(ViewMode.source.rawValue, forKey: "defaultViewMode")
+    if TestMode.focusTools {
+        d.set(true, forKey: "focusMode")
+        d.set(true, forKey: "syntaxHighlight")
+    }
     return Settings(defaults: d)
 }
 

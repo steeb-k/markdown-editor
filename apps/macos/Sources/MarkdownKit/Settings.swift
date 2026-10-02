@@ -28,6 +28,33 @@ public enum FontChoice: String, CaseIterable, Sendable {
     }
 }
 
+/// How much text focus mode keeps at full strength (the shell's name for the core's `FocusScope`).
+public enum FocusScopeChoice: String, CaseIterable, Sendable {
+    case sentence, paragraph
+
+    public var title: String {
+        switch self {
+        case .sentence: return "Sentence"
+        case .paragraph: return "Paragraph"
+        }
+    }
+}
+
+/// The five classes of words syntax highlighting can colour.
+public enum SyntaxClass: String, CaseIterable, Sendable {
+    case noun, verb, adjective, adverb, conjunction
+
+    public var title: String {
+        switch self {
+        case .noun: return "Nouns"
+        case .verb: return "Verbs"
+        case .adjective: return "Adjectives"
+        case .adverb: return "Adverbs"
+        case .conjunction: return "Conjunctions"
+        }
+    }
+}
+
 /// Every preference, in one place, stored in `UserDefaults`. The core holds no preferences.
 /// Changes post `Settings.didChangeNotification` so every open document applies them live.
 public final class Settings: NSObject {
@@ -55,6 +82,10 @@ public final class Settings: NSObject {
         static let showToolbar = "showFormattingToolbar"
         static let autoHide = "autoHideChrome"
         static let defaultViewMode = "defaultViewMode"
+        static let focusMode = "focusMode"
+        static let focusScope = "focusScope"
+        static let syntaxHighlight = "syntaxHighlight"
+        static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
     public init(defaults: UserDefaults) {
@@ -70,7 +101,10 @@ public final class Settings: NSObject {
             Key.showToolbar: true,
             Key.autoHide: true,
             Key.defaultViewMode: ViewMode.source.rawValue,
-        ])
+            Key.focusMode: false,
+            Key.focusScope: FocusScopeChoice.sentence.rawValue,
+            Key.syntaxHighlight: false,
+        ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
     private func changed() {
@@ -132,4 +166,32 @@ public final class Settings: NSObject {
         get { defaults.bool(forKey: Key.autoHide) }
         set { defaults.set(newValue, forKey: Key.autoHide); changed() }
     }
+
+    /// Whether new windows start in focus mode. (Each window toggles its own.)
+    public var focusMode: Bool {
+        get { defaults.bool(forKey: Key.focusMode) }
+        set { defaults.set(newValue, forKey: Key.focusMode); changed() }
+    }
+
+    /// Sentence or paragraph: how much focus mode keeps lit, in every window.
+    public var focusScope: FocusScopeChoice {
+        get { FocusScopeChoice(rawValue: defaults.string(forKey: Key.focusScope) ?? "") ?? .sentence }
+        set { defaults.set(newValue.rawValue, forKey: Key.focusScope); changed() }
+    }
+
+    /// Whether new windows start with syntax (parts of speech) highlighting on.
+    public var syntaxHighlight: Bool {
+        get { defaults.bool(forKey: Key.syntaxHighlight) }
+        set { defaults.set(newValue, forKey: Key.syntaxHighlight); changed() }
+    }
+
+    /// The classes of words that are coloured, in every window.
+    public func syntaxClass(_ c: SyntaxClass) -> Bool { defaults.bool(forKey: Key.syntaxClass(c)) }
+
+    public func setSyntaxClass(_ c: SyntaxClass, _ on: Bool) {
+        defaults.set(on, forKey: Key.syntaxClass(c))
+        changed()
+    }
+
+    public var syntaxClasses: Set<SyntaxClass> { Set(SyntaxClass.allCases.filter { syntaxClass($0) }) }
 }

@@ -13,6 +13,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
     let titlebarFade = EdgeFadeView()
     /// The view-mode switch in the title bar (Source, Live; Split and Preview come later).
     let modeSwitch = NSSegmentedControl()
+    /// Focus mode and syntax highlighting for this window, beside the mode switch.
+    let focusButton = NSButton()
+    let syntaxButton = NSButton()
     private var modeAccessory: NSTitlebarAccessoryViewController?
     private var fadeHeight: NSLayoutConstraint!
     private let root = EditorRootView()
@@ -112,8 +115,29 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         modeSwitch.action = #selector(modeSwitchChanged(_:))
         modeSwitch.setAccessibilityLabel("View mode")
         modeSwitch.sizeToFit()
-        let holder = NSView(frame: NSRect(x: 0, y: 0, width: modeSwitch.frame.width + 20, height: modeSwitch.frame.height + 8))
-        modeSwitch.frame.origin = NSPoint(x: 8, y: 4)
+        for (button, title, action, label) in [
+            (focusButton, "Focus", #selector(focusButtonPressed(_:)), "Focus mode"),
+            (syntaxButton, "Syntax", #selector(syntaxButtonPressed(_:)), "Syntax highlighting"),
+        ] {
+            button.title = title
+            button.setButtonType(.pushOnPushOff)
+            button.bezelStyle = .rounded
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            button.target = self
+            button.action = action
+            button.setAccessibilityLabel(label)
+            button.sizeToFit()
+        }
+        let gap: CGFloat = 6
+        let buttonsWidth = focusButton.frame.width + syntaxButton.frame.width + 2 * gap
+        let height = max(modeSwitch.frame.height, focusButton.frame.height)
+        let holder = NSView(frame: NSRect(x: 0, y: 0, width: buttonsWidth + modeSwitch.frame.width + 20, height: height + 8))
+        focusButton.frame.origin = NSPoint(x: 8, y: (holder.frame.height - focusButton.frame.height) / 2)
+        syntaxButton.frame.origin = NSPoint(x: focusButton.frame.maxX + gap, y: (holder.frame.height - syntaxButton.frame.height) / 2)
+        modeSwitch.frame.origin = NSPoint(x: syntaxButton.frame.maxX + gap, y: (holder.frame.height - modeSwitch.frame.height) / 2)
+        holder.addSubview(focusButton)
+        holder.addSubview(syntaxButton)
         holder.addSubview(modeSwitch)
         let accessory = NSTitlebarAccessoryViewController()
         accessory.view = holder
@@ -122,7 +146,24 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         modeAccessory = accessory
         chrome.extraTitlebarViews = [holder]
         session.onViewModeChange = { [weak self] in self?.syncModeSwitch() }
+        session.onFocusToolsChange = { [weak self] in self?.syncFocusButtons() }
         syncModeSwitch()
+        syncFocusButtons()
+    }
+
+    @objc private func focusButtonPressed(_ sender: NSButton) {
+        session.setFocusEnabled(sender.state == .on)
+        window?.makeFirstResponder(textView)
+    }
+
+    @objc private func syntaxButtonPressed(_ sender: NSButton) {
+        session.setSyntaxEnabled(sender.state == .on)
+        window?.makeFirstResponder(textView)
+    }
+
+    private func syncFocusButtons() {
+        focusButton.state = session.focusEnabled ? .on : .off
+        syntaxButton.state = session.syntaxEnabled ? .on : .off
     }
 
     @objc private func modeSwitchChanged(_ sender: NSSegmentedControl) {

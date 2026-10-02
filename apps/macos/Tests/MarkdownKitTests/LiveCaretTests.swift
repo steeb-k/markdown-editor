@@ -14,7 +14,7 @@ import MarkdownCore
 /// * Left retraces Right;
 /// * Backspace and Delete remove only what the user can see (a checkbox counts: it is deleted as
 ///   one unit, with the hidden `- [ ] ` it stands for).
-final class LiveCaretTests: XCTestCase {
+class LiveCaretTests: XCTestCase {
     static let constructs: [(String, String)] = [
         ("strong", "a **bold** b"),
         ("emphasis", "a *em* b"),
