@@ -227,6 +227,9 @@ pub enum FormatCommand {
     Link,
     /// Insert `![alt](destination)`. An empty `alt` falls back to a single-line selection.
     Image { destination: String, alt: String },
+    /// Insert `[text](destination)` in place of the selection, caret after it (a dropped file).
+    /// An empty `text` falls back to a single-line selection, then to the destination.
+    LinkTo { destination: String, text: String },
     /// ATX heading level 0 (none) to 6 on the selected lines; the same level again removes it.
     Heading { level: u8 },
     BlockQuote,
@@ -311,4 +314,66 @@ pub struct TableInfo {
     /// `None` if the offset is not in a cell (e.g. in the line's container prefix).
     pub column: Option<u32>,
     pub alignments: Vec<ColumnAlignment>,
+}
+
+/// A link and where it points (see [`crate::Document::link_at`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTarget {
+    /// The whole link element.
+    pub range: TextRange,
+    /// As written: angle brackets and title removed, reference labels resolved to the
+    /// definition's destination, an email autolink given its `mailto:` scheme. Not decoded
+    /// and not made absolute; a bare `www.` URL has no scheme.
+    pub destination: String,
+}
+
+// ----- Live mode ----------------------------------------------------------------------------
+
+/// What a shell draws in place of (or on top of) concealed source. Decorations are abstract:
+/// the shell chooses glyphs, sizes and colors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DecorationKind {
+    /// An unordered list marker (`-`, `*`, `+`) drawn as a bullet. The marker stays in the
+    /// text; the shell draws over its position. Not emitted for task items (their marker
+    /// is hidden instead).
+    Bullet,
+    /// A task marker `[ ]` / `[x]` drawn as a checkbox the user can click. The item's list
+    /// marker, the marker itself and the blanks around them are in `hidden`.
+    Checkbox { checked: bool },
+    /// A thematic break drawn as a horizontal rule. Emitted only while its characters are
+    /// hidden (the selection is not on its line).
+    Rule,
+    /// A standalone image drawn in place of its source. `index` is the position in
+    /// [`crate::Document::images`]. Emitted only while its source is hidden.
+    Image { index: u32 },
+    /// The bar beside a block quote; `range` is the whole quote. `depth` is the number of
+    /// quotes that enclose this one (0 for an outermost quote).
+    QuoteBar { depth: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Decoration {
+    /// The source the decoration stands for (the whole quote for `QuoteBar`).
+    pub range: TextRange,
+    pub kind: DecorationKind,
+}
+
+/// What Live mode does to the text for a given selection. The text itself never changes.
+///
+/// `hidden` is sorted by start and clipped to the queried window; `collapsed` and
+/// `decorations` are sorted and include everything that intersects it. The result is a pure
+/// function of the current text, the selection and the window: a shell must query again
+/// after every edit and every selection change (the dirty range of an edit speaks for spans
+/// only, and owners and blocks can change outside it), and for newly visible text when it
+/// scrolls.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Concealment {
+    /// Ranges not to draw. Sorted, disjoint, merged when adjacent; they never contain a line
+    /// terminator and never split a code point.
+    pub hidden: Vec<TextRange>,
+    /// Whole lines, terminator included, that should take (almost) no vertical space while
+    /// concealed: fence and front-matter delimiter lines and setext underlines. Everything
+    /// on such a line that is not blank is also in `hidden`.
+    pub collapsed: Vec<TextRange>,
+    pub decorations: Vec<Decoration>,
 }

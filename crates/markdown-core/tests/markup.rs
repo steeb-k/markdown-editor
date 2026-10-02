@@ -442,7 +442,7 @@ fn thematic_breaks() {
 #[test]
 fn hard_breaks() {
     assert_spans("a  \nb", &[("HardBreak", "  \n")]);
-    assert_spans("a\\\nb", &[("HardBreak", "\\\n")]);
+    assert_spans("a\\\nb", &[("HardBreak", "\\\n"), ("Markup", "\\")]);
 }
 
 #[test]

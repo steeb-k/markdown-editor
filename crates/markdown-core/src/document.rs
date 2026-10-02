@@ -205,6 +205,19 @@ impl Document {
         out.into_iter().map(|(_, r)| r).collect()
     }
 
+    /// Live mode: which source is not drawn, which lines collapse and what is drawn instead,
+    /// for `selection` (an inverted range is normalized), restricted to `within` (`None`:
+    /// the whole document). A pure query over the current analysis: query again after every
+    /// edit and selection change, and for newly visible text. See [`Concealment`].
+    pub fn concealment(&self, selection: TextRange, within: Option<TextRange>) -> Concealment {
+        crate::conceal::compute(self, selection, within)
+    }
+
+    /// The link containing `offset` (the character at it) and its destination, for Cmd-click.
+    pub fn link_at(&self, offset: u32) -> Option<LinkTarget> {
+        crate::conceal::link_at(self, offset)
+    }
+
     // ----- editing commands (implemented in `crate::edit`) --------------------------------
 
     /// Apply a formatting command to `selection`. `None` means nothing to do. The edit
@@ -295,7 +308,7 @@ impl Document {
 
     /// Query range in bytes, clamped to the text; endpoints inside a code point snap
     /// outward. `None` for "everything". An inverted range yields an empty window.
-    fn within_bytes(&self, within: Option<TextRange>) -> Option<(usize, usize)> {
+    pub(crate) fn within_bytes(&self, within: Option<TextRange>) -> Option<(usize, usize)> {
         let w = within?;
         let total = self.text.len();
         let floor = |u: u32| match self.map.locate_unit(&self.text, u as usize) {
@@ -315,8 +328,13 @@ impl Document {
 
     /// Candidate index window in `analysis.spans` for a byte window.
     fn span_indices(&self, within: Option<TextRange>) -> (usize, usize) {
+        self.span_indices_bytes(self.within_bytes(within))
+    }
+
+    /// The same for a window already in bytes.
+    pub(crate) fn span_indices_bytes(&self, window: Option<(usize, usize)>) -> (usize, usize) {
         let a = &self.analysis;
-        match self.within_bytes(within) {
+        match window {
             None => (0, a.spans.len()),
             Some((ws, we)) => {
                 let lo = a.prefix_max_end.partition_point(|&m| m <= ws);

@@ -246,6 +246,10 @@ pub fn examine(text: &str) -> Report {
                         )
                 });
                 let escape = o.end - o.start == 2 && text.as_bytes()[o.start as usize] == b'\\';
+                // The backslash of a hard line break owns itself.
+                let escape = escape
+                    || (o.end - o.start == 1
+                        && spans.iter().any(|&(s, _, k)| k == SpanKind::HardBreak && s == o.start as usize));
                 if !found && !escape {
                     rep.owners.push(format!("Inline owner is not an inline element: {m:?} {owner_text:?}"));
                 }

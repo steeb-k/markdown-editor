@@ -117,6 +117,36 @@ impl std::fmt::Display for EditError {
 impl std::error::Error for EditError {}
 
 
+// ----- Live mode ------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LinkTarget {
+    pub range: Utf16Range,
+    pub destination: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DecorationKind {
+    Bullet,
+    Checkbox { checked: bool },
+    Rule,
+    Image { index: u32 },
+    QuoteBar { depth: u8 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct Decoration {
+    pub range: Utf16Range,
+    pub kind: DecorationKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Concealment {
+    pub hidden: Vec<Utf16Range>,
+    pub collapsed: Vec<Utf16Range>,
+    pub decorations: Vec<Decoration>,
+}
+
 // ----- editing commands -----------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -150,6 +180,7 @@ pub enum FormatCommand {
     InlineCode,
     Link,
     Image { destination: String, alt: String },
+    LinkTo { destination: String, text: String },
     Heading { level: u8 },
     BlockQuote,
     BulletList,
@@ -356,6 +387,32 @@ impl From<core::Update> for Update {
     }
 }
 
+impl From<core::DecorationKind> for DecorationKind {
+    fn from(k: core::DecorationKind) -> Self {
+        match k {
+            core::DecorationKind::Bullet => Self::Bullet,
+            core::DecorationKind::Checkbox { checked } => Self::Checkbox { checked },
+            core::DecorationKind::Rule => Self::Rule,
+            core::DecorationKind::Image { index } => Self::Image { index },
+            core::DecorationKind::QuoteBar { depth } => Self::QuoteBar { depth },
+        }
+    }
+}
+
+impl From<core::Concealment> for Concealment {
+    fn from(c: core::Concealment) -> Self {
+        Self {
+            hidden: c.hidden.into_iter().map(Into::into).collect(),
+            collapsed: c.collapsed.into_iter().map(Into::into).collect(),
+            decorations: c
+                .decorations
+                .into_iter()
+                .map(|d| Decoration { range: d.range.into(), kind: d.kind.into() })
+                .collect(),
+        }
+    }
+}
+
 impl From<core::EditError> for EditError {
     fn from(e: core::EditError) -> Self {
         match e {
@@ -426,6 +483,7 @@ impl From<FormatCommand> for core::FormatCommand {
             FormatCommand::InlineCode => core::FormatCommand::InlineCode,
             FormatCommand::Link => core::FormatCommand::Link,
             FormatCommand::Image { destination, alt } => core::FormatCommand::Image { destination, alt },
+            FormatCommand::LinkTo { destination, text } => core::FormatCommand::LinkTo { destination, text },
             FormatCommand::Heading { level } => core::FormatCommand::Heading { level },
             FormatCommand::BlockQuote => core::FormatCommand::BlockQuote,
             FormatCommand::BulletList => core::FormatCommand::BulletList,
@@ -591,6 +649,14 @@ impl Document {
         self.with(|d| d.images().into_iter().map(ImageRef::from).collect())
     }
 
+    pub fn link_at(&self, offset: u32) -> Option<LinkTarget> {
+        self.with(|d| d.link_at(offset).map(|l| LinkTarget { range: l.range.into(), destination: l.destination }))
+    }
+
+    pub fn concealment(&self, selection: Utf16Range, within: Option<Utf16Range>) -> Concealment {
+        self.with(|d| d.concealment(selection.into(), within.map(Into::into)).into())
+    }
+
     pub fn format(&self, command: FormatCommand, selection: Utf16Range) -> Option<TextEdit> {
         self.with(|d| d.format(command.into(), selection.into()).map(TextEdit::from))
     }
@@ -664,6 +730,18 @@ mod tests {
         assert!(t.table_command(TableCommand::SetAlignment { alignment: ColumnAlignment::Right }, Utf16Range { start: 2, end: 2 }).is_some());
         assert_eq!(builtin_themes().len(), 3);
         assert!(theme_by_id("sepia".into()).is_some());
+    }
+
+    #[test]
+    fn concealment_crosses_the_boundary() {
+        let d = Document::new("\u{1F389} **bold**\n\n- [x] t\n".into());
+        let far = Utf16Range { start: 0, end: 0 };
+        let c = d.concealment(far, None);
+        // Emoji is two UTF-16 units; the hidden ranges are in those units.
+        assert_eq!(c.hidden[..2], [Utf16Range { start: 3, end: 5 }, Utf16Range { start: 9, end: 11 }]);
+        assert!(c.decorations.iter().any(|d| d.kind == DecorationKind::Checkbox { checked: true }));
+        let inside = d.concealment(Utf16Range { start: 6, end: 6 }, Some(Utf16Range { start: 0, end: 12 }));
+        assert!(inside.hidden.is_empty());
     }
 
     #[test]

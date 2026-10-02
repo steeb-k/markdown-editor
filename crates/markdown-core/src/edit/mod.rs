@@ -28,6 +28,7 @@ pub(crate) fn format(doc: &Document, cmd: FormatCommand, selection: TextRange) -
         FormatCommand::InlineCode => inline::toggle(&cx, inline::Kind::Code, s, e),
         FormatCommand::Link => inline::link(&cx, s, e),
         FormatCommand::Image { destination, alt } => inline::image(&cx, &destination, &alt, s, e),
+        FormatCommand::LinkTo { destination, text } => inline::link_to(&cx, &destination, &text, s, e),
         FormatCommand::Heading { level } => block::heading(&cx, level, s, e),
         FormatCommand::BlockQuote => block::quote(&cx, s, e),
         FormatCommand::BulletList => block::list(&cx, ListKind::Bullet, s, e),

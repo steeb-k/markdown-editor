@@ -20,6 +20,19 @@ pub(crate) struct MarkupMeta {
     pub owner: (usize, usize),
     pub scope: MarkupScope,
     pub in_table: bool,
+    pub role: MarkupRole,
+}
+
+/// What Live mode needs to know about a `Markup` span beyond its owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MarkupRole {
+    Plain,
+    /// A code fence: owned by the whole code block.
+    Fence,
+    /// A front matter delimiter: owned by the whole block.
+    FrontMatter,
+    /// Never concealed: footnote labels and references, link reference definitions.
+    Pinned,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,6 +240,8 @@ struct Builder<'a> {
     backslash_run: (usize, usize),
     /// Set by an `End` event whose element was extended past its reported range.
     extended_end: Option<usize>,
+    /// Role given to the `Markup` spans emitted right now.
+    role: MarkupRole,
 }
 
 #[inline]
@@ -269,6 +284,7 @@ impl<'a> Builder<'a> {
             texts: Vec::new(),
             backslash_run: (0, 0),
             extended_end: None,
+            role: MarkupRole::Plain,
         }
     }
 
@@ -286,7 +302,7 @@ impl<'a> Builder<'a> {
         if start >= end || end > self.b.len() {
             return;
         }
-        let meta = Some(MarkupMeta { owner, scope, in_table: self.in_table });
+        let meta = Some(MarkupMeta { owner, scope, in_table: self.in_table, role: self.role });
         let mut s = start;
         for i in start..end {
             if matches!(self.b[i], b'\n' | b'\r') {
@@ -463,8 +479,10 @@ impl<'a> Builder<'a> {
                 self.push(r.start, r.end, SpanKind::FootnoteReference);
                 if r.end - r.start >= 4 && self.b[r.start] == b'[' && self.b[r.start + 1] == b'^' {
                     let owner = (r.start, r.end);
+                    self.role = MarkupRole::Pinned;
                     self.markup(r.start, r.start + 2, owner, MarkupScope::Inline);
                     self.markup(r.end - 1, r.end, owner, MarkupScope::Inline);
+                    self.role = MarkupRole::Plain;
                 }
             }
             Event::SoftBreak => {
@@ -479,6 +497,10 @@ impl<'a> Builder<'a> {
                 }
                 self.touch_inline(&r, false, None);
                 self.push(r.start, r.end, SpanKind::HardBreak);
+                // The backslash form: the backslash is syntax Live mode may hide.
+                if self.b.get(r.start) == Some(&b'\\') {
+                    self.markup(r.start, r.start + 1, (r.start, r.start + 1), MarkupScope::Inline);
+                }
             }
             Event::Rule => {
                 self.flush_para();
@@ -543,7 +565,9 @@ impl<'a> Builder<'a> {
                 let d = self.depth();
                 self.push_block(BlockKind::CodeBlock, t, None, d);
                 if matches!(kind, CodeBlockKind::Fenced(_)) {
-                    self.fence_markup(t);
+                    self.role = MarkupRole::Fence;
+self.fence_markup(t);
+self.role = MarkupRole::Plain;
                 }
                 self.in_code = true;
             }
@@ -565,7 +589,9 @@ impl<'a> Builder<'a> {
                 self.flush_para();
                 let t = self.trim_eol(&r);
                 self.push(t.0, t.1, SpanKind::FootnoteDefinition);
-                self.footnote_def_markup(t);
+                self.role = MarkupRole::Pinned;
+self.footnote_def_markup(t);
+self.role = MarkupRole::Plain;
                 self.container_depth += 1;
             }
             Tag::Table(aligns) => {
@@ -661,7 +687,9 @@ impl<'a> Builder<'a> {
                 let d = self.depth();
                 self.push_block(BlockKind::FrontMatter, t, None, d);
                 if matches!(kind, MetadataBlockKind::YamlStyle | MetadataBlockKind::PlusesStyle) {
-                    self.front_matter_markup(t);
+                    self.role = MarkupRole::FrontMatter;
+self.front_matter_markup(t);
+self.role = MarkupRole::Plain;
                 }
                 self.in_meta = true;
             }
@@ -1141,6 +1169,7 @@ impl<'a> Builder<'a> {
     /// covers are also tried as one-line definitions `[label]: destination "title"` (the
     /// title may be on the next line).
     fn link_definitions(&mut self, defs: &[(usize, usize)]) {
+        self.role = MarkupRole::Pinned;
         for &(s, e) in defs {
             self.definition(s, e);
         }
@@ -1175,6 +1204,7 @@ impl<'a> Builder<'a> {
             }
             self.definition(i, le);
         }
+        self.role = MarkupRole::Plain;
     }
 
     /// Markup and destination of the definition `[label]: dest "title"` in `s..e`, which

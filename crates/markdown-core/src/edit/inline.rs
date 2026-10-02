@@ -643,3 +643,14 @@ pub(crate) fn image(cx: &Ctx, destination: &str, alt: &str, s: usize, e: usize) 
     let caret = if dest.is_empty() { s + 2 + alt.len() + 2 } else { s + text.len() };
     Some(cx.finish(vec![Splice::replace(s, e - s, text)], (caret, caret)))
 }
+
+pub(crate) fn link_to(cx: &Ctx, destination: &str, text: &str, s: usize, e: usize) -> Option<TextEdit> {
+    let selected = &cx.text[s..e];
+    let text = if text.is_empty() && !selected.contains(['\n', '\r']) { selected } else { text };
+    let text = if text.is_empty() { destination } else { text };
+    let label = escape_alt(text);
+    let dest = format_destination(destination);
+    let out = format!("[{label}]({dest})");
+    let caret = s + out.len();
+    Some(cx.finish(vec![Splice::replace(s, e - s, out)], (caret, caret)))
+}

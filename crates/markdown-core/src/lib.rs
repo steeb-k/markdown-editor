@@ -2,6 +2,7 @@
 
 mod analysis;
 pub mod autolink;
+mod conceal;
 mod dirty;
 mod document;
 mod edit;
