@@ -20,7 +20,7 @@ mod types;
 
 pub use document::Document;
 pub use preview_css::{preview_css, syntax_palette, PreviewStyle, SyntaxPalette, Typography};
-pub use render::{slug, RenderOptions};
+pub use render::{slug, ImageSize, RenderOptions};
 pub use theme::{builtin_themes, contrast_ratio, theme_by_id, Color, Colors, Theme};
 pub use types::*;
 

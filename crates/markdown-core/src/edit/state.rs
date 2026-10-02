@@ -43,7 +43,8 @@ pub(crate) fn format_state(doc: &Document, selection: TextRange) -> FormatState 
 }
 
 fn is_link(cx: &Ctx, s: usize, e: usize) -> bool {
-    cx.spans_touching(s, e).iter().any(|sp| sp.kind == SpanKind::Link && sp.start <= s && e <= sp.end)
+    // A link that holds the selection holds its start: only the spans at that point need looking at.
+    cx.spans_touching(s, s).iter().any(|sp| sp.kind == SpanKind::Link && sp.start <= s && e <= sp.end)
 }
 
 /// The list the line belongs to: its own marker, or the item it continues.

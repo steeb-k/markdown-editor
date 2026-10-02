@@ -7,5 +7,5 @@ expression: "d.render_html(&RenderOptions::default())"
     <span class="s-support s-macro s-rust">println!</span>(<span class="s-string s-quoted s-double">"hello"</span>);
 }
 </code></pre>
-<pre><code class="language-python"><span class="s-support s-function s-builtin">print</span>(<span class="s-string s-quoted s-double">"</span><span class="s-string s-quoted s-double">tilde fence"</span>)
+<pre><code class="language-python"><span class="s-variable s-function s-python"><span class="s-support s-function s-builtin">print</span></span>(<span class="s-string s-quoted s-double">"</span><span class="s-string s-quoted s-double">tilde fence"</span>)
 </code></pre>

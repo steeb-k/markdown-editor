@@ -347,6 +347,16 @@ pub struct RenderOptions {
     pub fallback_title: String,
     #[uniffi(default = None)]
     pub style: Option<PreviewStyle>,
+    #[uniffi(default = [])]
+    pub image_sizes: Vec<ImageSize>,
+}
+
+/// A picture's size in points for the destination as written (see `core::ImageSize`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ImageSize {
+    pub destination: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 // ----- conversions (field-by-field, no logic) -----------------------------------------------
@@ -786,6 +796,7 @@ impl From<RenderOptions> for core::RenderOptions {
             highlight: o.highlight,
             fallback_title: o.fallback_title,
             style: o.style.map(Into::into),
+            image_sizes: o.image_sizes.into_iter().map(|s| core::ImageSize { destination: s.destination, width: s.width, height: s.height }).collect(),
         }
     }
 }
@@ -1054,6 +1065,7 @@ mod tests {
             highlight: true,
             fallback_title: String::new(),
             style: None,
+            image_sizes: vec![ImageSize { destination: "p.png".into(), width: 10, height: 20 }],
         };
         let h = d.render_html(opts.clone());
         assert!(h.contains("<h1 id=\"t\" data-line=\"0\">T</h1>") && h.contains("s-storage"), "{h}");

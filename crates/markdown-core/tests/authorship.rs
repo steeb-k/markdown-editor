@@ -581,6 +581,32 @@ fn escaped_colons_in_names() {
 }
 
 #[test]
+fn names_with_backslashes_round_trip() {
+    // A name ending in a backslash used to be written as `x\:` and read back as no name at all.
+    // A backslash is doubled only where it could be read as an escape: before a colon or another
+    // backslash, or at the end; elsewhere the line is written as the spec has it.
+    for name in ["x\\", "\\", "\\\\", "a\\b", "a\\:b", "a\\\\b", "a\\\\", "trail\\\\\\", "colon:in", "a:\\", "\\:", ":", "Review\\", "C:\\Users\\"] {
+        let mut a = Authorship::new(OffsetEncoding::Utf16);
+        a.mark(r(0, 2), Some(&Author::new(AuthorKind::Ai, name)));
+        let f = format!("ab\n{}", a.annotation_block("ab\n", LineEnding::Lf).unwrap());
+        let s = split_annotations(&f);
+        assert_eq!(s.status, AnnotationStatus::Valid, "{name:?}: {f}");
+        let p = s.annotations.as_ref().unwrap();
+        let names: Vec<&str> = p.authors.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, vec![name], "{name:?} written as: {f}");
+        assert_eq!(ranges(&p.authors[0]), vec![(0, 2)], "{name:?}");
+        // And the file is written back the same after reading it.
+        let b = Authorship::from_annotations(&s.body, p, OffsetEncoding::Utf16, "Me");
+        assert_eq!(format!("{}{}", s.body, b.annotation_block(&s.body, LineEnding::Lf).unwrap()), f, "{name:?}");
+    }
+    // Names the spec's rule writes (colons escaped, backslashes bare) read as before.
+    let f = file_with("abc\n", LineEnding::Lf, &[(0, 2, ai())]).replace("&AI:", "&gpt\\:4 a\\b:");
+    let s = split_annotations(&f);
+    assert_eq!(s.status, AnnotationStatus::Valid);
+    assert_eq!(s.annotations.as_ref().unwrap().authors[0].name, "gpt:4 a\\b");
+}
+
+#[test]
 fn hash_mismatch_malformed_and_clamping() {
     let f = file_with("hello world\n", LineEnding::Lf, &[(6, 11, ai())]);
     // Text changed outside the app.

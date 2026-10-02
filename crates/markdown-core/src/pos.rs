@@ -181,7 +181,14 @@ pub(crate) fn pos_units(doc: &Document, within: Option<TextRange>) -> Vec<PosUni
             (Some(bi), Some(cur), Some(g)) if bi == cur => {
                 let table = a.blocks[bi].kind == BlockKind::Table;
                 let last_end = g.1.last().map_or(s, |p| p.1);
-                g.2.push(table || b[last_end..s].iter().any(|&c| matches!(c, b'\n' | b'\r')));
+                let gap = &b[last_end..s];
+                // Inline code between two pieces that touch it (`word`code`word`) sets them apart: it is
+                // drawn as a separate thing, so a tagger must not read the two pieces as one word. (Markup
+                // that only styles, `**`, `_`, link brackets, leaves a word whole.) Where a piece already
+                // ends or starts with a blank, the words are apart anyway.
+                let blank = |c: u8| matches!(c, b' ' | b'\t' | b'\n' | b'\r');
+                let by_code = gap.contains(&b'`') && last_end > 0 && !blank(b[last_end - 1]) && s < b.len() && !blank(b[s]);
+                g.2.push(table || by_code || gap.iter().any(|&c| matches!(c, b'\n' | b'\r')));
                 g.1.push((s, e));
             }
             (Some(bi), _, _) => {

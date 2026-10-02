@@ -165,9 +165,11 @@ fn key_value(line: &str) -> Option<(String, &str)> {
     let mut key = String::new();
     let mut chars = line.char_indices().peekable();
     while let Some((i, c)) = chars.next() {
-        if c == '\\' && matches!(chars.peek(), Some((_, ':'))) {
-            key.push(':');
-            chars.next();
+        // `\:` is a colon in the name (the spec's rule). `\\` is a backslash, so that a name that ends
+        // in one can be written (`x\\` then the separator) and read back; a backslash before anything
+        // else stands for itself, as the spec reads it.
+        if c == '\\' && matches!(chars.peek(), Some((_, ':' | '\\'))) {
+            key.push(chars.next().map_or(c, |(_, n)| n));
         } else if c == ':' {
             return Some((key.trim().to_string(), line[i + 1..].trim_start_matches(' ')));
         } else {
@@ -490,12 +492,21 @@ fn eol(ending: LineEnding) -> &'static str {
 }
 
 /// An author's name as an annotation key: colons escaped, and anything that would end the line
-/// (a name pasted into a settings field can hold a line break) turned into a space.
+/// (a name pasted into a settings field can hold a line break) turned into a space. A backslash is
+/// doubled where it would otherwise be read as part of an escape: before a colon or another backslash,
+/// or at the end of the name (the separator follows it). Names without those are written as they are,
+/// as the spec has it, and names the spec's rule wrote (`a\:b` for `a:b`) read back the same.
 fn escape_key(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect::<String>()
-        .replace(':', "\\:")
+    let chars: Vec<char> = name.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let mut out = String::with_capacity(name.len() + 2);
+    for (i, &c) in chars.iter().enumerate() {
+        match c {
+            ':' => out.push_str("\\:"),
+            '\\' if matches!(chars.get(i + 1), None | Some(':' | '\\')) => out.push_str("\\\\"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 impl Authorship {

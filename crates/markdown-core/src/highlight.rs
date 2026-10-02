@@ -4,13 +4,15 @@
 //! never colors, so the preview's stylesheet decides how they look (see `preview_css`). The
 //! pure-Rust regex backend (`fancy-regex`) keeps the core free of C code.
 //!
-//! The bundled syntax set is loaded once, on first use (a static), and costs tens of
-//! milliseconds; a shell may call [`warm_up`] from a background thread before the first
-//! preview is shown. It is syntect's default set (Sublime's "Packages"): C, C++, C#, CSS, Go,
-//! Haskell, HTML, Java, JavaScript, JSON, LaTeX, Lua, Markdown, Objective-C, OCaml, Perl, PHP,
-//! Python, R, Ruby, Rust, Scala, SQL, shell, XML, YAML and a few more. There is no TypeScript,
-//! TOML, Swift or Kotlin: `ts`, `tsx` and `jsx` borrow JavaScript's rules, every other
-//! unknown language is shown as plain, escaped text.
+//! The bundled syntax set is loaded once, on first use (a static), and costs a few milliseconds;
+//! each language's rules are compiled the first time it is used (10 to 50 ms, TypeScript about 100),
+//! so a shell may call [`warm_up`] from a background thread before the first preview is shown. It
+//! is `two-face`'s set (`bat`'s curated syntaxes, which include Sublime's default packages): 213
+//! syntaxes, among them C, C++, C#, CSS, Dockerfile, Go, Haskell, HTML, Java, JavaScript, JSON,
+//! Kotlin, LaTeX, Lua, Markdown, Objective-C, PHP, Python, Ruby, Rust, SCSS, SQL, shell, Swift,
+//! TOML, TypeScript (and TSX), XML, YAML and Zig. `jsx`, `mjs` and `cjs` borrow JavaScript's rules;
+//! every other unknown language is shown as plain, escaped text. Their licenses are listed in
+//! `Acknowledgements.md` (scripts/gen-acknowledgements.py).
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
@@ -46,7 +48,7 @@ pub fn cost(code: &str) -> usize {
 static SYNTAXES: OnceLock<SyntaxSet> = OnceLock::new();
 
 fn syntaxes() -> &'static SyntaxSet {
-    SYNTAXES.get_or_init(SyntaxSet::load_defaults_newlines)
+    SYNTAXES.get_or_init(two_face::syntax::extra_newlines)
 }
 
 /// Loads the bundled syntaxes now (idempotent). Cheap to call from a worker thread at start-up.
@@ -66,7 +68,10 @@ fn find_syntax(info: &str) -> Option<&'static SyntaxReference> {
     let token = token.trim_start_matches('.');
     let lower = token.to_ascii_lowercase();
     let alias = match lower.as_str() {
-        "ts" | "tsx" | "jsx" | "typescript" | "mjs" | "cjs" => "js",
+        "jsx" | "mjs" | "cjs" => "js",
+        "jsonc" | "json5" => "json",
+        "docker" => "dockerfile",
+        "fsharp" => "fs",
         "shell" | "zsh" | "console" | "shellscript" => "sh",
         "c++" | "cc" | "hpp" | "cxx" => "cpp",
         "objective-c" | "objc" => "m",

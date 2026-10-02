@@ -194,6 +194,9 @@ blockquote {{ padding: 0 0 0 1.1em; border-left: 3px solid var(--rule); color: v
 blockquote > :last-child {{ margin-bottom: 0; }}
 hr {{ border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }}
 img {{ max-width: 100%; height: auto; border-radius: 4px; }}
+p > img:only-child {{ display: block; margin: 0.9em 0; }}
+/* Raw frames and forms are blocked by the page's policy and would leave an empty box. */
+iframe, form, object, embed {{ display: none; }}
 code, pre {{ font-family: {mono}; font-size: {mono_scale}em; }}
 :not(pre) > code {{ background: var(--code-bg); color: var(--code-text); padding: 0.1em 0.35em; border-radius: 4px; }}
 pre {{ background: var(--code-bg); padding: 0.85em 1.1em; border-radius: 6px; overflow-x: auto; line-height: 1.4; tab-size: 4; }}

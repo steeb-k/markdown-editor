@@ -18,7 +18,10 @@ unicode-width = "0.2.2"
 # Fenced-code highlighting for the preview. Pure-Rust regex backend (fancy-regex): no onig, no C,
 # so it builds for both macOS architectures and for Linux. Only the parser and the bundled syntaxes;
 # the class-based HTML is written by `highlight.rs`, and the bundled colour themes and plist/yaml loaders stay out.
-syntect = { version = "5.3.0", default-features = false, features = ["parsing", "default-syntaxes", "dump-load", "regex-fancy"] }
+syntect = { version = "5.3.0", default-features = false, features = ["parsing", "dump-load", "regex-fancy"] }
+# More syntax definitions (TypeScript, TSX, TOML, Swift, Kotlin, Dockerfile, ...): bat's curated set, as a ready-made
+# syntect SyntaxSet. Same pure-Rust regex backend.
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
 
 [dev-dependencies]
 # pulldown-cmark's own HTML writer, as the reference the renderer is compared with (tests/render.rs).

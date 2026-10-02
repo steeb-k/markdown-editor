@@ -1113,11 +1113,18 @@ fn known_languages_are_highlighted_and_unknown_are_not() {
         ("c", "int main() { return 0; }"),
         ("cpp", "class A {};"),
         ("go", "func main() {}"),
-        ("ts", "let a = 1;"),
+        ("ts", "let a: number = 1;"),
+        ("typescript", "interface A { x: string }"),
+        ("tsx", "const a = <div className=\"x\">{y}</div>;"),
+        ("toml", "[package]\nname = \"x\""),
+        ("swift", "let greeting = \"hi\"\nfunc f() -> Int { return 1 }"),
+        ("kotlin", "fun main() { val x = \"hi\" }"),
+        ("dockerfile", "FROM rust:1\nRUN cargo build"),
+        ("rust", "fn main() {}"),
     ] {
         assert!(body(&format!("```{lang}\n{code}\n```\n")).contains("class=\"s-"), "{lang}");
     }
-    for unknown in ["klingon", "text", "txt", "plaintext", "toml", ""] {
+    for unknown in ["klingon", "text", "txt", "plaintext", ""] {
         let h = body(&format!("```{unknown}\na < b\n```\n"));
         assert!(!h.contains("<span"), "{unknown:?}: {h}");
         assert!(h.contains("a &lt; b\n</code></pre>"), "{h}");
@@ -1376,4 +1383,24 @@ fn data_lines_hold_on_random_documents() {
         }
         check_data_lines(&text).unwrap_or_else(|e| panic!("{text:?}: {e}"));
     }
+}
+
+#[test]
+fn pictures_with_a_known_size_carry_it() {
+    use markdown_core::ImageSize;
+    let sizes = vec![
+        ImageSize { destination: "shot.png".into(), width: 640, height: 400 },
+        ImageSize { destination: "zero.png".into(), width: 0, height: 10 },
+    ];
+    let with = RenderOptions { image_sizes: sizes, ..Default::default() };
+    let html = |text: &str, o: &RenderOptions| doc(text).render_html(o);
+    assert_eq!(html("![A *shot*](shot.png)\n", &with), "<p><img src=\"shot.png\" alt=\"A shot\" width=\"640\" height=\"400\" /></p>\n");
+    assert_eq!(
+        html("![A](shot.png \"The \\\" title\")\n", &with),
+        "<p><img src=\"shot.png\" alt=\"A\" width=\"640\" height=\"400\" title=\"The &quot; title\" /></p>\n"
+    );
+    // Not listed, listed with no size, or without sizes at all: as before, byte for byte.
+    assert_eq!(html("![A](other.png)\n", &with), "<p><img src=\"other.png\" alt=\"A\" /></p>\n");
+    assert_eq!(html("![A](zero.png)\n", &with), "<p><img src=\"zero.png\" alt=\"A\" /></p>\n");
+    assert_eq!(html("![A](shot.png \"t\")\n", &plain()), "<p><img src=\"shot.png\" alt=\"A\" title=\"t\" /></p>\n");
 }

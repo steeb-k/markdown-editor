@@ -340,3 +340,22 @@ fn worst_case_renders_are_bounded() {
     }
     assert!(worst < bound, "a render took {worst:.1} ms (bound {bound} ms)");
 }
+
+/// Select All in a big document: the format state is answered from the first parts of the selection
+/// that settle it, not by reading every span in it (it cost 13 to 44 ms at 1 MB before).
+#[test]
+#[ignore]
+fn select_all_format_state_does_not_read_the_whole_document() {
+    let text = realistic(1 << 20);
+    let doc = Document::new(&text, OffsetEncoding::Utf16);
+    let all = TextRange::new(0, doc.len());
+    let mut times = vec![];
+    for _ in 0..21 {
+        let t = Instant::now();
+        let _ = doc.format_state(all);
+        times.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    let m = med(times);
+    println!("format_state over Select All at 1 MB: median {m:.3} ms");
+    assert!(m < 2.0, "{m} ms");
+}

@@ -577,6 +577,23 @@ fn pos_units_are_one_per_block_with_prose() {
 }
 
 #[test]
+fn prose_on_either_side_of_inline_code_is_two_words() {
+    // `foo`x`bar` is a word, a piece of code and a word: the tagger must not be handed "foobar".
+    let text = "foo`x`bar and **bo**`y`**ld** then `a`b and c`d` end.\n";
+    let (_, u) = units(text);
+    assert_eq!(u.len(), 1);
+    let pieces: Vec<String> = u[0].prose.iter().map(|r| slice_units(text, OffsetEncoding::Utf16, *r)).collect();
+    assert_eq!(pieces, ["foo", "bar and ", "bo", "ld", " then ", "b and c", " end."]);
+    // Joined text: "foo bar and bo ld then b and c end." (the code is gone, the pieces that touched it are apart).
+    let joined: String = joined_text(text, OffsetEncoding::Utf16, &u[0]);
+    assert!(joined.starts_with("foo bar and "), "{joined:?}");
+    assert!(joined.contains("bo ld then"), "{joined:?}");
+    // Code beside a blank leaves the text as it was: no second blank.
+    let (_, u) = units("Some `code` and more `code`.\n");
+    assert_eq!(joined_text("Some `code` and more `code`.\n", OffsetEncoding::Utf16, &u[0]), "Some  and more .");
+}
+
+#[test]
 fn table_cells_are_separated() {
     let text = "| ab | cd |\n|----|----|\n| ef | gh |\n";
     let (_, u) = units(text);
@@ -886,7 +903,11 @@ proptest! {
                         // the selection itself is lit).
                         let lit = |rs: &[TextRange], u: u32| rs.iter().any(|r| r.start <= u && u < r.end);
                         let (lo, hi) = (sel.start.min(sel.end), sel.start.max(sel.end));
-                        let meets = lo.max(window.start) < hi.min(window.end);
+                        // (A selection end between a CR and its LF is the position before the CR, for the
+                        // window as well as for the units.)
+                        let split = hi > 0 && slice_units(&text, enc, TextRange::new(hi - 1, hi)) == "\r" && slice_units(&text, enc, TextRange::new(hi, hi + 1)) == "\n";
+                        let hi_seen = if split { hi - 1 } else { hi };
+                        let meets = lo.max(window.start) < hi_seen.min(window.end);
                         for u in 0..doc.len() {
                             prop_assert!(!lit(got, u) || lit(whole, u), "{} lit beyond the whole answer", u);
                             if !meets {

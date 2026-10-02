@@ -54,6 +54,18 @@ pub struct RenderOptions {
     pub fallback_title: String,
     /// Theme and typography of the standalone document's stylesheet (`None`: Light, defaults).
     pub style: Option<PreviewStyle>,
+    /// What the shell knows about the pictures the document refers to (the core reads no files):
+    /// their size in points. An `<img>` for a destination listed here carries `width` and `height`,
+    /// so the page reserves its room before the picture arrives and nothing jumps.
+    pub image_sizes: Vec<ImageSize>,
+}
+
+/// A picture's size, in CSS pixels (points), for the destination exactly as written in the Markdown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageSize {
+    pub destination: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Default for RenderOptions {
@@ -65,6 +77,7 @@ impl Default for RenderOptions {
             highlight: true,
             fallback_title: String::new(),
             style: None,
+            image_sizes: Vec::new(),
         }
     }
 }
@@ -868,11 +881,17 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 _ => {}
             }
         }
-        if !title.is_empty() {
-            self.write("\" title=\"");
-            self.attr(title);
+        self.write("\"");
+        if let Some(s) = self.opts.image_sizes.iter().find(|s| s.destination == dest && s.width > 0 && s.height > 0) {
+            let size = format!(" width=\"{}\" height=\"{}\"", s.width, s.height);
+            self.write(&size);
         }
-        self.write("\" />");
+        if !title.is_empty() {
+            self.write(" title=\"");
+            self.attr(title);
+            self.write("\"");
+        }
+        self.write(" />");
     }
 
     fn start_tag(&mut self, tag: Tag<'a>, index: usize, range: &Range<usize>) {

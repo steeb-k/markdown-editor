@@ -124,16 +124,27 @@ fn cover(cx: &Ctx, elems: &[R], seg: R) -> Cover {
 
 /// Does inline formatting of `kind` apply (is it already on) for this selection? Shared
 /// with `format_state`.
+///
+/// The parts are looked at one at a time, each against the elements that touch it, and the first
+/// part that is not formatted ends the question: a Select All over a big document that is not all
+/// of one kind is answered after its first paragraph, not after all of it.
 pub(crate) fn is_active(cx: &Ctx, kind: Kind, s: usize, e: usize) -> bool {
-    let elems = elements(cx, kind, s, e);
     if s == e {
-        return elems.iter().any(|el| el.0 <= s && s <= el.1);
+        return elements(cx, kind, s, e).iter().any(|el| el.0 <= s && s <= el.1);
     }
-    let segs = segments(cx, s, e);
+    let mut covered = true;
+    let (segs, stopped) = collect_segments(cx, s, e, &mut |sg| {
+        covered = !matches!(cover(cx, &elements(cx, kind, sg.0, sg.1), sg), Cover::No);
+        covered
+    });
+    if stopped {
+        return false;
+    }
     if segs.is_empty() {
-        return elems.iter().any(|el| el.0 <= e && e <= el.1);
+        return elements(cx, kind, e, e).iter().any(|el| el.0 <= e && e <= el.1);
     }
-    segs.iter().all(|&sg| !matches!(cover(cx, &elems, sg), Cover::No))
+    // The last part (and any a table row gave) was not looked at on the way.
+    segs.iter().all(|&sg| !matches!(cover(cx, &elements(cx, kind, sg.0, sg.1), sg), Cover::No))
 }
 
 fn trim_range(cx: &Ctx, a: usize, b: usize) -> R {
@@ -148,6 +159,12 @@ fn trim_range(cx: &Ctx, a: usize, b: usize) -> R {
 /// a container prefix intervenes), without container markers, heading markers or blanks.
 /// Table lines yield one segment per selected cell; code, HTML and front matter yield none.
 pub(crate) fn segments(cx: &Ctx, s: usize, e: usize) -> Vec<R> {
+    collect_segments(cx, s, e, &mut |_| true).0
+}
+
+/// [`segments`], handing each part to `keep_going` as soon as it is final (the next one has started),
+/// and stopping early when it says no. Returns the parts found so far and whether it stopped.
+fn collect_segments(cx: &Ctx, s: usize, e: usize, keep_going: &mut dyn FnMut(R) -> bool) -> (Vec<R>, bool) {
     let (l0, l1) = cx.affected(s, e);
     let mut out: Vec<R> = Vec::new();
     let mut prev: Option<(usize, usize)> = None; // (line, leaf block start) of the last segment
@@ -233,11 +250,18 @@ pub(crate) fn segments(cx: &Ctx, s: usize, e: usize) -> Vec<R> {
                     last.1 = b;
                 }
             }
-            _ => out.push((a, b)),
+            _ => {
+                if let Some(&done) = out.last()
+                    && !keep_going(done)
+                {
+                    return (out, true);
+                }
+                out.push((a, b));
+            }
         }
         prev = key.map(|k| (l, k));
     }
-    out
+    (out, false)
 }
 
 fn removal(cx: &Ctx, kind: Kind, elems: &[R], idx: &[usize], out: &mut Vec<Splice>) {
