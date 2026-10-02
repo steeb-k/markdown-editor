@@ -1404,3 +1404,100 @@ fn pictures_with_a_known_size_carry_it() {
     assert_eq!(html("![A](zero.png)\n", &with), "<p><img src=\"zero.png\" alt=\"A\" /></p>\n");
     assert_eq!(html("![A](shot.png \"t\")\n", &plain()), "<p><img src=\"shot.png\" alt=\"A\" title=\"t\" /></p>\n");
 }
+
+// ----- highlighting: the two-face set (M7) ------------------------------------------------------
+
+/// Inputs that make highlighters work hard: unclosed strings and comments, deep nesting, escapes at
+/// the end of lines, heredocs, punctuation soup, long lines just under the plain-text limit.
+fn pathological_code() -> Vec<String> {
+    let soup: String = (0..900u32).map(|i| b"\"'`\\/*#<>{}[]()$@%;:=-+!?&|~^.,\n"[(i as usize * 7 + i as usize / 3) % 32] as char).collect();
+    vec![
+        format!("\"{}", "a".repeat(950)),
+        format!("/* {}", "comment line\n".repeat(200)),
+        "(".repeat(900) + &")".repeat(90),
+        "{\n".repeat(400),
+        "a\\".repeat(495),
+        format!("<<EOF\n{}EOF", "${x} `y` $(z)\n".repeat(50)),
+        format!("'''\n{}", "\"\"\" ' \\' \n".repeat(100)),
+        soup,
+        "<".repeat(999),
+        "x = 1\n".repeat(3000),
+        "\u{1F600}é\u{0301}\t\r\n\u{0}".repeat(60),
+    ]
+}
+
+/// A language's token as a fence would name it: its first file extension, or its name's first word.
+fn language_tokens() -> Vec<String> {
+    let ss = two_face::syntax::extra_newlines();
+    ss.syntaxes()
+        .iter()
+        .map(|s| s.file_extensions.first().cloned().unwrap_or_else(|| s.name.split_whitespace().next().unwrap_or("").to_lowercase()))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+#[test]
+fn fifteen_languages_render_coloured_and_pathological_input_is_survived() {
+    let langs = [
+        "rust", "python", "js", "ts", "tsx", "swift", "kotlin", "go", "c", "cpp", "java", "ruby", "sh", "toml", "yaml",
+        "json", "sql", "html", "css", "dockerfile",
+    ];
+    let samples = [
+        "let x = \"s\"; // c\nfn f() {}", "def f(x):\n    return 'a'  # c", "const a = `t${b}`; // c", "let a: number = 1;",
+        "const a = <div className=\"x\">{y}</div>;", "func f() -> Int { return 1 }", "fun f(): Int = 1 // c", "func f() { s := \"x\" }",
+        "int main() { return 0; } /* c */", "template<class T> class A {};", "class A { String s = \"x\"; }", "def f; 'x'; end # c",
+        "echo \"$HOME\" # c", "[a]\nb = \"c\"", "a: \"b\" # c", "{\"a\": [1, true, null]}", "SELECT a FROM b WHERE c = 'd';",
+        "<p class=\"a\">b</p>", "a { color: red; } /* c */", "FROM rust:1\nRUN cargo build",
+    ];
+    for (lang, code) in langs.iter().zip(samples) {
+        let h = body(&format!("```{lang}\n{code}\n```\n"));
+        assert!(h.contains("<span class=\"s-"), "{lang}: {h}");
+    }
+    for unknown in ["klingon", "notalanguage", "x-y-z"] {
+        assert!(!body(&format!("```{unknown}\n\"a\" < b\n```\n")).contains("<span"), "{unknown}");
+    }
+    // The same twenty with every pathological input: no panic, no hang, the text always there.
+    for lang in langs {
+        for code in pathological_code() {
+            let html = body(&format!("````{lang}\n{code}\n````\n"));
+            assert!(html.contains("</code></pre>"), "{lang}");
+        }
+    }
+}
+
+/// Every syntax two-face carries (213), with every pathological input and with random text: no
+/// panic, and no block costs more than a bound. Run with --release; the debug build is slow to
+/// compile 213 grammars.
+#[test]
+#[ignore]
+fn every_bundled_syntax_survives_pathological_input() {
+    use std::time::{Duration, Instant};
+    let tokens = language_tokens();
+    assert!(tokens.len() > 150, "{} syntaxes", tokens.len());
+    let mut worst = (Duration::ZERO, String::new());
+    let mut seed: u64 = 99;
+    let mut random = || {
+        let mut s = String::new();
+        for _ in 0..400 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s.push(b" \t\n\"'`\\/*#<>{}[]()$@%;:=abcXYZ019"[(seed >> 59) as usize % 32] as char);
+        }
+        s
+    };
+    for token in &tokens {
+        let mut inputs = pathological_code();
+        inputs.push(random());
+        inputs.push(random());
+        for code in inputs {
+            let t = Instant::now();
+            let result = std::panic::catch_unwind(|| highlight::highlight_until(token, &code, Some(Instant::now() + Duration::from_secs(5))));
+            let took = t.elapsed();
+            assert!(result.is_ok(), "{token}: panicked on {code:?}");
+            if took > worst.0 {
+                worst = (took, token.clone());
+            }
+        }
+    }
+    println!("{} syntaxes; slowest block: {:?} ({})", tokens.len(), worst.0, worst.1);
+    assert!(worst.0 < Duration::from_secs(3), "{:?} for {}", worst.0, worst.1);
+}

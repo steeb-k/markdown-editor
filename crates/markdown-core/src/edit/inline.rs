@@ -678,3 +678,71 @@ pub(crate) fn link_to(cx: &Ctx, destination: &str, text: &str, s: usize, e: usiz
     let caret = s + out.len();
     Some(cx.finish(vec![Splice::replace(s, e - s, out)], (caret, caret)))
 }
+
+#[cfg(test)]
+mod early_exit {
+    //! `is_active` stops at the first part of a selection that is not formatted, and `is_link` looks
+    //! only at the spans at the selection's start (both M7). Here both are compared, on many random
+    //! documents and every kind of selection, with the evaluations they replaced.
+    use super::*;
+    use crate::{Document, OffsetEncoding, SpanKind, TextRange};
+
+    /// `is_active` as it was: every part of the selection against all the elements in it.
+    fn is_active_full(cx: &Ctx, kind: Kind, s: usize, e: usize) -> bool {
+        let elems = elements(cx, kind, s, e);
+        if s == e {
+            return elems.iter().any(|el| el.0 <= s && s <= el.1);
+        }
+        let segs = segments(cx, s, e);
+        if segs.is_empty() {
+            return elems.iter().any(|el| el.0 <= e && e <= el.1);
+        }
+        segs.iter().all(|&sg| !matches!(cover(cx, &elems, sg), Cover::No))
+    }
+
+    fn is_link_full(cx: &Ctx, s: usize, e: usize) -> bool {
+        cx.spans_touching(s, e).iter().any(|sp| sp.kind == SpanKind::Link && sp.start <= s && e <= sp.end)
+    }
+
+    const PIECES: &[&str] = &[
+        "**bold**", "*em*", "_em_", "~~gone~~", "~one~", "`code`", "``a`b``", "***both***", "**a *b* c**",
+        "*a **b** c*", "word", " ", "  ", "\n", "\n\n", "- ", "1. ", "> ", "# ", "## ", "- [ ] ",
+        "[link](http://x.y)", "[**strong link**](u)", "https://example.com/a", "![pic](p.png)",
+        "| a | **b** |\n| --- | --- |\n| `c` | d |\n", "```\ncode **not**\n```\n", "    indented\n",
+        "**open", "close**", "\\*", "<b>html</b>", "[^1]", "\r\n", "---\n",
+    ];
+
+    #[test]
+    fn early_exit_agrees_with_the_full_evaluation() {
+        let mut seed: u64 = 0x5EED_1234_ABCD_0001;
+        let mut rnd = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) as usize) % n.max(1)
+        };
+        let mut compared = 0usize;
+        for _ in 0..400 {
+            let count = 1 + rnd(14);
+            let text: String = (0..count).map(|_| PIECES[rnd(PIECES.len())]).collect();
+            let doc = Document::new(&text, OffsetEncoding::Utf8);
+            let cx = Ctx::new(&doc);
+            let n = text.len() as u32;
+            for _ in 0..60 {
+                let (a, b) = (rnd(n as usize + 1) as u32, rnd(n as usize + 1) as u32);
+                let (s, e) = cx.sel(TextRange::new(a.min(b), a.max(b)));
+                for kind in [Kind::Strong, Kind::Emphasis, Kind::Strike, Kind::Code] {
+                    assert_eq!(is_active(&cx, kind, s, e), is_active_full(&cx, kind, s, e), "{kind:?} {s}..{e} in {text:?}");
+                }
+                assert_eq!(super::super::state::is_link_for_tests(&cx, s, e), is_link_full(&cx, s, e), "link {s}..{e} in {text:?}");
+                compared += 1;
+            }
+            // Select All, and every selection that starts or ends at the ends of the text.
+            for (a, b) in [(0, n), (0, n / 2), (n / 2, n)] {
+                let (s, e) = cx.sel(TextRange::new(a, b));
+                for kind in [Kind::Strong, Kind::Emphasis, Kind::Strike, Kind::Code] {
+                    assert_eq!(is_active(&cx, kind, s, e), is_active_full(&cx, kind, s, e), "{kind:?} {s}..{e} in {text:?}");
+                }
+            }
+        }
+        assert!(compared > 20_000);
+    }
+}

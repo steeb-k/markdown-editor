@@ -168,7 +168,7 @@ body {{
 .md > :first-child {{ margin-top: 0; }}
 p, ul, ol, dl, pre, blockquote, table {{ margin: 0 0 1em; }}
 h1, h2, h3, h4, h5, h6 {{
-  color: var(--heading); font-weight: 700; line-height: 1.3; margin: 0.35em 0 0.4em;
+  color: var(--heading); font-weight: 700; line-height: 1.3; margin: 0.35em 0 0.6em;
   scroll-margin-top: calc(var(--chrome-top) + 16px);
 }}
 h1 {{ font-size: 1.7em; margin-top: 0.55em; }}
@@ -194,7 +194,8 @@ blockquote {{ padding: 0 0 0 1.1em; border-left: 3px solid var(--rule); color: v
 blockquote > :last-child {{ margin-bottom: 0; }}
 hr {{ border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }}
 img {{ max-width: 100%; height: auto; border-radius: 4px; }}
-p > img:only-child {{ display: block; margin: 0.9em 0; }}
+/* A picture on its own line has room around it, as in the editor (where it is a line of its own between blank ones). */
+p > img:only-child {{ display: block; margin: 1.8em 0; }}
 /* Raw frames and forms are blocked by the page's policy and would leave an empty box. */
 iframe, form, object, embed {{ display: none; }}
 code, pre {{ font-family: {mono}; font-size: {mono_scale}em; }}
@@ -205,7 +206,8 @@ table {{ border-collapse: collapse; max-width: 100%; }}
 th, td {{ border: 1px solid var(--border); padding: 0.4em 0.8em; vertical-align: top; }}
 th {{ background: var(--code-bg); font-weight: 700; text-align: left; }}
 .footnotes {{ margin-top: 3em; padding-top: 0.5em; border-top: 1px solid var(--rule); font-size: 0.9em; color: var(--quote); }}
-.footnotes ol {{ padding-left: 1.5em; }}
+/* Wide enough for the number: it sits inside the column, where the editor's `[^n]:` does. */
+.footnotes ol {{ padding-left: 2.2em; }}
 .footnotes li {{ scroll-margin-top: calc(var(--chrome-top) + 16px); }}
 .footnotes p {{ margin-bottom: 0.4em; }}
 .footnote-ref {{ font-size: 0.75em; line-height: 0; }}

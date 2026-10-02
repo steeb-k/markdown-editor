@@ -606,6 +606,33 @@ fn names_with_backslashes_round_trip() {
     assert_eq!(s.annotations.as_ref().unwrap().authors[0].name, "gpt:4 a\\b");
 }
 
+proptest! {
+    /// Any name made of letters, blanks, colons and backslashes (in any order, at either end, doubled)
+    /// is written so that it reads back as itself, beside a second author, and the file is written
+    /// back byte for byte. (Leading and trailing blanks are not part of a name: keys are trimmed.)
+    #[test]
+    fn any_name_with_colons_and_backslashes_round_trips(
+        raw in proptest::collection::vec(prop_oneof![Just('a'), Just('\\'), Just(':'), Just(' '), Just('é')], 1..10),
+        other in proptest::collection::vec(prop_oneof![Just('b'), Just('\\'), Just(':')], 1..6),
+    ) {
+        let name: String = raw.into_iter().collect::<String>().trim().to_string();
+        let other: String = other.into_iter().collect();
+        prop_assume!(!name.is_empty() && name != other);
+        let mut a = Authorship::new(OffsetEncoding::Utf16);
+        a.mark(r(0, 2), Some(&Author::new(AuthorKind::Ai, &name)));
+        a.mark(r(3, 5), Some(&Author::new(AuthorKind::Reference, &other)));
+        let body = "ab cd\n";
+        let f = format!("{body}{}", a.annotation_block(body, LineEnding::Lf).unwrap());
+        let s = split_annotations(&f);
+        prop_assert_eq!(s.status, AnnotationStatus::Valid, "{}", f);
+        let p = s.annotations.as_ref().unwrap();
+        let names: Vec<&str> = p.authors.iter().map(|a| a.name.as_str()).collect();
+        prop_assert_eq!(names, vec![name.as_str(), other.as_str()], "{}", f);
+        let b = Authorship::from_annotations(&s.body, p, OffsetEncoding::Utf16, "Me");
+        prop_assert_eq!(format!("{}{}", s.body, b.annotation_block(&s.body, LineEnding::Lf).unwrap()), f);
+    }
+}
+
 #[test]
 fn hash_mismatch_malformed_and_clamping() {
     let f = file_with("hello world\n", LineEnding::Lf, &[(6, 11, ai())]);

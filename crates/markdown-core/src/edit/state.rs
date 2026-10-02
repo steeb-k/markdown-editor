@@ -42,6 +42,11 @@ pub(crate) fn format_state(doc: &Document, selection: TextRange) -> FormatState 
     }
 }
 
+#[cfg(test)]
+pub(crate) fn is_link_for_tests(cx: &Ctx, s: usize, e: usize) -> bool {
+    is_link(cx, s, e)
+}
+
 fn is_link(cx: &Ctx, s: usize, e: usize) -> bool {
     // A link that holds the selection holds its start: only the spans at that point need looking at.
     cx.spans_touching(s, s).iter().any(|sp| sp.kind == SpanKind::Link && sp.start <= s && e <= sp.end)
