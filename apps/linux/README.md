@@ -43,4 +43,29 @@ What a GTK shell writes for the focus tools, given what the core already does:
   `set_origin(body, raw_tail, ending)`, and on `HashMismatch` / `Malformed` ask Keep or Discard
   before the buffer is editable. On save write `body` then `file_tail(text, ending)`.
 
+- **Preview and export** are core calls, so a GTK shell hosts a web view and nothing more:
+  - `Document::render_html(&RenderOptions { source_lines: true, standalone: true, style: Some(PreviewStyle { theme, typography }), .. })`
+    is a complete HTML5 page (charset, viewport, title, the stylesheet); without `standalone` it is the
+    body, for replacing a running page's content. `render_html_fragment(range, options)` renders the
+    whole blocks a selection touches (an empty range: everything); with `sanitize: true` raw HTML is
+    filtered, which is what the clipboard wants. `preview_css(theme, typography)` is the stylesheet
+    alone, for a theme change without a reload. Run the render on the worker thread that owns the
+    `Document`, debounced after edits (short for small texts, longer for large ones), and keep at most one in flight.
+  - Show it in **WebKitGTK with page JavaScript off** (`WebKitSettings:enable-javascript = false`): a
+    document's raw HTML passes through unchanged and is not trusted. Run your own script (scroll sync,
+    in-place body replacement) with `webkit_web_view_run_javascript` / a user script in an isolated
+    world (`webkit_user_content_manager`), which JavaScript-off does not stop. Replace the content of
+    `<main id="md">` instead of reloading, so the scroll position survives.
+  - `source_lines` puts `data-line="N"` (0-based first source line) on every block-level element: scroll
+    sync is "line of the editor's top visible text" to the nearest preceding element and back, interpolating
+    between the elements either side (see `ScrollSync` in the macOS shell; the same few lines in JS).
+  - Local pictures: serve document-relative files through a custom URI scheme (`webkit_web_context_register_uri_scheme`)
+    that reads through your file-access seam rather than `file:`; the base URI of the page is the scheme root.
+  - PDF and printing: load the standalone page into an offscreen web view and use `WebKitPrintOperation`
+    (the page's `@media print` section makes it light, paginated, links without URLs). Syntax highlighting
+    is class-based (`s-keyword`, ...; syntect with its pure-Rust regex backend, no C), coloured by the
+    stylesheet. `highlight::warm_up()` loads the syntaxes (about a millisecond; the first block of each
+    language compiles its patterns), call it from a worker thread before the first preview.
+  - The core's text never holds the authorship annotation block, so a preview rendered from it cannot show it.
+
 Open question: which part-of-speech tagger Linux uses (macOS uses NLTagger).

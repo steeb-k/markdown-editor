@@ -104,6 +104,13 @@ extension EditorSession {
         onViewModeChange?()
     }
 
+    /// Editor, Split or Preview. The text view keeps its selection and scroll while it is not shown.
+    public func setLayout(_ mode: LayoutMode) {
+        guard mode != layout else { return }
+        layout = mode
+        onLayoutChange?()
+    }
+
     // MARK: querying
 
     /// The text range to ask the core about: what is on screen and a margin around it.

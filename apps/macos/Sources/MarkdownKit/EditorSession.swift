@@ -19,6 +19,11 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// How the text is shown in this window. Set through `setViewMode`.
     public internal(set) var viewMode: ViewMode
     public var onViewModeChange: (() -> Void)?
+    /// Whether this window shows the editor, the preview or both. Set through `setLayout`.
+    public internal(set) var layout: LayoutMode
+    public var onLayoutChange: (() -> Void)?
+    /// Told after every edit of the text (a keystroke, a load, an undo): the preview schedules a render.
+    public var onTextChange: (() -> Void)?
     /// The text range the layout manager's live state was last computed for.
     var liveWindow = NSRange(location: 0, length: 0)
     /// The text range focus mode's ranges were last asked for.
@@ -125,6 +130,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         appearance = EditorAppearance(settings: settings, appearance: forcedAppearance)
         styler = Styler(appearance: appearance)
         viewMode = settings.defaultViewMode
+        layout = settings.defaultLayout
         focusEnabled = settings.focusMode
         syntaxEnabled = settings.syntaxHighlight
         authorship = Authorship(me: settings.authorName)
@@ -234,6 +240,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         inDelegate = true
         coordinator.waitForResult(seq: seq)
         inDelegate = false
+        onTextChange?()
     }
 
     // MARK: results

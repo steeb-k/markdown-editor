@@ -7,8 +7,9 @@ Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-a
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
 # an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes,
-# Live-mode concealment, focus ranges, part-of-speech units, and authorship: run arithmetic and the
-# Markdown Annotations format)
+# Live-mode concealment, focus ranges, part-of-speech units, authorship: run arithmetic and the
+# Markdown Annotations format, and the HTML renderer: fixture snapshots, every CommonMark example, GFM,
+# data-line, slugs, the sanitizer, fragments, highlighting, the stylesheet and its contrast)
 cargo test --workspace
 # Heavier fuzzing: the `fuzz` profile is optimized but keeps debug assertions, so the span
 # sanitizer's "nothing was dropped" check stays armed.
@@ -21,7 +22,8 @@ cargo test --workspace
 # INSTA_UPDATE=always cargo test -p markdown-core --test fixtures       # accept changed snapshots (review the diff!)
 # PROPTEST_CASES=1000000 cargo test --profile fuzz -p markdown-core --test authorship   # authorship arithmetic and the file format
 # cargo test -p markdown-core --test authorship -- --ignored spec_readme    # the format's own spec README (fetched, not vendored) still verifies
-# cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing
+# cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing, HTML rendering included
+# RENDER_FUZZ_CASES=50000 cargo test --profile fuzz -p markdown-core --test render rendering_never_panics   # render fuzzing
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
 
 # Build the core: static lib + Swift bindings + XCFramework (host arch, debug)
@@ -51,6 +53,9 @@ scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-live.json   # the same in Live mode
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/threshold.json  # Live mode either side of the whole-text limit
+scripts/macos/ui-script.sh scripts/macos/ui/preview.json        # Split and Preview layouts: three themes, typing, scroll sync both ways, links, fonts, snapshots of the web view
+scripts/macos/ui-script.sh scripts/macos/ui/preview-export.json # PDF export (Dark, Sepia; preview hidden, split, preview): pages, text, picture, white page, margins
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB in Split: typing with the preview closed and open, preview latency
 scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
 scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
 ```

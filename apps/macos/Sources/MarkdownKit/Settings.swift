@@ -82,6 +82,8 @@ public final class Settings: NSObject {
         static let showToolbar = "showFormattingToolbar"
         static let autoHide = "autoHideChrome"
         static let defaultViewMode = "defaultViewMode"
+        static let defaultLayout = "defaultLayout"
+        static let splitRatio = "previewSplitRatio"
         static let focusMode = "focusMode"
         static let focusScope = "focusScope"
         static let syntaxHighlight = "syntaxHighlight"
@@ -103,6 +105,8 @@ public final class Settings: NSObject {
             Key.showToolbar: true,
             Key.autoHide: true,
             Key.defaultViewMode: ViewMode.source.rawValue,
+            Key.defaultLayout: LayoutMode.editor.rawValue,
+            Key.splitRatio: 0.5,
             Key.focusMode: false,
             Key.focusScope: FocusScopeChoice.sentence.rawValue,
             Key.syntaxHighlight: false,
@@ -164,6 +168,19 @@ public final class Settings: NSObject {
     public var defaultViewMode: ViewMode {
         get { ViewMode(rawValue: defaults.string(forKey: Key.defaultViewMode) ?? "") ?? .source }
         set { defaults.set(newValue.rawValue, forKey: Key.defaultViewMode); changed() }
+    }
+
+    /// The layout new windows start in: the editor alone, the editor and the preview, or the preview.
+    public var defaultLayout: LayoutMode {
+        get { LayoutMode(rawValue: defaults.string(forKey: Key.defaultLayout) ?? "") ?? .editor }
+        set { defaults.set(newValue.rawValue, forKey: Key.defaultLayout); changed() }
+    }
+
+    /// The editor's share of the width in the Split layout, remembered across windows and launches.
+    /// Setting it posts no change notification (a drag of the divider would be a storm of them).
+    public var splitRatio: Double {
+        get { min(max(defaults.double(forKey: Key.splitRatio), 0.25), 0.75) }
+        set { defaults.set(min(max(newValue, 0.25), 0.75), forKey: Key.splitRatio) }
     }
 
     public var autoHideChrome: Bool {

@@ -2,6 +2,7 @@
 import AppKit
 import MarkdownCore
 import Network
+import WebKit
 
 /// A self-driving mode for checking the real app without Accessibility permissions: the app
 /// reads a JSON script, drives itself on the main run loop through the same paths a user
@@ -186,6 +187,53 @@ final class UIScriptRunner {
 
         if let path = str("open") {
             open(path, folder: step["folder"] as? Bool ?? false, then: done)
+        } else if let mode = str("layout") {
+            session?.setLayout(LayoutMode(rawValue: mode) ?? .editor)
+            record(["layout": mode], ok: session?.layout.rawValue == mode)
+            done()
+        } else if step["waitPreview"] != nil {
+            let p = controller?.previewController
+            let ok = p?.waitUntilSettled(timeout: num("waitPreview") ?? 30) ?? false
+            record(["waitPreview": ok, "renders": p?.renders ?? 0, "applied": p?.applied ?? 0, "superseded": p?.superseded ?? 0,
+                    "latency_ms": (p?.lastLatency ?? 0) * 1000, "core_render_ms": (p?.lastRenderTime ?? 0) * 1000,
+                    "page_update_ms": (p?.lastApplyTime ?? 0) * 1000,
+                    "files": ["requests": p?.schemeHandler.requests.map(\.absoluteString).suffix(4) ?? [], "served": p?.schemeHandler.served ?? 0, "denied": p?.schemeHandler.denied ?? 0, "failed": p?.schemeHandler.failed ?? 0]], ok: ok)
+            done()
+        } else if let js = str("evalPreview") {
+            let r = controller?.previewController.evaluateSync(js)
+            record(["evalPreview": "\(String(describing: r))"], ok: true)
+            done()
+        } else if let name = str("exportPDF") {
+            exportPDF(name, then: done)
+        } else if let kind = str("copyAs") {
+            let pb = scriptPasteboard()
+            let ok = pb.map { session?.copyAs(kind == "html" ? .html : .richText, range: textView?.selectedRange() ?? NSRange(location: 0, length: 0), to: $0) ?? false } ?? false
+            record(["copyAs": kind, "types": pb?.types?.map(\.rawValue) ?? []], ok: ok)
+            done()
+        } else if let f = (step["previewScroll"] as? NSNumber)?.doubleValue {
+            // Scrolls the preview the way a person would (its own scroll event is the user's).
+            let p = controller?.previewController
+            _ = p?.evaluateSync("const m = Math.max(0, document.documentElement.scrollHeight - window.innerHeight); window.scrollTo(0, m * f); return m;", arguments: ["f": f])
+            record(["previewScroll": f], ok: p != nil)
+            later(0.3, done)
+        } else if let f = (step["editorScroll"] as? NSNumber)?.doubleValue {
+            if let tv = textView, let sv = tv.enclosingScrollView {
+                let clip = sv.contentView
+                let top = -sv.contentInsets.top
+                let range = max(0, tv.frame.height - clip.bounds.height + sv.contentInsets.bottom - top)
+                clip.scroll(to: NSPoint(x: 0, y: top + range * CGFloat(f)))
+                sv.reflectScrolledClipView(clip)
+            }
+            record(["editorScroll": f], ok: textView != nil)
+            later(0.3, done)
+        } else if let needle = str("clickPreviewLink") {
+            // A click on the link whose text contains `needle`, in the page (the policy decides what happens).
+            let p = controller?.previewController
+            let found = p?.evaluateSync("const a = [...document.querySelectorAll('a')].find(x => x.textContent.includes(needle)); if (!a) return false; a.click(); return true;", arguments: ["needle": needle]) as? Bool
+            record(["clickPreviewLink": needle, "found": found ?? false, "action": "\(String(describing: p?.lastLinkAction))"], ok: found == true)
+            later(0.3, done)
+        } else if let m = step["measurePreview"] as? [String: Any] {
+            measurePreview(m, then: done)
         } else if let mode = str("viewMode") {
             session?.setViewMode(ViewMode(rawValue: mode) ?? .source)
             record(["viewMode": mode], ok: session?.viewMode.rawValue == mode)
@@ -354,8 +402,7 @@ final class UIScriptRunner {
             record(["waitStyled": ok], ok: ok)
             done()
         } else if let name = str("snapshot") {
-            snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false)
-            done()
+            snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false, then: done)
         } else if let a = step["assert"] as? [String: Any] {
             assertions(a)
             done()
@@ -582,6 +629,10 @@ final class UIScriptRunner {
                 d["windowKey"] = window?.isKeyWindow ?? false
                 d["titlebarHidden"] = controller?.titlebarControls.map { "\(Swift.type(of: $0)) hidden=\($0.isHidden) alpha=\($0.alphaValue)" } ?? []
                 d["scrollFrame"] = NSStringFromRect(tv.enclosingScrollView?.frame ?? .zero)
+                d["splitFrame"] = NSStringFromRect(controller?.splitView.frame ?? .zero)
+                d["previewPaneFrame"] = NSStringFromRect(controller?.previewPane.frame ?? .zero)
+                d["webFrame"] = NSStringFromRect(controller?.previewController.webView.frame ?? .zero)
+                d["contentFrame"] = NSStringFromRect(window?.contentView?.frame ?? .zero)
                 if s.storage.length > 0 {
                     let a = s.storage.attributes(at: min(40, s.storage.length - 1), effectiveRange: nil)
                     d["attrs40"] = a.map { "\($0.key.rawValue)=\($0.value)" }.sorted()
@@ -1187,15 +1238,107 @@ final class UIScriptRunner {
         step()
     }
 
+    /// Types into the document and records how long the preview takes to show it: from the last
+    /// keystroke to the page holding the text (the debounce included), and what the core and the
+    /// page took. Also the main-thread cost per keystroke, to compare with and without the preview.
+    private func measurePreview(_ m: [String: Any], then done: @escaping () -> Void) {
+        let count = m["count"] as? Int ?? 40
+        let interval = (m["interval"] as? NSNumber)?.doubleValue ?? 0.06
+        let rounds = m["rounds"] as? Int ?? 3
+        guard let p = controller?.previewController else { record(["measurePreview": "no preview"], ok: false); done(); return }
+        var latencies: [Double] = [], cores: [Double] = [], pages: [Double] = []
+        var round = 0
+        func nextRound() {
+            guard round < rounds else {
+                func med(_ v: [Double]) -> Double { v.sorted()[v.count / 2] }
+                record(["measurePreview": ["rounds": rounds, "latency_ms_median": latencies.isEmpty ? 0 : med(latencies), "latency_ms_max": latencies.max() ?? 0,
+                                           "core_render_ms_median": cores.isEmpty ? 0 : med(cores), "page_update_ms_median": pages.isEmpty ? 0 : med(pages),
+                                           "renders": p.renders, "applied": p.applied, "superseded": p.superseded]], ok: !latencies.isEmpty)
+                done()
+                return
+            }
+            round += 1
+            let applied0 = p.applied
+            var i = 0
+            let alphabet = Array("the quick brown fox jumps over the lazy dog ")
+            func typeOne() {
+                if i < count {
+                    sendKey(String(alphabet[i % alphabet.count]))
+                    i += 1
+                    later(interval, typeOne)
+                    return
+                }
+                let last = CFAbsoluteTimeGetCurrent()
+                func poll() {
+                    if p.isSettled && p.applied > applied0 {
+                        latencies.append((CFAbsoluteTimeGetCurrent() - last) * 1000)
+                        cores.append(p.lastRenderTime * 1000)
+                        pages.append(p.lastApplyTime * 1000)
+                        later(0.1, nextRound)
+                    } else if CFAbsoluteTimeGetCurrent() - last > 30 {
+                        record(["measurePreview": "timed out"], ok: false)
+                        done()
+                    } else {
+                        later(0.01, poll)
+                    }
+                }
+                poll()
+            }
+            typeOne()
+        }
+        nextRound()
+    }
+
+    /// File > Export > PDF without the save panel: into the output directory, then asserted on with `pdf`.
+    private func exportPDF(_ name: String, then done: @escaping () -> Void) {
+        guard let doc = document else { record(["exportPDF": "no document"], ok: false); done(); return }
+        let url = outDir.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: url)
+        let t0 = CFAbsoluteTimeGetCurrent()
+        var gaps: [Double] = []
+        var last = CFAbsoluteTimeGetCurrent()
+        let heartbeat = Timer(timeInterval: 0.001, repeats: true) { _ in
+            let now = CFAbsoluteTimeGetCurrent()
+            gaps.append(now - last)
+            last = now
+        }
+        RunLoop.main.add(heartbeat, forMode: .common)
+        doc.exportPDF(to: url) { error in
+            heartbeat.invalidate()
+            let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            self.record(["exportPDF": name, "ms": ms, "bytes": bytes, "pages": PDFInspector.pageCount(url),
+                         "longest_main_thread_gap_ms": (gaps.max() ?? 0) * 1000, "error": error.map { "\($0)" } ?? ""], ok: error == nil && bytes > 0)
+            done()
+        }
+    }
+
     // MARK: windows
 
-    private func snapshot(_ name: String, which: String?, bitmap: Bool = false) {
+    private func snapshot(_ name: String, which: String?, bitmap: Bool = false, then done: @escaping () -> Void) {
         let w: NSWindow? = which == "settings" ? SettingsWindowController.shared.window : (which == "sheet" ? window?.attachedSheet : window)
         guard let w, let content = w.contentView else {
             record(["snapshot": name, "error": "no window"], ok: false)
+            done()
             return
         }
         w.displayIfNeeded()
+        // The page is web content: the view cache cannot draw it, so it is asked for a picture of
+        // itself, which is composited with the rest.
+        if w === window, let c = controller, !c.previewPane.isHidden, c.previewController.isVisible {
+            let web = c.previewController.webView
+            web.takeSnapshot(with: WKSnapshotConfiguration()) { image, error in
+                if let error { self.record(["snapshot": name, "web view": "\(error)"], ok: false) }
+                self.composeSnapshot(name, window: w, content: content, bitmap: bitmap, web: image)
+                done()
+            }
+            return
+        }
+        composeSnapshot(name, window: w, content: content, bitmap: bitmap, web: nil)
+        done()
+    }
+
+    private func composeSnapshot(_ name: String, window w: NSWindow, content: NSView, bitmap: Bool, web: NSImage?) {
         let frameView = content.superview ?? content
         let bounds = frameView.bounds
         let out = NSImage(size: bounds.size)
@@ -1215,13 +1358,18 @@ final class UIScriptRunner {
             NSGraphicsContext.current?.restoreGraphicsState()
         }
         if w === window, let c = controller, let tv = textView, let clip = tv.enclosingScrollView?.contentView {
-            if bitmap, let rep = tv.bitmapImageRepForCachingDisplay(in: tv.visibleRect) {
+            if c.scrollView.isHidden {
+                // Preview only: the editor is not drawn.
+            } else if bitmap, let rep = tv.bitmapImageRepForCachingDisplay(in: tv.visibleRect) {
                 // As drawn on screen, selection and insertion point included (PDF leaves them out).
                 tv.cacheDisplay(in: tv.visibleRect, to: rep)
                 rep.draw(in: clip.convert(clip.bounds, to: frameView), from: .zero, operation: .sourceOver, fraction: 1,
                          respectFlipped: true, hints: nil)
             } else if let pdf = NSImage(data: tv.dataWithPDF(inside: tv.visibleRect)) {
                 pdf.draw(in: clip.convert(clip.bounds, to: frameView))
+            }
+            if let web, !c.previewPane.isHidden {
+                web.draw(in: c.previewController.webView.convert(c.previewController.webView.bounds, to: frameView))
             }
             for v in c.overlayViews { draw(v) }
             // Title bar: its controls one by one (the bar itself is transparent).
@@ -1415,6 +1563,96 @@ final class UIScriptRunner {
             if let c = v["contains"] as? String { check("file contains \(c.debugDescription)", disk.contains(c), String(disk.suffix(400))) }
             if let c = v["lacks"] as? String { check("file lacks \(c.debugDescription)", !disk.contains(c), String(disk.suffix(400))) }
             if let c = v["suffix"] as? String { check("file ends with \(c.debugDescription)", disk.hasSuffix(c), String(disk.suffix(120))) }
+        }
+        if let v = a["layout"] as? String { check("layout \(v)", session?.layout.rawValue == v, session?.layout.rawValue ?? "nil") }
+        if let v = a["preview"] as? [String: Any], let c = controller {
+            let p = c.previewController
+            if let want = v["visible"] as? Bool { check("preview visible \(want)", p.isVisible == want && (!c.previewPane.isHidden) == want) }
+            if let want = v["editorShown"] as? Bool { check("editor shown \(want)", !c.scrollView.isHidden == want) }
+            if let n = v["renders"] as? Int { check("preview renders \(n)", p.renders == n, "\(p.renders)") }
+            if v["bodyMatchesCore"] != nil, let s = session {
+                // What the page was given is what the core renders for the text now.
+                _ = p.waitUntilSettled(timeout: 30)
+                let expected = s.coordinator.sync { $0.renderHtml(options: p.renderOptions(standalone: false)) }
+                check("preview body equals the core's render", p.lastBodyHTML == expected, "\(p.lastBodyHTML.count) vs \(expected.count) characters")
+            }
+            for (key, want) in [("contains", true), ("lacks", false)] {
+                if let needle = v[key] as? String {
+                    let dom = p.evaluateSync("return document.getElementById('md').innerText;") as? String ?? ""
+                    check("preview \(key) \(needle.debugDescription)", dom.contains(needle) == want, String(dom.prefix(200)))
+                }
+            }
+            if let needle = v["htmlContains"] as? String {
+                let html = p.evaluateSync("return document.getElementById('md').innerHTML;") as? String ?? ""
+                check("preview html contains \(needle.debugDescription)", html.contains(needle), String(html.prefix(300)))
+            }
+            if let want = v["scriptsOff"] as? Bool, want {
+                // The page's own JavaScript is off: a script in the document does not run, the app's world still does.
+                let ran = p.evaluateSync("return document.body.getAttribute('data-ran') === 'yes';") as? Bool
+                check("page javascript is off", ran == false, "\(String(describing: ran))")
+            }
+            if let want = v["images"] as? [String: Int] {
+                let r = p.evaluateSync("const imgs = [...document.images]; return { total: imgs.length, loaded: imgs.filter(i => i.complete && i.naturalWidth > 0).length, broken: imgs.filter(i => i.complete && i.naturalWidth === 0).length };") as? [String: Int] ?? [:]
+                check("preview images \(want)", want.allSatisfy { r[$0.key] == $0.value }, "\(r)")
+            }
+            if let tol = (v["scrollSynced"] as? NSNumber)?.doubleValue {
+                _ = p.waitUntilSettled(timeout: 10)
+                let e = p.editorReadingPosition() ?? -1
+                let page = (p.evaluateSync("return __md.currentLine();") as? NSNumber)?.doubleValue ?? -2
+                check("editor and preview at the same line (within \(tol))", abs(e - page) <= tol, "editor \(e), preview \(page), page reported \(p.receivedScrolls.suffix(4)), trace \(p.lastEditorScrollTrace) clip now \(controller?.scrollView.contentView.bounds.minY ?? -1) tvHeight \(textView?.frame.height ?? -1)")
+            }
+            if let want = v["scrolled"] as? Bool {
+                let top = p.scrollTopForTests
+                check("preview scrolled \(want)", (top > 1) == want, "scrollTop \(top)")
+            }
+            if let want = v["styleContains"] as? String {
+                let css = p.evaluateSync("return document.head.querySelector('style').textContent;") as? String ?? ""
+                check("preview stylesheet contains \(want.debugDescription)", css.contains(want), String(css.prefix(200)))
+            }
+            if let name = v["computedStyle"] as? [String: String], let property = name["property"], let value = name["is"] {
+                let got = p.evaluateSync("return getComputedStyle(document.body)[prop];", arguments: ["prop": property]) as? String ?? ""
+                check("preview body \(property) is \(value)", got == value, got)
+            }
+            if let want = v["linkAction"] as? String { check("preview link action \(want)", "\(String(describing: p.lastLinkAction))".contains(want), "\(String(describing: p.lastLinkAction))") }
+        }
+        if let v = a["pdf"] as? [String: Any], let name = v["file"] as? String {
+            let url = outDir.appendingPathComponent(name)
+            let pages = PDFInspector.pageCount(url)
+            let text = PDFInspector.text(url)
+            if let n = v["minPages"] as? Int { check("pdf has at least \(n) pages", pages >= n, "\(pages)") }
+            if let n = v["pages"] as? Int { check("pdf has \(n) pages", pages == n, "\(pages)") }
+            for needle in (v["contains"] as? [String]) ?? [] { check("pdf text contains \(needle.debugDescription)", text.contains(needle), String(text.prefix(200))) }
+            for needle in (v["lacks"] as? [String]) ?? [] { check("pdf text lacks \(needle.debugDescription)", !text.contains(needle), "") }
+            if let n = v["images"] as? Int { let got = PDFInspector.imageCount(url); check("pdf has at least \(n) embedded images", got >= n, "\(got)") }
+            if v["light"] != nil {
+                // Light print styling whatever the theme: a white page, dark text.
+                let corner = PDFInspector.pixel(url, page: 0, x: 4, y: 4)
+                let darkest = PDFInspector.darkestLuminance(url, page: 0) ?? 1
+                check("pdf page is white", (corner?.r ?? 0) > 0.97 && (corner?.g ?? 0) > 0.97 && (corner?.b ?? 0) > 0.97, "\(String(describing: corner))")
+                check("pdf text is dark", darkest < 0.3, "\(darkest)")
+            }
+            if let m = v["marginsAtLeast"] as? NSNumber {
+                // The text keeps this many points from every edge on page 0.
+                if let box = PDFInspector.mediaBox(url, page: 0), let t = PDFInspector.textBounds(url, page: 0) {
+                    let least = min(t.minX - box.minX, box.maxX - t.maxX, t.minY - box.minY, box.maxY - t.maxY)
+                    check("pdf text keeps \(m) points from the edges", least >= CGFloat(m.doubleValue) - 0.5, "least \(least), text \(t), page \(box)")
+                } else { check("pdf text bounds", false) }
+            }
+        }
+        if let v = a["pasteboard"] as? [String: Any], let pb = scriptPasteboard() {
+            let types = Set((pb.types ?? []).map(\.rawValue))
+            let html = pb.string(forType: .html) ?? ""
+            let plain = pb.string(forType: .string) ?? ""
+            if let want = v["types"] as? [String] { check("pasteboard types \(want)", types == Set(want), "\(types.sorted())") }
+            for needle in (v["htmlContains"] as? [String]) ?? [] { check("pasteboard html contains \(needle.debugDescription)", html.contains(needle), String(html.prefix(300))) }
+            for needle in (v["htmlLacks"] as? [String]) ?? [] { check("pasteboard html lacks \(needle.debugDescription)", !html.contains(needle), String(html.prefix(300))) }
+            for needle in (v["plainContains"] as? [String]) ?? [] { check("pasteboard text contains \(needle.debugDescription)", plain.contains(needle), String(plain.prefix(300))) }
+            for needle in (v["plainLacks"] as? [String]) ?? [] { check("pasteboard text lacks \(needle.debugDescription)", !plain.contains(needle), String(plain.prefix(300))) }
+            if v["rtf"] != nil {
+                let rtf = pb.data(forType: .rtf)
+                let text = rtf.flatMap { NSAttributedString(rtf: $0, documentAttributes: nil)?.string } ?? ""
+                check("pasteboard has rich text", (rtf?.count ?? 0) > 0 && !text.isEmpty, "\(rtf?.count ?? 0) bytes")
+            }
         }
         if let v = a["viewMode"] as? String { check("viewMode \(v)", session?.viewMode.rawValue == v, session?.viewMode.rawValue ?? "nil") }
         if let v = a["hidden"] as? [String], let s = session {

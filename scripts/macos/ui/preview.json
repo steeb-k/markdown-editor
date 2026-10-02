@@ -1,0 +1,278 @@
+[
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "resize": [
+   1300,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "preview": {
+    "visible": false,
+    "editorShown": true,
+    "renders": 0
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "layout": "split",
+   "preview": {
+    "visible": true,
+    "bodyMatchesCore": true,
+    "contains": "Section 3",
+    "htmlContains": "language-rust",
+    "images": {
+     "total": 1,
+     "loaded": 1,
+     "broken": 0
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "01-split-light-top"
+ },
+ {
+  "editorScroll": 0.5
+ },
+ {
+  "waitPreview": 10
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrolled": true,
+    "scrollSynced": 4
+   }
+  }
+ },
+ {
+  "snapshot": "02-split-light-middle"
+ },
+ {
+  "previewScroll": 0.9
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrollSynced": 12
+   }
+  }
+ },
+ {
+  "snapshot": "03-split-light-preview-scrolled"
+ },
+ {
+  "previewScroll": 0.0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrolled": false
+   }
+  }
+ },
+ {
+  "selectText": "Paragraph 1.1 begins",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "Typed-in-split ",
+  "interval": 0.03
+ },
+ {
+  "waitPreview": 20
+ },
+ {
+  "assert": {
+   "preview": {
+    "bodyMatchesCore": true,
+    "contains": "Typed-in-split"
+   }
+  }
+ },
+ {
+  "snapshot": "04-split-typed"
+ },
+ {
+  "clickPreviewLink": "link to the site"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "open("
+   },
+   "linkOpened": "https://example.com/tour"
+  }
+ },
+ {
+  "clickPreviewLink": "the end"
+ },
+ {
+  "assert": {
+   "preview": {
+    "linkAction": "scrollToFragment"
+   }
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "05-split-fragment"
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "preview": {
+    "styleContains": "--bg: #1C1D1F"
+   }
+  }
+ },
+ {
+  "snapshot": "06-split-dark"
+ },
+ {
+  "setting": {
+   "theme": "sepia",
+   "fontChoice": "systemSerif",
+   "fontSize": 19,
+   "lineWidth": 60
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "07-split-sepia-serif"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaMono",
+   "fontSize": 16,
+   "lineWidth": 72
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "snapshot": "08-split-mono"
+ },
+ {
+  "setting": {
+   "theme": "dark",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 20
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "layout": "preview",
+   "preview": {
+    "visible": true,
+    "editorShown": false
+   }
+  }
+ },
+ {
+  "snapshot": "09-preview-dark"
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "10-preview-sepia"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "snapshot": "11-preview-light"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "layout": "editor",
+   "preview": {
+    "visible": false,
+    "editorShown": true
+   }
+  }
+ },
+ {
+  "snapshot": "12-editor-again"
+ }
+]

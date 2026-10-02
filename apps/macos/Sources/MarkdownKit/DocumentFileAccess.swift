@@ -11,6 +11,19 @@ public enum DocumentFileAccess {
         try data.write(to: url, options: .atomic)
     }
 
+    /// Whether the preview (and so the PDF and print paths) may serve `file`. What the Markdown
+    /// names relative to the document (`explicit == false`) must lie in the document's folder or
+    /// below; what it names outright (an absolute path, a `file:` URL, `~/`) is allowed, as the
+    /// editor already shows such pictures. This is the one place that decides it: the sandbox
+    /// milestone replaces it with the folder grant.
+    public static func canReadForPreview(_ file: URL, documentFolder: URL?, explicit: Bool) -> Bool {
+        if explicit { return true }
+        guard let folder = documentFolder else { return false }
+        let base = folder.standardizedFileURL.path
+        let path = file.standardizedFileURL.path
+        return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+    }
+
     /// When the file was last modified; nil when it cannot be read.
     public static func modificationDate(of url: URL) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date

@@ -171,7 +171,7 @@ extension EditorTextView {
             guard SyntaxClass.allCases.indices.contains(tag), let session else { return (false, false) }
             return (session.syntaxEnabled, session.settings.syntaxClass(SyntaxClass.allCases[tag]))
         }
-        let editable = isEditable && !hasMarkedText()
+        let editable = isEditable && !hasMarkedText() && session?.layout != .preview
         let s = session?.formatState ?? EditorSession.emptyFormatState
         if Self.tableActions.contains(action) {
             return (editable && s.inTable, false)

@@ -1,0 +1,131 @@
+[
+ {
+  "log": "1 MB document in Split: typing cost with the preview closed and open, and how long the preview takes to catch up. Run with RELEASE=1."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": true,
+   "autoHideChrome": false
+  }
+ },
+ {
+  "openGenerated": {
+   "from": "scripts/macos/ui/fixtures/preview-tour.md",
+   "minLength": 1000000
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "resize": [
+   1300,
+   820
+  ]
+ },
+ {
+  "waitStyled": 120
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "selectText": "Section 3",
+  "offset": 9
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "log": "preview closed (editor only)"
+ },
+ {
+  "measureTyping": {
+   "count": 150,
+   "interval": 0.06
+  }
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 120
+ },
+ {
+  "wait": 1
+ },
+ {
+  "assert": {
+   "preview": {
+    "visible": true,
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "snapshot": "big-split-open"
+ },
+ {
+  "log": "preview open (split)"
+ },
+ {
+  "selectText": "Section 3",
+  "offset": 9
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "measureTyping": {
+   "count": 150,
+   "interval": 0.06
+  }
+ },
+ {
+  "waitPreview": 120
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "assert": {
+   "coreMatchesText": true,
+   "preview": {
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "measurePreview": {
+   "count": 20,
+   "interval": 0.05,
+   "rounds": 3
+  }
+ },
+ {
+  "editorScroll": 0.5
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 1
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrollSynced": 6
+   }
+  }
+ },
+ {
+  "snapshot": "big-split-scrolled"
+ }
+]

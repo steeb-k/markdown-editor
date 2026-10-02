@@ -64,6 +64,9 @@ struct SettingsView: View {
             Picker("Default view", selection: Binding(get: { s.defaultViewMode }, set: { s.defaultViewMode = $0 })) {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.title).tag($0) }
             }
+            Picker("Default layout", selection: Binding(get: { s.defaultLayout }, set: { s.defaultLayout = $0 })) {
+                ForEach(LayoutMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             Toggle("Start windows in focus mode", isOn: Binding(get: { s.focusMode }, set: { s.focusMode = $0 }))
             Picker("Focus on", selection: Binding(get: { s.focusScope }, set: { s.focusScope = $0 })) {
                 ForEach(FocusScopeChoice.allCases, id: \.self) { Text($0.title).tag($0) }

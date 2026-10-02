@@ -9,11 +9,13 @@ public final class MarkdownDocument: NSDocument {
     public override init() {
         session = EditorSession(settings: .shared)
         super.init()
+        configurePrintInfo()
     }
 
     public init(settings: Settings) {
         session = EditorSession(settings: settings)
         super.init()
+        configurePrintInfo()
     }
 
     public override var fileURL: URL? {

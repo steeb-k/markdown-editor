@@ -1,0 +1,98 @@
+[
+ {
+  "setting": {
+   "theme": "dark",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1300,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "exportPDF": "dark-hidden-preview.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "dark-hidden-preview.pdf",
+    "minPages": 3,
+    "contains": [
+     "The preview tour",
+     "Section 6",
+     "Hello, {name}!",
+     "The second footnote"
+    ],
+    "lacks": [
+     "Annotations:",
+     "author: Someone",
+     "data-line"
+    ],
+    "images": 1,
+    "light": true,
+    "marginsAtLeast": 40
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "exportPDF": "sepia-split.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "sepia-split.pdf",
+    "minPages": 3,
+    "images": 1,
+    "light": true,
+    "contains": [
+     "Code in two languages"
+    ]
+   }
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "exportPDF": "preview-layout.pdf"
+ },
+ {
+  "assert": {
+   "pdf": {
+    "file": "preview-layout.pdf",
+    "minPages": 3,
+    "images": 1,
+    "light": true
+   }
+  }
+ }
+]

@@ -1,0 +1,51 @@
+[
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/preview-tour.md",
+  "folder": true
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "resize": [
+   1300,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "layout": "split",
+   "preview": {
+    "visible": true,
+    "bodyMatchesCore": true
+   }
+  }
+ },
+ {
+  "dump": true
+ },
+ {
+  "snapshot": "01-split-light"
+ }
+]

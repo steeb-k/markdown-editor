@@ -65,6 +65,12 @@ enum MainMenu {
                 _ = item(r, "Last Saved Version", #selector(NSDocument.revertToSaved(_:)))
                 _ = item(r, "Browse All Versions…", #selector(NSDocument.browseVersions(_:)))
             }
+            m.addItem(.separator())
+            nested(m, "Export") { e in
+                _ = item(e, "PDF…", #selector(EditorWindowController.exportPDF(_:)))
+            }
+            _ = item(m, "Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift])
+            _ = item(m, "Print…", #selector(NSDocument.printDocument(_:)), "p")
         }
 
         _ = submenu(main, "Edit") { m in
@@ -86,6 +92,10 @@ enum MainMenu {
                 _ = item(a, "Reference", #selector(EditorTextView.markAsReference(_:)), "3", [.command, .control])
                 a.addItem(.separator())
                 _ = item(a, "No Author", #selector(EditorTextView.markAsNoAuthor(_:)), "0", [.command, .control])
+            }
+            nested(m, "Copy As") { c in
+                _ = item(c, "HTML", #selector(EditorWindowController.copyAsHTML(_:)))
+                _ = item(c, "Rich Text", #selector(EditorWindowController.copyAsRichText(_:)))
             }
             _ = item(m, "Delete", #selector(NSText.delete(_:)))
             _ = item(m, "Select All", #selector(NSText.selectAll(_:)), "a")
@@ -155,6 +165,11 @@ enum MainMenu {
         _ = submenu(main, "View") { m in
             _ = item(m, "Source", #selector(EditorTextView.showSourceMode(_:)), "1", [.command, .option])
             _ = item(m, "Live", #selector(EditorTextView.showLiveMode(_:)), "2", [.command, .option])
+            m.addItem(.separator())
+            // Layouts: the editor alone, beside the preview, the preview alone.
+            _ = item(m, "Editor", #selector(EditorWindowController.showEditorLayout(_:)), "3", [.command, .option])
+            _ = item(m, "Editor and Preview", #selector(EditorWindowController.showSplitLayout(_:)), "4", [.command, .option])
+            _ = item(m, "Preview", #selector(EditorWindowController.showPreviewLayout(_:)), "5", [.command, .option])
             m.addItem(.separator())
             _ = item(m, "Focus Mode", #selector(EditorTextView.toggleFocusMode(_:)), "d")
             nested(m, "Focus Scope") { f in
