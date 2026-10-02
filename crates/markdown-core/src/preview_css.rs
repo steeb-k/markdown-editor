@@ -193,7 +193,7 @@ li.task-list-item > input[type=checkbox], li.task-list-item > p:first-child > in
 blockquote {{ padding: 0 0 0 1.1em; border-left: 3px solid var(--rule); color: var(--quote); }}
 blockquote > :last-child {{ margin-bottom: 0; }}
 hr {{ border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }}
-img {{ max-width: 100%; height: auto; }}
+img {{ max-width: 100%; height: auto; border-radius: 4px; }}
 code, pre {{ font-family: {mono}; font-size: {mono_scale}em; }}
 :not(pre) > code {{ background: var(--code-bg); color: var(--code-text); padding: 0.1em 0.35em; border-radius: 4px; }}
 pre {{ background: var(--code-bg); padding: 0.85em 1.1em; border-radius: 6px; overflow-x: auto; line-height: 1.4; tab-size: 4; }}
@@ -209,12 +209,24 @@ th {{ background: var(--code-bg); font-weight: 700; text-align: left; }}
 .footnote-ref a, .footnote-backref {{ text-decoration: none; }}
 .unparsed {{ white-space: pre-wrap; }}
 ",
-        family = t.font_family,
+        family = font_stack(&t.font_family),
         size = fmt_num(t.font_size_px),
         lh = fmt_num(t.line_height),
         measure = fmt_num(t.measure_ch),
-        mono = t.mono_family,
+        mono = font_stack(&t.mono_family),
         mono_scale = fmt_num(mono_scale),
+    );
+    // Task boxes drawn like the editor's (a disabled control is drawn dimmed by WebKit).
+    w.push_str(
+        "li.task-list-item input[type=checkbox] {
+  -webkit-appearance: none; appearance: none; box-sizing: border-box; width: 0.9em; height: 0.9em;
+  border: 1.5px solid var(--markup); border-radius: 0.22em; background: transparent; vertical-align: -0.08em; opacity: 1;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+li.task-list-item input[type=checkbox]:checked {
+  border-color: var(--link); background: var(--link) center / 80% no-repeat url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.3l2.3 2.3 4.6-5.1' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");
+}
+",
     );
     // Token classes (prefix `s-`, see `highlight`). Specific selectors follow general ones.
     w.push_str(
@@ -254,7 +266,14 @@ th {{ background: var(--code-bg); font-weight: 700; text-align: left; }}
   html, body {{ background: #FFFFFF !important; color: #000000 !important; }}
   body {{ font-size: 11pt; line-height: {lh}; }}
   .md {{ max-width: none; margin: 0; padding: 0; }}
-  h1, h2, h3, h4, h5, h6 {{ break-after: avoid; page-break-after: avoid; break-inside: avoid; }}
+  h1, h2, h3, h4, h5, h6 {{ break-after: avoid; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }}
+  /* WebKit's print pagination ignores break-after: avoid. A heading carries an invisible tail as
+     tall as three lines of text (its own bottom padding), which it may not be split from, and
+     gives the room back below (a negative margin): a heading that would end a page moves to the
+     next one with the lines that follow it. (WebKit leaves an invisible, clipped copy of a block
+     it moves to the next page in the foot margin of the page before: the PDF's text layer holds
+     such a heading twice.) */
+  h1, h2, h3, h4, h5, h6 {{ padding-bottom: {keep}pt; margin-bottom: calc(0.4em - {keep}pt); }}
   p, li, blockquote {{ orphans: 3; widows: 3; }}
   pre, table, img, tr, blockquote, .footnotes li {{ break-inside: avoid; page-break-inside: avoid; }}
   pre {{ white-space: pre-wrap; word-break: break-word; overflow: visible; }}
@@ -275,8 +294,20 @@ th {{ background: var(--code-bg); font-weight: 700; text-align: left; }}
         p_tag = light.tag.to_hex(),
         p_variable = light.variable.to_hex(),
         lh = fmt_num(t.line_height),
+        keep = fmt_num((3.0 * t.line_height * PRINT_FONT_PT).round()),
     );
     css
+}
+
+/// The body text size in print.
+const PRINT_FONT_PT: f64 = 11.0;
+
+/// A `font-family` value as given (a stack of quoted names and generic families), minus anything
+/// that could end the declaration, the rule or the `<style>` element it is written into: an
+/// installed font's name is not trusted to be tidy.
+fn font_stack(stack: &str) -> String {
+    let clean: String = stack.chars().filter(|c| !matches!(c, '{' | '}' | ';' | '<' | '>' | '\\' | '@') && !c.is_control()).collect();
+    if clean.trim().is_empty() { "sans-serif".to_owned() } else { clean }
 }
 
 /// A number as short CSS text: `17`, `1.5`, `0.92`.

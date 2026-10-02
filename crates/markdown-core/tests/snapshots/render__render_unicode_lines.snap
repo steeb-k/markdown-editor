@@ -6,7 +6,7 @@ expression: d.render_html(&lines())
 <p data-line="2">Emoji: 👩‍💻 🇯🇵 🎉
 Combining: é ñ ä
 CJK: 日本語の<strong>太字</strong>。中文</p>
-<ul>
+<ul data-line="6">
 <li data-line="6">リスト</li>
 <li data-line="7">café <em>✨</em></li>
 </ul>

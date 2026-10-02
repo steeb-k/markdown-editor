@@ -294,3 +294,49 @@ fn one_megabyte_render_with_distinct_code() {
         println!("{} blocks, distinct code, {name}: median {:.1} ms cold, {} KB of Markdown", i, med(times), text.len() / 1024);
     }
 }
+
+/// No render of a 1 MB document takes more than about 100 ms in release, whatever its code blocks
+/// hold: highlighting stops at a per-render budget (`RENDER_BUDGET_MS` overrides the bound).
+#[test]
+#[ignore]
+fn worst_case_renders_are_bounded() {
+    markdown_core::highlight::warm_up();
+    let bound: f64 = std::env::var("RENDER_BUDGET_MS").ok().and_then(|s| s.parse().ok()).unwrap_or(100.0);
+    let fill = |unit: &dyn Fn(usize) -> String| {
+        let mut s = String::new();
+        let mut i = 0;
+        while s.len() < 1 << 20 {
+            s.push_str(&unit(i));
+            i += 1;
+        }
+        s
+    };
+    let minified = "var a=function(b,c){return b&&c?b.map(function(d){return d*c+\"x\"}):[]};".repeat(25);
+    let cases: Vec<(&str, String)> = vec![
+        ("distinct small Rust blocks", fill(&|i| format!("```rust\nfn main() {{\n    println!(\"hello {i}\");\n}}\n```\n\n"))),
+        ("one giant Python block", format!("```python\n{}```\n", fill(&|i| format!("def f{i}(a, b):\n    return a + b  # comment {i}\n")))),
+        ("long minified JavaScript lines", fill(&|i| format!("```js\n{minified}{i}\n```\n\n"))),
+        ("deeply nested HTML", fill(&|i| format!("```html\n{}x{i}{}\n```\n\n", "<div class=\"a\">".repeat(40), "</div>".repeat(40)))),
+        ("LaTeX", fill(&|i| format!("```latex\n\\begin{{equation}}\\frac{{a_{i}}}{{b}} = \\sum_{{k=0}}^{{n}} x^k\\end{{equation}}\n```\n\n"))),
+        ("unterminated strings and comments", fill(&|i| format!("```c\n/* open {i}\nchar *s = \"abc\\\n```\n\n"))),
+        ("prose, no code", fill(&|i| format!("Paragraph {i} with *emphasis* and a [link](https://x.y/{i}).\n\n"))),
+    ];
+    let mut worst: f64 = 0.0;
+    for (name, text) in &cases {
+        let doc = Document::new(text, OffsetEncoding::Utf16);
+        let opts = RenderOptions { source_lines: true, ..Default::default() };
+        let mut times = vec![];
+        for _ in 0..3 {
+            markdown_core::highlight::clear_cache();
+            let t = Instant::now();
+            let html = doc.render_html(&opts);
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+            assert!(!html.is_empty());
+        }
+        let skipped = doc.render_html(&opts).matches("data-highlight=\"skipped\"").count();
+        let m = times.iter().cloned().fold(0.0, f64::max);
+        worst = worst.max(m);
+        println!("{name}: {:.1} ms worst of 3, cold cache ({} KB, {skipped} blocks left plain)", m, text.len() / 1024);
+    }
+    assert!(worst < bound, "a render took {worst:.1} ms (bound {bound} ms)");
+}

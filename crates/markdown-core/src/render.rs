@@ -25,6 +25,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::time::{Duration, Instant};
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, MetadataBlockKind, Parser, Tag, TagEnd};
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
@@ -35,7 +36,7 @@ use crate::document::Document;
 use crate::highlight;
 use crate::lines::LineIndex;
 use crate::preview_css::{preview_css, PreviewStyle};
-use crate::sanitize::{is_dangerous_url, HtmlFilter};
+use crate::sanitize::{is_safe_url, HtmlFilter};
 use crate::types::TextRange;
 
 /// What to render and how. `Default` is the plain body, as the clipboard wants it.
@@ -135,6 +136,7 @@ fn render(text: &str, window: Option<(usize, usize)>, opts: &RenderOptions) -> S
     let title = title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| opts.fallback_title.clone());
     let mut page = String::with_capacity(body.len() + 8192);
     page.push_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n");
+    page.push_str(CONTENT_SECURITY_POLICY);
     page.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>");
     let _ = escape_html_body_text(&mut page, &title);
     page.push_str("</title>\n<style>\n");
@@ -144,6 +146,15 @@ fn render(text: &str, window: Option<(usize, usize)>, opts: &RenderOptions) -> S
     page.push_str("</main>\n</body>\n</html>\n");
     page
 }
+
+/// The standalone page's policy, in its head before anything a document can write (a later
+/// policy can only narrow it). Page JavaScript is off in every shell; this is the second wall:
+/// no script, frame, plugin, form submission or `<base>`; fonts and stylesheets only from the
+/// page's own origin (the shell's scheme, which serves the document's folder and the bundled
+/// fonts) or inline; pictures and media from there, `http(s):` and `data:`. So a document's raw
+/// HTML cannot embed a local file in a frame, load a web font that reports which characters a
+/// page holds, or post a form anywhere.
+pub const CONTENT_SECURITY_POLICY: &str = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src 'self' https: http: data:; media-src 'self' https: http:; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none'\">\n";
 
 type Item<'a> = (Event<'a>, Range<usize>);
 
@@ -175,10 +186,16 @@ struct Renderer<'a, 'o> {
     end_newline: bool,
     table: Table,
     heading_ids: HashMap<usize, String>,
-    /// Footnote name -> number (1-based, in order of first reference).
+    /// Footnote name -> number (1-based, in order of first reference in the whole document, as
+    /// a reader meets them: the text first, then the notes in the order they are listed).
     numbers: HashMap<String, usize>,
-    order: Vec<String>,
-    ref_counts: HashMap<String, usize>,
+    /// For a footnote reference's event index: which reference to its note it is (1-based), in
+    /// the same order. Fragments use the whole document's numbers and ids.
+    ref_occurrence: HashMap<usize, usize>,
+    /// The footnotes referred to inside each note (for a fragment's section).
+    refs_in_def: HashMap<String, Vec<String>>,
+    /// References written to the output so far: note name -> which occurrences.
+    rendered_refs: HashMap<String, Vec<usize>>,
     defs: Vec<FootnoteDef>,
     def_index: HashMap<String, usize>,
     /// Inside a link or an image: no bare-URL linking.
@@ -186,7 +203,31 @@ struct Renderer<'a, 'o> {
     filter: HtmlFilter,
     /// A task checkbox waiting for the paragraph that follows it.
     pending_task: Option<bool>,
+    /// Bytes of fenced code highlighted so far; past [`HIGHLIGHT_BUDGET_BYTES`] the rest is plain.
+    highlighted_bytes: usize,
+    /// Code blocks shown plain because the budget ran out.
+    pub(crate) unhighlighted_blocks: usize,
+    /// When this render's highlighting must stop (set at the first highlighted block).
+    highlight_deadline: Option<Instant>,
 }
+
+/// Fenced code highlighted per render, in bytes (a line counts extra, see `highlight::cost`).
+/// Ordinary code highlights at roughly 1 MB/s with a cold cache, so this bounds a render of a
+/// document full of code to some tens of milliseconds; the blocks after it are shown plain and
+/// marked `data-highlight="skipped"`. It counts bytes, not time, so the same text renders the
+/// same way on every machine and whether or not its blocks are cached.
+pub const HIGHLIGHT_BUDGET_BYTES: usize = 128 * 1024;
+
+/// And a cap in time, for the languages and shapes of code that highlight ten times slower than
+/// that (LaTeX, long minified lines): highlighting stops for the rest of the render once this much
+/// time has gone into it. Only a pathological document reaches it, and only then does its output
+/// depend on the machine and on what is cached (a block answered from the cache costs nothing,
+/// so later renders highlight further).
+pub const HIGHLIGHT_BUDGET_TIME: Duration = Duration::from_millis(40);
+
+/// The code always highlighted, time or not (in the units of [`HIGHLIGHT_BUDGET_BYTES`]): about
+/// 150 lines. The slowest language measured (LaTeX) takes some 30 ms for it in a release build.
+pub const HIGHLIGHT_FLOOR_BYTES: usize = 12 * 1024;
 
 impl<'a, 'o> Renderer<'a, 'o> {
     fn new(src: &'a str, events: Vec<Item<'a>>, window: Option<(usize, usize)>, opts: &'o RenderOptions) -> Self {
@@ -232,20 +273,97 @@ impl<'a, 'o> Renderer<'a, 'o> {
             table: Table::default(),
             heading_ids: HashMap::new(),
             numbers: HashMap::new(),
-            order: Vec::new(),
-            ref_counts: HashMap::new(),
+            ref_occurrence: HashMap::new(),
+            refs_in_def: HashMap::new(),
+            rendered_refs: HashMap::new(),
             defs,
             def_index,
             link_depth: 0,
             filter: HtmlFilter::default(),
             pending_task: None,
+            highlighted_bytes: 0,
+            unhighlighted_blocks: 0,
+            highlight_deadline: None,
         };
+        r.number_footnotes();
         r.assign_heading_ids();
         r
     }
 
+    /// Numbers every footnote and every reference to one over the whole document, in the order
+    /// the full render meets them: references in the text, then in each note as the notes are
+    /// listed (by number), then the notes nobody refers to, in document order.
+    fn number_footnotes(&mut self) {
+        let mut order: Vec<String> = Vec::new();
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        // References in events `from..to`, skipping notes (listed separately), pictures (their alt
+        // text is plain) and code; the names found, in order.
+        let walk = |this: &mut Self, from: usize, to: usize, order: &mut Vec<String>, counts: &mut HashMap<String, usize>| -> Vec<String> {
+            let mut found = Vec::new();
+            let mut i = from;
+            while i < to {
+                match &this.events[i].0 {
+                    Event::Start(Tag::FootnoteDefinition(_) | Tag::Image { .. } | Tag::MetadataBlock(_) | Tag::CodeBlock(_)) => {
+                        i = this.end_of[i] as usize + 1;
+                        continue;
+                    }
+                    Event::FootnoteReference(name) => {
+                        let name = name.to_string();
+                        let k = counts.entry(name.clone()).or_insert(0);
+                        *k += 1;
+                        this.ref_occurrence.insert(i, *k);
+                        if !this.numbers.contains_key(&name) {
+                            this.numbers.insert(name.clone(), order.len() + 1);
+                            order.push(name.clone());
+                        }
+                        found.push(name);
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            found
+        };
+        walk(self, 0, self.events.len(), &mut order, &mut counts);
+        let mut k = 0;
+        let mut added_unreferenced = false;
+        loop {
+            if k == order.len() {
+                if added_unreferenced {
+                    break;
+                }
+                added_unreferenced = true;
+                let extra: Vec<String> = self.defs.iter().filter(|d| !self.numbers.contains_key(&d.name)).map(|d| d.name.clone()).collect();
+                for name in extra {
+                    self.numbers.insert(name.clone(), order.len() + 1);
+                    order.push(name);
+                }
+                if k == order.len() {
+                    break;
+                }
+            }
+            let name = order[k].clone();
+            k += 1;
+            let Some(&di) = self.def_index.get(&name) else { continue };
+            let children = self.defs[di].children.clone();
+            let found = walk(self, children.start, children.end, &mut order, &mut counts);
+            self.refs_in_def.insert(name, found);
+        }
+    }
+
     fn assign_heading_ids(&mut self) {
+        // The footnotes' own ids are taken: a heading called "fn-1" must not steal the note's.
         let mut used: HashSet<String> = HashSet::new();
+        for d in &self.defs {
+            used.insert(format!("fn-{}", d.name));
+        }
+        for (&i, &k) in &self.ref_occurrence {
+            if let Event::FootnoteReference(name) = &self.events[i].0 {
+                let mut id = String::new();
+                Self::footnote_ref_id(&mut id, name, k);
+                used.insert(id);
+            }
+        }
         // The next suffix to try for a base: repeated headings do not rescan from 1 (a document of
         // thousands of identical headings would be quadratic).
         let mut next: HashMap<String, usize> = HashMap::new();
@@ -384,51 +502,60 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 }
             }
         }
+        // What raw HTML blocks opened and never closed (sanitized output only).
+        let closers = self.filter.finish();
+        self.out.push_str(&closers);
         self.footnotes();
+        let closers = self.filter.finish();
+        self.out.push_str(&closers);
         std::mem::take(&mut self.out)
     }
 
+    /// The notes section: every note the output refers to (and the notes those refer to), and
+    /// the notes whose own definition is inside the window; in the order of their numbers.
     fn footnotes(&mut self) {
         if self.defs.is_empty() {
             return;
         }
-        let mut items = String::new();
-        let mut k = 0;
-        let mut added_unreferenced = false;
-        loop {
-            if k == self.order.len() {
-                if added_unreferenced {
-                    break;
-                }
-                added_unreferenced = true;
-                let extra: Vec<String> = self
-                    .defs
-                    .iter()
-                    .filter(|d| d.touched && !self.numbers.contains_key(&d.name))
-                    .map(|d| d.name.clone())
-                    .collect();
-                for name in extra {
-                    self.number_of(&name);
-                }
-                if k == self.order.len() {
-                    break;
+        let mut shown: HashSet<String> = self.rendered_refs.keys().cloned().collect();
+        shown.extend(self.defs.iter().filter(|d| d.touched).map(|d| d.name.clone()));
+        let mut queue: Vec<String> = shown.iter().cloned().collect();
+        while let Some(name) = queue.pop() {
+            for inner in self.refs_in_def.get(&name).cloned().unwrap_or_default() {
+                if shown.insert(inner.clone()) {
+                    queue.push(inner);
                 }
             }
-            let name = self.order[k].clone();
-            k += 1;
-            let Some(&di) = self.def_index.get(&name) else { continue };
-            let (children, line) = (self.defs[di].children.clone(), self.defs[di].line);
+        }
+        let mut names: Vec<(usize, String)> =
+            shown.into_iter().filter(|n| self.def_index.contains_key(n)).map(|n| (self.numbers.get(&n).copied().unwrap_or(usize::MAX), n)).collect();
+        names.sort();
+        // Render the bodies first: a body's references are what its back-links point at.
+        let mut bodies = Vec::with_capacity(names.len());
+        for (_, name) in &names {
+            let di = self.def_index[name];
+            let children = self.defs[di].children.clone();
             let saved = std::mem::take(&mut self.out);
             let saved_nl = std::mem::replace(&mut self.end_newline, true);
+            self.filter.enter();
             self.render_range(children.start, children.end);
-            let mut body = std::mem::replace(&mut self.out, saved);
+            let closers = self.filter.end_block() + &self.filter.leave();
+            self.out.push_str(&closers);
+            bodies.push(std::mem::replace(&mut self.out, saved));
             self.end_newline = saved_nl;
-            // The back-references go at the end of the last paragraph.
+        }
+        let mut items = String::new();
+        for (position, ((number, name), mut body)) in names.into_iter().zip(bodies).enumerate() {
+            let line = self.defs[self.def_index[&name]].line;
+            // The back-references (to the references in the output only) go at the end of the
+            // last paragraph.
             let mut backrefs = String::new();
-            let count = self.ref_counts.get(&name).copied().unwrap_or(1).max(1);
-            for c in 1..=count {
+            let mut occurrences = self.rendered_refs.get(&name).cloned().unwrap_or_default();
+            occurrences.sort_unstable();
+            occurrences.dedup();
+            for c in occurrences {
                 let mut id = String::new();
-                self.footnote_ref_id(&mut id, &name, c);
+                Self::footnote_ref_id(&mut id, &name, c);
                 backrefs.push_str(" <a href=\"#");
                 let _ = escape_href(&mut backrefs, &id);
                 backrefs.push_str("\" class=\"footnote-backref\" aria-label=\"Back to reference\">\u{21a9}");
@@ -437,14 +564,20 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 }
                 backrefs.push_str("</a>");
             }
-            if body.ends_with("</p>\n") {
-                body.insert_str(body.len() - 5, &backrefs);
-            } else {
-                body.push_str(&format!("<p>{}</p>\n", backrefs.trim_start()));
+            if !backrefs.is_empty() {
+                if body.ends_with("</p>\n") {
+                    body.insert_str(body.len() - 5, &backrefs);
+                } else {
+                    body.push_str(&format!("<p>{}</p>\n", backrefs.trim_start()));
+                }
             }
             items.push_str("<li id=\"fn-");
             let _ = escape_html(&mut items, &name);
             items.push('"');
+            // The list numbers by position; a note's number is its first reference's.
+            if number != position + 1 {
+                items.push_str(&format!(" value=\"{number}\""));
+            }
             if self.opts.source_lines {
                 items.push_str(&format!(" data-line=\"{line}\""));
             }
@@ -460,18 +593,8 @@ impl<'a, 'o> Renderer<'a, 'o> {
         self.write("</ol>\n</section>\n");
     }
 
-    fn number_of(&mut self, name: &str) -> usize {
-        if let Some(&n) = self.numbers.get(name) {
-            return n;
-        }
-        let n = self.order.len() + 1;
-        self.numbers.insert(name.to_owned(), n);
-        self.order.push(name.to_owned());
-        n
-    }
-
     /// `fnref-NAME` for the first reference, `fnref-NAME-2`... after it.
-    fn footnote_ref_id(&self, out: &mut String, name: &str, k: usize) {
+    fn footnote_ref_id(out: &mut String, name: &str, k: usize) {
         out.push_str("fnref-");
         out.push_str(name);
         if k > 1 {
@@ -497,8 +620,8 @@ impl<'a, 'o> Renderer<'a, 'o> {
                             raw.push_str(h);
                         }
                     }
-                    let clean = self.filter.filter(&raw);
-                    self.filter.reset();
+                    let clean = self.filter.filter(&raw, false);
+                    self.filter.end_html_block();
                     self.write(&clean);
                     i = end + 1;
                 }
@@ -554,7 +677,8 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 Event::Html(h) | Event::InlineHtml(h) => {
                     let h = h.clone();
                     if self.opts.sanitize {
-                        let clean = self.filter.filter(&h);
+                        let inline = matches!(self.events[i].0, Event::InlineHtml(_));
+                        let clean = self.filter.filter(&h, inline);
                         self.write(&clean);
                     } else {
                         self.write(&h);
@@ -584,12 +708,11 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 }
                 Event::FootnoteReference(name) => {
                     let name = name.to_string();
-                    let n = self.number_of(&name);
-                    let count = self.ref_counts.entry(name.clone()).or_insert(0);
-                    *count += 1;
-                    let count = *count;
+                    let n = self.numbers.get(&name).copied().unwrap_or(0);
+                    let count = self.ref_occurrence.get(&i).copied().unwrap_or(1);
+                    self.rendered_refs.entry(name.clone()).or_default().push(count);
                     let mut id = String::new();
-                    self.footnote_ref_id(&mut id, &name, count);
+                    Self::footnote_ref_id(&mut id, &name, count);
                     self.write("<sup class=\"footnote-ref\" id=\"");
                     self.attr(&id);
                     self.write("\"><a href=\"#fn-");
@@ -609,6 +732,13 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 }
             }
         }
+    }
+
+    /// End of a block of inline content: what the sanitizer's inline HTML left open is closed (and
+    /// a dropped element left open stops swallowing).
+    fn end_inline_html(&mut self) {
+        let closers = self.filter.end_block();
+        self.out.push_str(&closers);
     }
 
     fn checkbox(&mut self, checked: bool) {
@@ -665,14 +795,40 @@ impl<'a, 'o> Renderer<'a, 'o> {
         }
         let lang = info.split(' ').next().unwrap_or("");
         let line = self.line_attr(start);
-        self.out.push_str(&format!("<pre{line}><code"));
+        // Highlighting is bounded per render (see HIGHLIGHT_BUDGET_BYTES): counted in the same
+        // units whether or not the block is cached, so the output depends on the text alone.
+        let mut highlighted = None;
+        let mut skipped = false;
+        if self.opts.highlight && highlight::is_highlightable(info, code) {
+            let cost = highlight::cost(code);
+            if self.highlighted_bytes + cost <= HIGHLIGHT_BUDGET_BYTES {
+                let deadline = *self.highlight_deadline.get_or_insert_with(|| Instant::now() + HIGHLIGHT_BUDGET_TIME);
+                // A block wholly inside the floor is always highlighted, so an ordinary document
+                // renders the same way every time (on first use a language's patterns compile,
+                // which can take longer than the cap in a debug build).
+                let capped = self.highlighted_bytes + cost > HIGHLIGHT_FLOOR_BYTES;
+                self.highlighted_bytes += cost;
+                highlighted = highlight::highlight_until(info, code, capped.then_some(deadline));
+                skipped = highlighted.is_none();
+            } else {
+                skipped = true;
+            }
+            if skipped {
+                self.unhighlighted_blocks += 1;
+            }
+        }
+        self.out.push_str(&format!("<pre{line}"));
+        if skipped {
+            self.out.push_str(" data-highlight=\"skipped\"");
+        }
+        self.out.push_str("><code");
         if !lang.is_empty() {
             self.out.push_str(" class=\"language-");
             self.attr(lang);
             self.out.push('"');
         }
         self.out.push('>');
-        match self.opts.highlight.then(|| highlight::highlight(info, code)).flatten() {
+        match highlighted {
             Some(html) => self.out.push_str(&html),
             None => {
                 let _ = escape_html_body_text(&mut self.out, code);
@@ -683,7 +839,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
 
     fn image(&mut self, dest: &str, title: &str, from: usize, end: usize) {
         self.write("<img src=\"");
-        if !(self.opts.sanitize && is_dangerous_url(dest)) {
+        if !self.opts.sanitize || is_safe_url(dest, true) {
             self.href(dest);
         }
         self.write("\" alt=\"");
@@ -705,7 +861,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 }
                 Event::SoftBreak | Event::HardBreak | Event::Rule => self.out.push(' '),
                 Event::FootnoteReference(name) => {
-                    let n = self.numbers.get(&name.to_string()).copied().unwrap_or(self.order.len() + 1);
+                    let n = self.numbers.get(&name.to_string()).copied().unwrap_or(0);
                     self.out.push_str(&format!("[{n}]"));
                 }
                 Event::TaskListMarker(c) => self.out.push_str(if *c { "[x]" } else { "[ ]" }),
@@ -765,27 +921,35 @@ impl<'a, 'o> Renderer<'a, 'o> {
                     _ => self.write(">"),
                 }
             }
-            Tag::BlockQuote(_) => self.open_block("blockquote", "", range.start, "\n"),
+            Tag::BlockQuote(_) => {
+                self.filter.enter();
+                self.open_block("blockquote", "", range.start, "\n");
+            }
             Tag::CodeBlock(_) | Tag::Image { .. } | Tag::MetadataBlock(_) | Tag::FootnoteDefinition(_) => {}
-            Tag::List(Some(1)) => self.open_plain("ol", ""),
-            Tag::List(Some(start)) => self.open_plain("ol", &format!(" start=\"{start}\"")),
-            Tag::List(None) => self.open_plain("ul", ""),
+            Tag::List(Some(1)) => self.open_plain("ol", "", range.start),
+            Tag::List(Some(start)) => self.open_plain("ol", &format!(" start=\"{start}\""), range.start),
+            Tag::List(None) => self.open_plain("ul", "", range.start),
             Tag::Item => {
+                self.filter.enter();
                 let task = matches!(self.events.get(index + 1), Some((Event::TaskListMarker(_), _)));
                 self.open_block("li", if task { " class=\"task-list-item\"" } else { "" }, range.start, "");
             }
-            Tag::DefinitionList => self.open_plain("dl", ""),
+            Tag::DefinitionList => self.open_plain("dl", "", range.start),
             Tag::DefinitionListTitle => self.open_block("dt", "", range.start, ""),
             Tag::DefinitionListDefinition => self.open_block("dd", "", range.start, ""),
-            Tag::Subscript => self.write("<sub>"),
-            Tag::Superscript => self.write("<sup>"),
-            Tag::Emphasis => self.write("<em>"),
-            Tag::Strong => self.write("<strong>"),
-            Tag::Strikethrough => self.write("<del>"),
+            Tag::Subscript => self.open_inline("sub"),
+            Tag::Superscript => self.open_inline("sup"),
+            Tag::Emphasis => self.open_inline("em"),
+            Tag::Strong => self.open_inline("strong"),
+            Tag::Strikethrough => self.open_inline("del"),
             Tag::Link { link_type, dest_url, title, .. } => {
+                if self.opts.sanitize {
+                    self.filter.open_own("a");
+                }
                 self.link_depth += 1;
                 self.write("<a");
-                let dangerous = self.opts.sanitize && is_dangerous_url(&dest_url);
+                // An e-mail autolink is written with `mailto:`, which is safe.
+                let dangerous = self.opts.sanitize && link_type != LinkType::Email && !is_safe_url(&dest_url, false);
                 if !dangerous {
                     self.write(" href=\"");
                     if link_type == LinkType::Email {
@@ -804,12 +968,30 @@ impl<'a, 'o> Renderer<'a, 'o> {
         }
     }
 
-    /// `<tag attrs>\n` (lists, definition lists).
-    fn open_plain(&mut self, tag: &str, attrs: &str) {
+    /// `<tag>` for one of our inline elements (the sanitizer keeps raw HTML nested inside it).
+    fn open_inline(&mut self, tag: &str) {
+        if self.opts.sanitize {
+            self.filter.open_own(tag);
+        }
+        self.write(&format!("<{tag}>"));
+    }
+
+    /// `</tag>` for one of our inline elements, after what raw HTML left open inside it.
+    fn close_inline(&mut self, tag: &str) {
+        if self.opts.sanitize {
+            let closers = self.filter.close_own();
+            self.out.push_str(&closers);
+        }
+        self.write(&format!("</{tag}>"));
+    }
+
+    /// `<tag attrs data-line>\n` (lists, definition lists).
+    fn open_plain(&mut self, tag: &str, attrs: &str, start: usize) {
         if !self.end_newline {
             self.out.push('\n');
         }
-        self.out.push_str(&format!("<{tag}{attrs}>\n"));
+        let line = self.line_attr(start);
+        self.out.push_str(&format!("<{tag}{attrs}{line}>\n"));
         self.end_newline = true;
     }
 
@@ -817,11 +999,11 @@ impl<'a, 'o> Renderer<'a, 'o> {
         match tag {
             TagEnd::HtmlBlock | TagEnd::Image | TagEnd::MetadataBlock(_) | TagEnd::FootnoteDefinition | TagEnd::CodeBlock => {}
             TagEnd::Paragraph => {
-                self.filter.reset();
+                self.end_inline_html();
                 self.write("</p>\n");
             }
             TagEnd::Heading(level) => {
-                self.filter.reset();
+                self.end_inline_html();
                 self.write(&format!("</{level}>\n"));
             }
             TagEnd::Table => self.write("</tbody></table>\n"),
@@ -831,29 +1013,41 @@ impl<'a, 'o> Renderer<'a, 'o> {
             }
             TagEnd::TableRow => self.write("</tr>\n"),
             TagEnd::TableCell => {
-                self.filter.reset();
+                self.end_inline_html();
                 self.write(if self.table.in_head { "</th>" } else { "</td>" });
                 self.table.cell += 1;
             }
-            TagEnd::BlockQuote(_) => self.write("</blockquote>\n"),
+            TagEnd::BlockQuote(_) => {
+                let closers = self.filter.leave();
+                self.out.push_str(&closers);
+                self.write("</blockquote>\n");
+            }
             TagEnd::List(true) => self.write("</ol>\n"),
             TagEnd::List(false) => self.write("</ul>\n"),
             TagEnd::Item => {
-                self.filter.reset();
+                self.end_inline_html();
+                let closers = self.filter.leave();
+                self.out.push_str(&closers);
                 self.pending_task = None;
                 self.write("</li>\n");
             }
             TagEnd::DefinitionList => self.write("</dl>\n"),
-            TagEnd::DefinitionListTitle => self.write("</dt>\n"),
-            TagEnd::DefinitionListDefinition => self.write("</dd>\n"),
-            TagEnd::Emphasis => self.write("</em>"),
-            TagEnd::Superscript => self.write("</sup>"),
-            TagEnd::Subscript => self.write("</sub>"),
-            TagEnd::Strong => self.write("</strong>"),
-            TagEnd::Strikethrough => self.write("</del>"),
+            TagEnd::DefinitionListTitle => {
+                self.end_inline_html();
+                self.write("</dt>\n");
+            }
+            TagEnd::DefinitionListDefinition => {
+                self.end_inline_html();
+                self.write("</dd>\n");
+            }
+            TagEnd::Emphasis => self.close_inline("em"),
+            TagEnd::Superscript => self.close_inline("sup"),
+            TagEnd::Subscript => self.close_inline("sub"),
+            TagEnd::Strong => self.close_inline("strong"),
+            TagEnd::Strikethrough => self.close_inline("del"),
             TagEnd::Link => {
                 self.link_depth = self.link_depth.saturating_sub(1);
-                self.write("</a>");
+                self.close_inline("a");
             }
         }
     }

@@ -5,17 +5,17 @@ expression: d.render_html(&lines())
 <h1 id="the-quiet-page" data-line="5">The quiet page</h1>
 <p data-line="7">Writing should feel calm. This paragraph is long enough to wrap across several lines of the text column, so that the line height, the measure and the margins can be judged at a glance, the way a reader would meet them. A misspeled word belongs here, and another one: teh.</p>
 <h2 id="lists-that-wrap" data-line="9">Lists that wrap</h2>
-<ul>
+<ul data-line="11">
 <li data-line="11">A short item.</li>
 <li data-line="12">A much longer item whose text keeps going well past the end of the first line, so the wrapped part should hang under the text and not under the dash.
-<ul>
+<ul data-line="13">
 <li data-line="13">A nested item that also runs long enough to wrap onto a second line and show its hanging indent.</li>
 </ul>
 </li>
 <li class="task-list-item" data-line="14"><input disabled="" type="checkbox" /> An open task with enough words to wrap around to the next line of the column.</li>
 <li class="task-list-item" data-line="15"><input disabled="" type="checkbox" checked="" /> A finished task.</li>
 </ul>
-<ol>
+<ol data-line="17">
 <li data-line="17">First, numbered.</li>
 <li data-line="18">Second, also numbered, and long enough to wrap onto another line so the hang is visible.</li>
 <li data-line="19">Tenth, with a wider marker.</li>

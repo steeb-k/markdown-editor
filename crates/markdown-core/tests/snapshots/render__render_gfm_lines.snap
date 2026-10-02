@@ -7,7 +7,7 @@ expression: d.render_html(&lines())
 <tr data-line="4"><td style="text-align: left">a</td><td style="text-align: center">b</td><td style="text-align: right">c</td></tr>
 <tr data-line="5"><td style="text-align: left">1</td><td style="text-align: center">2</td><td style="text-align: right">3</td></tr>
 </tbody></table>
-<ul>
+<ul data-line="7">
 <li class="task-list-item" data-line="7"><input disabled="" type="checkbox" /> open task</li>
 <li class="task-list-item" data-line="8"><input disabled="" type="checkbox" checked="" /> done task</li>
 </ul>

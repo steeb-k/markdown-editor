@@ -7,15 +7,15 @@ expression: d.render_html(&lines())
 A hard break follows<br />
 on the next line.</p>
 <h2 id="lists" data-line="6">Lists</h2>
-<ul>
+<ul data-line="8">
 <li data-line="8">one</li>
 <li data-line="9">two
-<ul>
+<ul data-line="10">
 <li data-line="10">nested</li>
 </ul>
 </li>
 </ul>
-<ol>
+<ol data-line="11">
 <li data-line="11">first</li>
 <li data-line="12">second</li>
 </ol>

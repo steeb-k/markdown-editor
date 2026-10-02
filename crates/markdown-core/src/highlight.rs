@@ -13,6 +13,7 @@
 //! unknown language is shown as plain, escaped text.
 
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 use std::collections::HashMap;
 
@@ -25,6 +26,22 @@ pub const CLASS_PREFIX: &str = "s-";
 
 /// Blocks above this size are shown plain: highlighting is for reading, not for log files.
 const MAX_HIGHLIGHT_BYTES: usize = 200_000;
+/// A block with a line longer than this is shown plain: the regex engine's cost grows with the
+/// line (and can backtrack badly on minified code).
+const MAX_LINE_BYTES: usize = 1_000;
+/// What a line costs, in bytes of the render's highlighting budget, beyond its own length: the
+/// per-line work of the parser dominates for ordinary code.
+const LINE_COST: usize = 48;
+
+/// Whether `highlight` would try this block (a known language, not too large, no giant line).
+pub fn is_highlightable(info: &str, code: &str) -> bool {
+    code.len() <= MAX_HIGHLIGHT_BYTES && !code.split('\n').any(|l| l.len() > MAX_LINE_BYTES) && find_syntax(info).is_some()
+}
+
+/// The block's share of a render's highlighting budget (see `render::HIGHLIGHT_BUDGET_BYTES`).
+pub fn cost(code: &str) -> usize {
+    code.len() + LINE_COST * (code.matches('\n').count() + 1)
+}
 
 static SYNTAXES: OnceLock<SyntaxSet> = OnceLock::new();
 
@@ -91,7 +108,14 @@ fn classes_of(scope: Scope) -> Option<String> {
 /// is unknown, plain text, the block is too large, or the highlighter failed (the caller then
 /// writes the escaped text). Only the scopes that get a colour become spans.
 pub fn highlight(info: &str, code: &str) -> Option<String> {
-    if code.len() > MAX_HIGHLIGHT_BYTES {
+    highlight_until(info, code, None)
+}
+
+/// [`highlight`], giving up (`None`) once `deadline` has passed: checked between lines, so a
+/// render's highlighting stops within a line's work of it. A block answered from the cache
+/// costs nothing and is always given.
+pub fn highlight_until(info: &str, code: &str, deadline: Option<Instant>) -> Option<String> {
+    if code.len() > MAX_HIGHLIGHT_BYTES || code.split('\n').any(|l| l.len() > MAX_LINE_BYTES) {
         return None;
     }
     let syntax = find_syntax(info)?;
@@ -101,13 +125,15 @@ pub fn highlight(info: &str, code: &str) -> Option<String> {
     if let Some(hit) = cache().lock().unwrap_or_else(|e| e.into_inner()).entries.get(&key) {
         return Some(hit.clone());
     }
-    let html = highlight_uncached(syntax, code)?;
+    let html = highlight_uncached(syntax, code, deadline)?;
     let mut c = cache().lock().unwrap_or_else(|e| e.into_inner());
-    if c.bytes + html.len() + code.len() > CACHE_BYTES {
+    // An entry's size, the map's own overhead per entry included (tiny blocks are not free).
+    let size = html.len() + code.len() + key.0.len() + ENTRY_OVERHEAD;
+    if c.bytes + size > CACHE_BYTES {
         c.entries.clear();
         c.bytes = 0;
     }
-    c.bytes += html.len() + code.len();
+    c.bytes += size;
     c.entries.insert(key, html.clone());
     Some(html)
 }
@@ -121,6 +147,12 @@ pub fn clear_cache() {
 
 /// Highlighted blocks kept between renders, keyed by language and code; emptied when it outgrows this.
 const CACHE_BYTES: usize = 8 << 20;
+const ENTRY_OVERHEAD: usize = 128;
+
+/// How much the cache holds, in its own accounting (tests: it stays bounded).
+pub fn cache_bytes() -> usize {
+    cache().lock().unwrap_or_else(|e| e.into_inner()).bytes
+}
 
 #[derive(Default)]
 struct Cache {
@@ -133,7 +165,7 @@ fn cache() -> &'static Mutex<Cache> {
     CACHE.get_or_init(Mutex::default)
 }
 
-fn highlight_uncached(syntax: &SyntaxReference, code: &str) -> Option<String> {
+fn highlight_uncached(syntax: &SyntaxReference, code: &str, deadline: Option<Instant>) -> Option<String> {
     let ss = syntaxes();
     let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
@@ -142,6 +174,9 @@ fn highlight_uncached(syntax: &SyntaxReference, code: &str) -> Option<String> {
     let mut open: Vec<bool> = Vec::new();
     let mut classes: HashMap<Scope, Option<String>> = HashMap::new();
     for line in LinesWithEndings::from(code) {
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            return None;
+        }
         let ops = state.parse_line(line, ss).ok()?;
         let mut at = 0;
         for (i, op) in &ops {
