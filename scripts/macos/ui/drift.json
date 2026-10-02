@@ -1,0 +1,12 @@
+[
+ {"log": "A long Live session at 1 MB: scattered caret jumps and typing, round after round. The cost per key and per jump in the last tenth must stay within a factor of the first tenth. Run with RELEASE=1."},
+ {"setting": {"theme": "light", "fontChoice": "iaQuattro", "spellCheck": false, "showFormattingToolbar": true}},
+ {"openGenerated": {"from": "scripts/macos/ui/fixtures/dense.md", "minLength": 1000000}},
+ {"resize": [900, 820]},
+ {"viewMode": "live"},
+ {"waitStyled": 180},
+ {"selectText": "The end.", "offset": 8},
+ {"wait": 0.5},
+ {"measureDrift": {"rounds": 300, "keys": 20, "moves": 4, "factor": 2, "sampleEvery": 50}},
+ {"assert": {"coreMatchesText": true}}
+]

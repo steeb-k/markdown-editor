@@ -108,6 +108,19 @@ final class LiveEditingTests: XCTestCase {
         XCTAssertFalse(e.isNull(heading.location + 1))
     }
 
+    func testVerticalMoveIntoAPictureLandsAtTheStartOfItsSource() {
+        let text = "Some paragraph text\n\n![a long description of the picture](missing/picture.png)\n\nend"
+        let ns = text as NSString
+        let e = Editor.live(text, caret: 5)
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        XCTAssertEqual(e.tv.selectedRange().location, ns.range(of: "\n\n![").location + 1, "the blank line above the picture is visited")
+        e.tv.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        e.settle()
+        XCTAssertEqual(e.tv.selectedRange(), NSRange(location: ns.range(of: "![a long").location, length: 0), "at the start of the picture's source line")
+        XCTAssertFalse(e.isNull(ns.range(of: "![a long").location), "the source is shown while the caret is on it")
+    }
+
     func testMovingAcrossACollapsedFenceEntersTheCode() {
         let text = "before\n\n```\ncode line\n```\n\nafter"
         let ns = text as NSString

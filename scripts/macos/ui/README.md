@@ -20,7 +20,7 @@ given. Set `UI_SCRIPT_TRACE=1` to log every step as it starts.
 
 Any Objective-C exception stops the script at once: it is logged with the stack of the throw
 (stderr), recorded in `log.json`, and the app exits with status 3 (no crash report, no dialog).
-`UI_SCRIPT_EXCEPTIONS=log` only logs them. Undo and redo are `{"undo": true}` and `{"redo": true}`:
+`UI_SCRIPT_EXCEPTIONS=log` only logs them. The runner holds an activity assertion (no App Nap, no idle sleep of the system or the display, no automatic or sudden termination) for the whole run; `UI_SCRIPT_ALLOW_NAP=1` removes it. Without it a script that runs for minutes with no one at the machine is throttled by macOS to a quarter of the speed after about a minute, which looks exactly like the app slowing down late in a long session (it was the cause of that report). Undo and redo are `{"undo": true}` and `{"redo": true}`:
 `{"action": "undo:"}` would undo inside the step's own undo group, which NSUndoManager rejects.
 
 Snapshots are composited by the app itself (the text view rendered as vector PDF, then the
@@ -43,7 +43,7 @@ captured with `"window": "sheet"`.
 | `{"appearance": "dark"}` | App appearance (`light`, `dark`, `system`), for the System theme. |
 | `{"wait": 0.5}`, `{"waitStyled": 20}` | Time; styling caught up. |
 | `{"snapshot": "name", "window": "settings"}` | PNG of the document window, Settings or the attached sheet. `"bitmap": true` renders the text view as it is drawn on screen (selection highlight and caret included; the default vector rendering leaves them out). |
-| `{"resize": [w, h]}`, `{"fullscreen": true}`, `{"scroll": "end"}` | Window. Full screen is skipped when the app is not active. |
+| `{"resize": [w, h]}`, `{"fullscreen": true}`, `{"scroll": "end"}` | Window. Full screen is skipped when the app is not active. `scroll` also takes a y offset (negative: above the text); it logs where the editor stopped, and `"notAbove": y` fails if it went above `y`. |
 | `{"newTab": true}`, `{"switchTo": 0}`, `{"settingsWindow": "show"}`, `{"sheet": "end"}` | Windows. |
 | `{"pointer": "moved"}` | What a mouse move does to the auto-hiding chrome. |
 | `{"undo": true}`, `{"redo": true}` | Document undo manager. |
@@ -55,6 +55,7 @@ captured with `"window": "sheet"`.
 | `{"waitImages": 5}`, `{"dumpLayout": "needle"}` | Waits for pictures to load; logs line fragments and glyph positions (`N` null, `C` control) of the paragraph holding the needle. |
 | `{"measureTyping": {"count": 150, "interval": 0.06, "maxMs": 10}}` | Main-thread time per keystroke and the longest run-loop gap. |
 | `{"measureCaret": {"count": 200, "stride": 97}}` | Main-thread time per caret move (the selection change and the concealment it triggers). |
+| `{"measureDrift": {"rounds": 300, "keys": 20, "moves": 4, "factor": 2}}` | A long session at random: each round jumps the caret to scattered places and types at the last one. Records per key and per jump the main-thread cost, with the size of everything the session keeps (concealment, overlay runs, attribute runs), the analysis queue's time per edit and a fixed-arithmetic calibration of the machine; the last tenth of the rounds must stay within `factor` (plus `slackMs`) of the first tenth, judged against how much slower the calibration got. `experiment: {"round": n, "do": "removeUndo"\|"invalidateLayout"\|"invalidateGlyphs"\|"removeTemporary"}` applies one remedy mid-run. See `drift.json`. |
 | `{"caretWalk": {"command": "moveRight:"}}` | Presses the key until the caret stops (or comes back to a place it has been: Right through a right-to-left line moves backwards, as AppKit does in Source mode too); fails if a press passed only hidden text or the caret rested in hidden text (Live mode's caret rules). |
 | `{"measureKeys": {"count": 200, "command": "moveRight:"}}` | Main-thread time per arrow-key press through the key bindings, drawing included. |
 | `{"measureJump": {"count": 20}}` | Time to scroll to a far place and lay out and draw the screenful there (a scroll-smoothness proxy). |
@@ -65,6 +66,7 @@ captured with `"window": "sheet"`.
 | `{"save": true}`, `{"reopen": true}` | Writes the (scratch) document to its file through the save path; closes it and opens the file afresh. |
 | `{"undoUntilLacks": "needle"}`, `{"undoUntilContains": "needle"}`, `{"redoUntilContains": "needle"}` | Undo or redo until the text has (or has lost) the needle: typing through key events is several undo steps here (each key is its own group). |
 | `{"authorshipDecision": "keep"\|"discard"}` | Shows the keep-or-discard sheet (a file whose marks may be misplaced) and answers it through its buttons. |
+| `{"frontDocument": true}` | The script's document becomes the one now in front (one the app opened itself, such as Help > Markdown Help). |
 | `{"close": true}` | Closes the document and checks that it, its window controller, session and coordinator are freed. |
 | `{"controlLeakProbe": true}` | The same check for a plain AppKit window (AppKit keeps closed windows for a while). |
 | `{"markEvery": {"stride": 300, "length": 100, "as": "ai"}}` | Marks `length` characters every `stride` (every third as Reference): thousands of authorship runs at once, for timing. Not undoable. |

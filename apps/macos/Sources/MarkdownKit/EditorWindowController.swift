@@ -31,14 +31,22 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     private let root = EditorRootView()
     private var chrome: ChromeController!
     private var observers: [NSObjectProtocol] = []
-    private static var windowCount = 0
+
+    /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
+    /// on a big one, never more than nine tenths of the visible screen on a small one.
+    static func defaultContentSize(for screen: NSSize?) -> NSSize {
+        guard let s = screen, s.width > 0, s.height > 0 else { return NSSize(width: 860, height: 740) }
+        let width = min(s.width * 0.9, min(max(s.width * 0.5, 860), 1100))
+        let height = min(s.height * 0.9, min(max(s.height * 0.75, 740), 1200))
+        return NSSize(width: width.rounded(), height: height.rounded())
+    }
 
     public init(document: MarkdownDocument) {
         session = document.session
         let settings = session.settings
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 740),
+            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize(for: NSScreen.main?.visibleFrame.size)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.titlebarAppearsTransparent = true
@@ -58,6 +66,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
         scroll.borderType = .noBorder
+        scroll.contentView = EditorClipView()
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
         scroll.documentView = textView
@@ -97,12 +106,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         super.init(window: window)
         window.delegate = self
         shouldCascadeWindows = false
-        Self.windowCount += 1
+        // The first window is centred; each further one cascades from the front document window,
+        // so reopening after every window was closed starts in the same place again.
+        let others = NSApp.windows.filter { $0 !== window && $0.isVisible && $0.windowController is EditorWindowController && !$0.isMiniaturized }
         window.center()
-        if Self.windowCount > 1 {
-            let f = window.frame
-            window.setFrameOrigin(NSPoint(x: f.minX + CGFloat((Self.windowCount - 1) % 8) * 26,
-                                          y: f.minY - CGFloat((Self.windowCount - 1) % 8) * 26))
+        if let front = others.first(where: { $0.isMainWindow }) ?? others.first {
+            let from = NSPoint(x: front.frame.minX, y: front.frame.maxY)
+            window.setFrameTopLeftPoint(window.cascadeTopLeft(from: from))
         }
 
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome)
@@ -631,5 +641,17 @@ public final class PreviewSplitView: NSView {
         guard dragging else { return }
         dragging = false
         onRatioChange?(ratio)
+    }
+}
+
+/// The editor's clip view. AppKit lets a scroll view with a transparent title bar scroll a whole
+/// extra title-bar-and-more above the top of the text (104 points were measured, after a scroll
+/// to the end); the text may not go lower than where the document opens, below the title bar.
+final class EditorClipView: NSClipView {
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        var r = super.constrainBoundsRect(proposedBounds)
+        let floor = -(enclosingScrollView?.contentInsets.top ?? 0)
+        if r.origin.y < floor { r.origin.y = floor }
+        return r
     }
 }

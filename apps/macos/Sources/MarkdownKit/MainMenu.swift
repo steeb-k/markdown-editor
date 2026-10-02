@@ -30,7 +30,7 @@ enum MainMenu {
         let main = NSMenu()
 
         _ = submenu(main, name) { m in
-            _ = item(m, "About \(name)", #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+            _ = item(m, "About \(name)", #selector(AppDelegate.showAbout(_:)))
             m.addItem(.separator())
             _ = item(m, "Settings…", #selector(AppDelegate.showSettings(_:)), ",")
             m.addItem(.separator())
@@ -117,6 +117,27 @@ enum MainMenu {
                 _ = item(s, "Check Grammar With Spelling", #selector(NSTextView.toggleGrammarChecking(_:)))
                 _ = item(s, "Correct Spelling Automatically", #selector(NSTextView.toggleAutomaticSpellingCorrection(_:)))
             }
+            // Substitutions are off by default (smart quotes and dashes would corrupt Markdown), and
+            // each is a switch here.
+            nested(m, "Substitutions") { s in
+                _ = item(s, "Show Substitutions", #selector(NSTextView.orderFrontSubstitutionsPanel(_:)))
+                s.addItem(.separator())
+                _ = item(s, "Smart Copy/Paste", #selector(NSTextView.toggleSmartInsertDelete(_:)))
+                _ = item(s, "Smart Quotes", #selector(NSTextView.toggleAutomaticQuoteSubstitution(_:)))
+                _ = item(s, "Smart Dashes", #selector(NSTextView.toggleAutomaticDashSubstitution(_:)))
+                _ = item(s, "Smart Links", #selector(NSTextView.toggleAutomaticLinkDetection(_:)))
+                _ = item(s, "Data Detectors", #selector(NSTextView.toggleAutomaticDataDetection(_:)))
+                _ = item(s, "Text Replacement", #selector(NSTextView.toggleAutomaticTextReplacement(_:)))
+            }
+            nested(m, "Transformations") { t in
+                _ = item(t, "Make Upper Case", #selector(NSResponder.uppercaseWord(_:)))
+                _ = item(t, "Make Lower Case", #selector(NSResponder.lowercaseWord(_:)))
+                _ = item(t, "Capitalize", #selector(NSResponder.capitalizeWord(_:)))
+            }
+            nested(m, "Speech") { s in
+                _ = item(s, "Start Speaking", #selector(NSTextView.startSpeaking(_:)))
+                _ = item(s, "Stop Speaking", #selector(NSTextView.stopSpeaking(_:)))
+            }
         }
 
         _ = submenu(main, "Format") { m in
@@ -200,6 +221,8 @@ enum MainMenu {
             m.addItem(.separator())
             _ = item(m, "Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "\t", [.control, .shift])
             _ = item(m, "Show Next Tab", #selector(NSWindow.selectNextTab(_:)), "\t", [.control])
+            _ = item(m, "Show Tab Bar", #selector(NSWindow.toggleTabBar(_:)), "\\", [.command, .shift])
+            _ = item(m, "Show All Tabs", #selector(NSWindow.toggleTabOverview(_:)))
             _ = item(m, "Move Tab to New Window", #selector(NSWindow.moveTabToNewWindow(_:)))
             _ = item(m, "Merge All Windows", #selector(NSWindow.mergeAllWindows(_:)))
             m.addItem(.separator())
@@ -208,7 +231,10 @@ enum MainMenu {
         NSApp.windowsMenu = window
 
         let help = submenu(main, "Help") { m in
-            _ = item(m, "Markdown Syntax Help", #selector(AppDelegate.openHelp(_:)), "?")
+            _ = item(m, "Markdown Help", #selector(AppDelegate.showWelcome(_:)), "?")
+            _ = item(m, "Markdown Syntax Reference", #selector(AppDelegate.openSyntaxReference(_:)))
+            m.addItem(.separator())
+            _ = item(m, "Acknowledgements", #selector(AppDelegate.showAcknowledgements(_:)))
         }
         NSApp.helpMenu = help
 

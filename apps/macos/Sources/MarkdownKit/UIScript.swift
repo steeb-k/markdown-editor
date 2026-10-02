@@ -55,6 +55,7 @@ final class UIScriptRunner {
     }
 
     private static var running: UIScriptRunner?
+    private static var activity: NSObjectProtocol?
 
     /// Any Objective-C exception ends the script as a failure, at the point it is thrown: it is
     /// logged with its stack (the throw site, which a crash report does not keep), recorded in
@@ -97,6 +98,14 @@ final class UIScriptRunner {
     static func startIfRequested() {
         guard let path = scriptPath else { return }
         logExceptions()
+        // A script can run for minutes with no one at the machine: without this, macOS treats the
+        // app as idle (App Nap, a sleeping display) and throttles its CPU several times over, which
+        // shows up as "the app slows down late in a long session" (see `measureDrift`).
+        if ProcessInfo.processInfo.environment["UI_SCRIPT_ALLOW_NAP"] == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled, .idleDisplaySleepDisabled, .automaticTerminationDisabled, .suddenTerminationDisabled],
+                reason: "UI script")
+        }
         LinkOpener.opened = { url in UIScriptRunner.opened = url; return true }
         let runner = UIScriptRunner(script: URL(fileURLWithPath: path))
         running = runner
@@ -203,7 +212,10 @@ final class UIScriptRunner {
             done()
         } else if let js = str("evalPreview") {
             let r = controller?.previewController.evaluateSync(js)
-            record(["evalPreview": "\(String(describing: r))"], ok: true)
+            // `expect`: the result, written as a string, must equal it.
+            let shown = r.map { "\($0)" } ?? "nil"
+            let ok = (step["expect"] as? String).map { shown == $0 } ?? true
+            record(["evalPreview": "\(String(describing: r))"], ok: ok)
             done()
         } else if let name = str("exportPDF") {
             exportPDF(name, then: done)
@@ -345,6 +357,13 @@ final class UIScriptRunner {
             document = try? NSDocumentController.shared.openUntitledDocumentAndDisplay(true) as? MarkdownDocument
             record(["new": true], ok: document != nil)
             done()
+        } else if step["frontDocument"] != nil {
+            // The script's document becomes the one now in front (a document the app opened by itself,
+            // such as Help > Markdown Help), with its name in the log.
+            let all = NSDocumentController.shared.documents.compactMap { $0 as? MarkdownDocument }
+            if let d = (NSDocumentController.shared.currentDocument as? MarkdownDocument).flatMap({ $0 === document ? nil : $0 }) ?? all.last(where: { $0 !== document }) { document = d }
+            record(["frontDocument": document?.displayName ?? "none", "documents": all.count], ok: document != nil)
+            done()
         } else if let text = str("load") {
             session?.load(text)
             record(["load": (text as NSString).length], ok: true)
@@ -443,7 +462,15 @@ final class UIScriptRunner {
             done()
         } else if let where_ = step["scroll"] {
             scroll(where_)
-            record(["scroll": "\(where_)"], ok: true)
+            // Where the editor ended up and the least it may be (the top of the text under the title bar).
+            let clip = textView?.enclosingScrollView?.contentView
+            let inset = textView?.enclosingScrollView?.contentInsets.top ?? 0
+            // What a person could scroll to: the clip view's own constraint (clip.scroll(to:) skips it).
+            let constrained = clip.map { $0.constrainBoundsRect(NSRect(x: 0, y: -2000, width: $0.bounds.width, height: $0.bounds.height)).minY } ?? 0
+            var entry: [String: Any] = ["scroll": "\(where_)", "clip_min_y": clip?.bounds.minY ?? 0, "lowest_reachable_y": constrained, "content_inset_top": inset]
+            var ok = true
+            if let limit = (step["notAbove"] as? NSNumber)?.doubleValue { ok = constrained >= limit - 0.5; entry["not_above"] = limit }
+            record(entry, ok: ok)
             done()
         } else if str("pointer") != nil {
             controller?.simulatePointerMoved()
@@ -582,6 +609,8 @@ final class UIScriptRunner {
             measureTyping(m, then: done)
         } else if let m = step["measureCaret"] as? [String: Any] {
             measureCaret(m, then: done)
+        } else if let m = step["measureDrift"] as? [String: Any] {
+            measureDrift(m, then: done)
         } else if let m = step["caretWalk"] as? [String: Any] {
             caretWalk(m, then: done)
         } else if let m = step["measureKeys"] as? [String: Any] {
@@ -1134,6 +1163,133 @@ final class UIScriptRunner {
             later(0.005, step)
         }
         step()
+    }
+
+    /// How long a fixed amount of arithmetic takes here and now: tells a slow machine (thermal
+    /// throttling, other processes) from a slow app.
+    nonisolated static func calibrate() -> Double {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        var x: UInt64 = 88172645463325252
+        for _ in 0..<20_000_000 { x ^= x << 13; x ^= x >> 7; x ^= x << 17 }
+        if x == 1 { print("") }
+        return (CFAbsoluteTimeGetCurrent() - t0) * 1000
+    }
+
+    /// A long session at random: each round jumps the caret to `moves` scattered places, then
+    /// types `keys` characters (with a Backspace now and then) at the last one, and records the
+    /// main-thread cost per key and per jump together with the size of everything the session
+    /// keeps (concealment, overlay runs, attribute runs, undo steps). The cost per key in the
+    /// first tenth of the rounds is compared with the last tenth: a cost that grows with the
+    /// length of the session fails (`factor`, default 2, plus `slackMs`, default 1).
+    private func measureDrift(_ m: [String: Any], then done: @escaping () -> Void) {
+        let rounds = m["rounds"] as? Int ?? 100
+        let keys = m["keys"] as? Int ?? 20
+        let moves = m["moves"] as? Int ?? 4
+        let factor = (m["factor"] as? NSNumber)?.doubleValue ?? 2
+        let slack = (m["slackMs"] as? NSNumber)?.doubleValue ?? 1
+        let sampleEvery = max(1, m["sampleEvery"] as? Int ?? max(1, rounds / 10))
+        var seed = UInt64(m["seed"] as? Int ?? 7) &+ 0x9E37_79B9_7F4A_7C15
+        func rnd(_ n: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(max(1, n)))
+        }
+        func attributeRuns(_ s: EditorSession) -> Int {
+            var n = 0
+            s.storage.enumerateAttributes(in: NSRange(location: 0, length: s.storage.length), options: []) { _, _, _ in n += 1 }
+            return n
+        }
+        guard let s0 = session else { record(["measureDrift": "no session"], ok: false); done(); return }
+        let runs0 = attributeRuns(s0)
+        var keyMs: [Double] = [], moveMs: [Double] = [], calibration: [Double] = []
+        var samples: [[String: Any]] = []
+        var typed = 0
+        var round = 0
+        let alphabet = Array("the quick brown fox jumps over the lazy dog ")
+        func finish() {
+            guard let s = session else { done(); return }
+            let tenth = max(1, rounds / 10)
+            func mean(_ a: ArraySlice<Double>) -> Double { a.isEmpty ? 0 : a.reduce(0, +) / Double(a.count) }
+            let k0 = mean(keyMs.prefix(tenth)), k1 = mean(keyMs.suffix(tenth))
+            let m0 = mean(moveMs.prefix(tenth)), m1 = mean(moveMs.suffix(tenth))
+            // Judged against how fast the machine was at the start and at the end (a fixed loop
+            // timed every round): a throttled machine is not a slow app.
+            let c0 = mean(calibration.prefix(tenth)), c1 = mean(calibration.suffix(tenth))
+            let speed = c0 > 0 ? c1 / c0 : 1
+            let ok = k1 <= k0 * factor * max(1, speed) + slack && m1 <= m0 * factor * max(1, speed) + slack
+            record(["measureDrift": ["rounds": rounds, "keys_typed": typed,
+                                     "key_ms_first_tenth": k0, "key_ms_last_tenth": k1,
+                                     "move_ms_first_tenth": m0, "move_ms_last_tenth": m1,
+                                     "machine_slowdown": speed,
+                                     "key_ratio": k0 > 0 ? k1 / k0 : 0, "move_ratio": m0 > 0 ? m1 / m0 : 0,
+                                     "attribute_runs_before": runs0, "attribute_runs_after": attributeRuns(s),
+                                     "key_ms_by_round": keyMs.map { ($0 * 10).rounded() / 10 },
+                                     "samples": samples] as [String: Any]], ok: ok)
+            done()
+        }
+        func oneRound() {
+            guard round < rounds, let tv = textView, let s = session else { finish(); return }
+            let wait0 = s.coordinator.totalWaitTime, style0 = s.totalStyleTime, state0 = s.timeInStateQueries
+            let edit0 = s.overlay.timeFollowingEdits, apply0 = s.overlay.timeApplying
+            let phases0 = s.phaseTimes
+            let inst0 = s.coordinator.instrumentation, sync0 = s.coordinator.totalSyncTime
+            var moveTotal = 0.0
+            for _ in 0..<moves {
+                let loc = rnd(max(1, s.storage.length - 1))
+                let t0 = CFAbsoluteTimeGetCurrent()
+                tv.setSelectedRange(NSRange(location: loc, length: 0))
+                tv.scrollRangeToVisible(NSRange(location: loc, length: 0))
+                tv.layoutManager?.ensureLayout(forCharacterRange: NSRange(location: max(0, loc - 200), length: min(400, s.storage.length - max(0, loc - 200))))
+                moveTotal += CFAbsoluteTimeGetCurrent() - t0
+                _ = s.waitUntilStyled(timeout: 5)
+            }
+            moveMs.append(moveTotal / Double(max(1, moves)) * 1000)
+            calibration.append(Self.calibrate())
+            var keyTotal = 0.0
+            for k in 0..<keys {
+                let t0 = CFAbsoluteTimeGetCurrent()
+                if k % 11 == 10 { sendKey("\u{7F}", code: 51) } else { sendKey(String(alphabet[(typed + k) % alphabet.count])) }
+                keyTotal += CFAbsoluteTimeGetCurrent() - t0
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
+            }
+            typed += keys
+            keyMs.append(keyTotal / Double(max(1, keys)) * 1000)
+            _ = s.waitUntilStyled(timeout: 10)
+            if round % sampleEvery == 0 || round == rounds - 1 {
+                samples.append(["round": round, "key_ms": keyMs.last ?? 0, "move_ms": moveMs.last ?? 0,
+                                "wait_ms": (s.coordinator.totalWaitTime - wait0) / Double(keys) * 1000,
+                                "style_ms": (s.totalStyleTime - style0) / Double(keys) * 1000,
+                                "state_ms": (s.timeInStateQueries - state0) / Double(keys + moves) * 1000,
+                                "overlay_edit_ms": (s.overlay.timeFollowingEdits - edit0) / Double(keys) * 1000,
+                                "overlay_apply_ms": (s.overlay.timeApplying - apply0) / Double(keys) * 1000,
+                                "live_hidden": s.layoutManager.live.hidden.count,
+                                "live_collapsed": s.layoutManager.live.collapsed.count,
+                                "live_decorations": s.layoutManager.live.decorations.count,
+                                "phases_ms_per_key": s.phaseTimes.mapValues { _ in 0 }.merging(s.phaseTimes) { _, v in v }
+                                    .reduce(into: [String: Double]()) { $0[$1.key] = (($1.value - (phases0[$1.key] ?? 0)) / Double(keys) * 10_000).rounded() / 10 },
+                                "analysis_ms_per_edit": ((s.coordinator.instrumentation.process - inst0.process) * 1000 / Double(max(1, s.coordinator.instrumentation.edits - inst0.edits))),
+                                "fetch_ms_per_edit": ((s.coordinator.instrumentation.fetch - inst0.fetch) * 1000 / Double(max(1, s.coordinator.instrumentation.edits - inst0.edits))),
+                                "edits_analysed": s.coordinator.instrumentation.edits - inst0.edits,
+                                "main_sync_ms_per_key": (s.coordinator.totalSyncTime - sync0) * 1000 / Double(keys + moves),
+                                "calibration_ms": calibration.last ?? 0,
+                                "overlay_applied": s.overlay.applied.count,
+                                "owed": s.owedStyling.count,
+                                "attribute_runs": attributeRuns(s)])
+            }
+            if let e = m["experiment"] as? [String: Any], e["round"] as? Int == round, let what = e["do"] as? String {
+                let whole = NSRange(location: 0, length: s.storage.length)
+                switch what {
+                case "removeUndo": document?.undoManager?.removeAllActions()
+                case "invalidateLayout": s.layoutManager.invalidateLayout(forCharacterRange: whole, actualCharacterRange: nil)
+                case "invalidateGlyphs": s.layoutManager.invalidateGlyphs(forCharacterRange: whole, changeInLength: 0, actualCharacterRange: nil)
+                case "removeTemporary": s.layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: whole)
+                default: break
+                }
+                samples.append(["experiment": what, "round": round])
+            }
+            round += 1
+            later(0, oneRound)
+        }
+        oneRound()
     }
 
     /// Presses an arrow key (`command`) until the caret stops (or `count` presses) and checks Live
@@ -1706,6 +1862,12 @@ final class UIScriptRunner {
             let dir = url.map { $0.deletingLastPathComponent().appendingPathComponent($0.deletingPathExtension().lastPathComponent + ".assets") }
             let files = dir.flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0.path) }?.filter { !$0.hasPrefix(".") }.sorted() ?? []
             check("assets \(v)", files.count == v, "\(files)")
+        }
+        if let v = a["imageSize"] as? [String: Any], let s = session, let dest = v["destination"] as? String {
+            // A loaded picture's size in the editor, in points.
+            let e = s.imageController.entry(for: dest, budget: s.imageBudget(), scale: window?.backingScaleFactor ?? 2)
+            let (w, h) = ((v["width"] as? NSNumber)?.doubleValue ?? 0, (v["height"] as? NSNumber)?.doubleValue ?? 0)
+            check("imageSize \(dest) \(w)x\(h)", e.phase == .loaded && abs(e.size.width - w) < 1 && abs(e.size.height - h) < 1, "\(e.phase) \(e.size)")
         }
         if let v = a["images"] as? [String: Int], let s = session {
             // How many picture decorations are loaded, failed or still loading.

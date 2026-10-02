@@ -1,0 +1,109 @@
+[
+ {
+  "log": "Pictures at the size their resolution says (a retina screenshot is half its pixels in points; a wider one is fitted to the column) in the editor and in the preview, where the <img> carries width and height; moving down into a picture puts the caret at the start of its source."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "defaultViewMode": "live"
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/pictures/pictures.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1400,
+   900
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "selectText": "The end.",
+  "offset": 0
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "retina-144dpi.png",
+    "width": 360,
+    "height": 180
+   }
+  }
+ },
+ {
+  "assert": {
+   "imageSize": {
+    "destination": "plain-72dpi.png",
+    "width": 644,
+    "height": 322
+   }
+  }
+ },
+ {
+  "evalPreview": "const i = document.querySelector('img[src*=\"retina\"]'); return i.getAttribute('width') + 'x' + i.getAttribute('height');",
+  "expect": "360x180"
+ },
+ {
+  "evalPreview": "const i = document.querySelector('img[src*=\"plain\"]'); return i.getAttribute('width') + 'x' + i.getAttribute('height');",
+  "expect": "720x360"
+ },
+ {
+  "evalPreview": "const i = document.querySelector('img[src*=\"retina\"]'); const r = i.getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height);",
+  "expect": "360x180"
+ },
+ {
+  "snapshot": "pictures-split"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "selectText": "A retina screenshot",
+  "offset": 3
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "command": "moveDown:"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "command": "moveDown:"
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "selection": [
+    43,
+    0
+   ]
+  }
+ },
+ {
+  "snapshot": "pictures-caret-in-source"
+ }
+]

@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!--
+  Deliberately empty: the app needs no hardened-runtime exception.
+
+  What it does, and why none of it is gated:
+
+  - WKWebView (the preview, PDF export): the page runs in WebKit's own helper processes, which carry
+    their own entitlements. The app process never JITs, so no com.apple.security.cs.allow-jit and no
+    allow-unsigned-executable-memory.
+  - NaturalLanguage (parts-of-speech tagging) and the spell checker: system frameworks, no entitlement.
+  - Files: the app is not sandboxed (Developer ID distribution, see PLAN.md section 6), so reading and
+    writing the user's documents and the pictures beside them needs nothing. The sandbox milestone
+    (M9) will add com.apple.security.app-sandbox, user-selected read-write and network-client here.
+  - Network: remote pictures over https use URLSession; an unsandboxed app needs no network entitlement.
+  - Code: the Rust core is a static library inside the executable and the fonts are data, so the bundle
+    loads no third-party dylib and com.apple.security.cs.disable-library-validation is not needed. No
+    DYLD environment variables are used (allow-dyld-environment-variables).
+  - No camera, microphone, location, contacts, calendar or Apple events.
+
+  Add an entitlement only when a hardened-runtime build shows a failure that needs it, and say why here.
+-->
 <dict/>
 </plist>

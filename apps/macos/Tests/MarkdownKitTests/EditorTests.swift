@@ -318,6 +318,9 @@ final class AnalysisCoordinatorTests: XCTestCase {
         XCTAssertTrue(e.session.waitUntilStyled(timeout: 60))
     }
 
+    /// What the initial pass does is judged by the order and size of the ranges the styler rewrote,
+    /// not by how long anything took: with a fast (release) core the whole text can be styled before
+    /// any observer looks, which made the old form of this test depend on the speed of the machine.
     func testInitialPassIsChunkedAndVisibleFirst() throws {
         var text = ""
         let unit = try Fixtures.text("basic.md") + "\n"
@@ -325,11 +328,22 @@ final class AnalysisCoordinatorTests: XCTestCase {
         let e = Editor(text: "")
         let target = (text as NSString).length - 5000
         e.session.visibleRange = { NSRange(location: target, length: 3000) }
+        e.session.styler.recordsTouchedRanges = true
+        e.session.styler.resetTouchedRanges()
         e.session.load(text)
-        // After one run-loop turn the tail (visible) region is styled before the head.
-        XCTAssertTrue(spin(timeout: 20) { !e.session.owedStyling.contains { NSLocationInRange(target + 100, $0) } })
-        XCTAssertFalse(e.session.isStyled, "not everything is styled in one go")
         XCTAssertTrue(e.session.waitUntilStyled(timeout: 60))
+        let touched = e.session.styler.touchedRanges
+        // The first range styled after the load is the visible one, at the tail, before any of the head.
+        let firstOfThePass = try XCTUnwrap(touched.first { $0.length > 1_000 }, "\(touched)")
+        XCTAssertTrue(NSLocationInRange(target + 100, firstOfThePass), "the visible text is styled first: \(firstOfThePass) for \(target)")
+        // In chunks: nothing is styled in one go (a chunk plus the paragraphs it is widened to).
+        let longest = touched.map(\.length).max() ?? 0
+        XCTAssertLessThan(longest, EditorSession.chunkSize + 6_000, "chunk of \(longest)")
+        XCTAssertGreaterThan(touched.filter { $0.length > 1_000 }.count, 200_000 / (EditorSession.chunkSize + 6_000), "several chunks")
+        // And every part of the text was styled.
+        var covered = RangeSet()
+        for r in touched { covered.add(r) }
+        XCTAssertTrue(covered.ranges.contains { NSLocationInRange(0, $0) && NSMaxRange($0) >= (text as NSString).length })
     }
 }
 

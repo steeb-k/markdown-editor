@@ -16,22 +16,35 @@
 	<string>Markdown</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>Markdown</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>1.0.0</string>
+	<!-- The build number: scripts/macos/bundle.sh replaces it with the number of commits. -->
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Steve Kaznak</string>
 	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>ATSApplicationFontsPath</key>
 	<string>Fonts</string>
+	<!--
+	  Documents autosave in place and unsaved drafts are kept by NSDocument, so the system may end the
+	  process while it is idle with no windows, as it does TextEdit, and a pending edit disables sudden
+	  termination by itself. Window restoration follows the user's setting in System Settings (the app
+	  does not set NSQuitAlwaysKeepsWindows).
+	-->
 	<key>NSSupportsAutomaticTermination</key>
-	<false/>
+	<true/>
 	<key>NSSupportsSuddenTermination</key>
-	<false/>
+	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>CFBundleDocumentTypes</key>
@@ -39,6 +52,8 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Markdown Document</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>MarkdownDocument</string>
 			<key>NSDocumentClass</key>
 			<string>MarkdownKit.MarkdownDocument</string>
 			<key>CFBundleTypeRole</key>
@@ -72,6 +87,8 @@
 			<string>net.daringfireball.markdown</string>
 			<key>UTTypeDescription</key>
 			<string>Markdown Document</string>
+			<key>UTTypeIconFile</key>
+			<string>MarkdownDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
@@ -86,7 +103,10 @@
 					<string>mkd</string>
 				</array>
 				<key>public.mime-type</key>
-				<string>text/markdown</string>
+				<array>
+					<string>text/markdown</string>
+					<string>text/x-markdown</string>
+				</array>
 			</dict>
 		</dict>
 	</array>

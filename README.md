@@ -40,7 +40,14 @@ cd apps/macos && swift build && swift test
 scripts/macos/bundle.sh               # or --release, or --universal
 open build/Markdown.app
 
-# Real signing: CODESIGN_IDENTITY="Developer ID Application: ..." scripts/macos/bundle.sh --release
+# Real signing: CODESIGN_IDENTITY="Developer ID Application: ..." scripts/macos/bundle.sh --release --universal
+# What is inside a bundle (exact file list, both slices, minimum OS, no harness code, hardened runtime):
+scripts/macos/verify-bundle.sh build/Markdown.app --universal --no-harness
+
+# Regenerate the icons (CoreGraphics; Markdown.icns and MarkdownDocument.icns in apps/macos/Resources)
+swift scripts/macos/make-icons.swift build/icons --icns && cp build/icons/*.icns apps/macos/Resources/
+# Regenerate Acknowledgements.md from the dependency graph (cargo metadata); --check says whether it is current
+scripts/gen-acknowledgements.py
 
 # Drive the real app from a JSON script (no Accessibility permission needed): snapshots + log.json
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
@@ -60,9 +67,34 @@ scripts/macos/ui-script.sh scripts/macos/ui/preview-export.json # PDF export (Da
 scripts/macos/ui-script.sh scripts/macos/ui/preview-edge.json   # pictures of every kind in editor and preview alike, links of every kind, a hostile document, themes and fonts, untitled
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB in Split: typing with the preview closed and open, preview latency, main-thread cost of an update (≤ 16 ms)
 scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/drift.json  # a long Live session at 1 MB: cost per key and per jump must not grow (about 9 minutes)
 scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
 
 Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/MarkdownCore/`, `build/`, `target/`.
+
+## Releasing
+
+```sh
+CODESIGN_IDENTITY='Developer ID Application: Steve Kaznak (VLC2KZKNBH)' NOTARIZE_PROFILE=notary scripts/macos/release.sh
+```
+
+That one command: refuses a dirty working tree (`--allow-dirty` overrides), runs the Rust and Swift test suites
+(`--skip-tests`), checks that `Acknowledgements.md` is current, builds the core and the app for arm64 and x86_64
+(`bundle.sh --release --universal`, signed with the identity, hardened runtime, secure timestamp), verifies the bundle
+(`verify-bundle.sh`: the exact file list, both slices with a minimum OS of 14.0, no UI-harness code, signature,
+hardened runtime, Developer ID authority), wraps it in `build/Markdown-<version>.dmg` (`make-dmg.sh`, signed),
+submits the image to the notary service and waits, reads the verdict from the JSON (an Invalid verdict still exits 0)
+and prints the notary log if it is not Accepted, staples and validates the ticket, runs `spctl` on the image and on
+the app inside a read-only mount of it, and prints paths, sizes, SHA-256 and the verdicts. Without `NOTARIZE_PROFILE`
+the image is signed but not notarized, and says so. `NOTARIZE_PROFILE` is a `xcrun notarytool store-credentials`
+profile name; nothing secret is printed.
+
+`scripts/macos/release.sh --dry-run --allow-dirty --skip-tests` runs everything except Developer ID signing and
+notarization: it signs ad-hoc, contacts no one, skips the Gatekeeper assessments (an ad-hoc build fails them by
+design) and says so at every step. Its image must not be shipped.
+
+The version is `CFBundleShortVersionString` in `apps/macos/Resources/Info.plist`; the build number is the number of
+commits, set by `bundle.sh`. The app needs no entitlements (see the comment in `Markdown.entitlements`).

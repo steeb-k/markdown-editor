@@ -85,11 +85,24 @@ extension EditorLayoutManager {
 
     private func drawBullet(_ d: LiveDecoration, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {
         guard let a = anchor(of: d.range, in: tc) else { return }
-        let diameter = max(4, (a.font.pointSize * 0.3).rounded())
+        // The dot is sized for, and centred on, the item's text: a heading's first line (`- # Title`)
+        // is bigger than the marker's own font, whose x-height would leave the dot small and low.
+        let font = contentFont(after: d.range) ?? a.font
+        let diameter = max(4, (font.pointSize * 0.3).rounded())
         let x = a.glyphs.minX + a.font.pointSize * 0.06
-        let y = a.baseline - a.font.xHeight * 0.5 - diameter / 2
+        let y = a.baseline - font.xHeight * 0.5 - diameter / 2
         (dimmed ? palette.focusDim : (overlay?.authorshipColor(at: d.range.location) ?? palette.text).withAlphaComponent(0.85)).setFill()
         NSBezierPath(ovalIn: NSRect(x: x + origin.x, y: y + origin.y, width: diameter, height: diameter)).fill()
+    }
+
+    /// The font of the first character of the text after the marker at `range` (blanks skipped).
+    private func contentFont(after range: NSRange) -> NSFont? {
+        guard let storage = textStorage else { return nil }
+        let ns = storage.mutableString as NSString
+        var i = NSMaxRange(range)
+        while i < storage.length, ns.character(at: i) == 0x20 || ns.character(at: i) == 0x09 { i += 1 }
+        guard i < storage.length, ns.character(at: i) != 0x0A, ns.character(at: i) != 0x0D else { return nil }
+        return storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont
     }
 
     private func drawCheckbox(_ d: LiveDecoration, checked: Bool, dimmed: Bool, in tc: NSTextContainer, origin: NSPoint, palette: ThemePalette) {

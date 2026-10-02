@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import UniformTypeIdentifiers
 // A URL scheme task is answered on the main thread only (the file is read elsewhere and the
 // answer hops back), which WebKit's annotations cannot express.
@@ -711,4 +712,42 @@ enum PreviewScripts {
       }, { passive: true });
     })();
     """#
+}
+
+/// The sizes, in points, of the local pictures a document refers to, for the `width` and `height`
+/// the preview's `<img>` elements carry (so the page does not jump as pictures arrive, and a retina
+/// screenshot is as big there as in the editor: its points are its pixels over its declared
+/// resolution, see `ImageController.sizes(of:)`). Only a file's header is read, once per
+/// modification. Safe to call from any thread.
+final class PictureSizes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cache: [URL: (modified: Date?, size: CGSize?)] = [:]
+
+    func sizes(for destinations: Set<String>, documentURL: URL?) -> [ImageSize] {
+        var out: [ImageSize] = []
+        for destination in destinations.sorted() {
+            // The editor's rule for which file a destination names, and which it may read.
+            guard let url = DocumentFileAccess.pictureURL(for: destination, documentURL: documentURL), url.isFileURL,
+                  DocumentFileAccess.mayRead(url, documentURL: documentURL) else { continue }
+            let modified = DocumentFileAccess.modificationDate(of: url)
+            lock.lock()
+            let known = cache[url]
+            lock.unlock()
+            let size: CGSize?
+            if let known, known.modified == modified {
+                size = known.size
+            } else {
+                size = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+                    .flatMap { ImageController.sizes(of: $0)?.points }
+                lock.lock()
+                cache[url] = (modified, size)
+                if cache.count > 2_000 { cache.removeAll() }
+                lock.unlock()
+            }
+            if let size, size.width >= 1, size.height >= 1 {
+                out.append(ImageSize(destination: destination, width: UInt32(size.width.rounded()), height: UInt32(size.height.rounded())))
+            }
+        }
+        return out
+    }
 }

@@ -51,7 +51,10 @@ public final class ImageController {
 
     private struct Cached {
         var image: CGImage?
+        /// The picture's size in points (its pixels, scaled by the resolution the file declares).
         var natural: CGSize
+        /// ... and in pixels.
+        var naturalPixels: CGSize
         var pixelWidth: Int
         var modified: Date?
         var failedAt: Date?
@@ -109,7 +112,7 @@ public final class ImageController {
             let wanted = Int((size.width * scale).rounded(.up))
             // Cached smaller than this layout needs (the window got wider): decode again, and
             // keep drawing what there is meanwhile.
-            if c.pixelWidth < wanted - 1, c.pixelWidth < Int(c.natural.width) {
+            if c.pixelWidth < wanted - 1, c.pixelWidth < Int(c.naturalPixels.width) {
                 load(url, pixelWidth: wanted, target: Target(budget: budget, scale: scale))
             }
             return Entry(phase: .loaded, image: image, size: size)
@@ -142,7 +145,7 @@ public final class ImageController {
     /// Checks every cached local file's modification date off the main thread and reloads the
     /// ones that changed (the window became key again after another app edited them).
     public func revalidate() {
-        let snapshot = cache.filter { $0.key.isFileURL }.map { ($0.key, $0.value.modified, $0.value.pixelWidth, $0.value.natural) }
+        let snapshot = cache.filter { $0.key.isFileURL }.map { ($0.key, $0.value.modified, $0.value.pixelWidth, $0.value.naturalPixels) }
         guard !snapshot.isEmpty else { return }
         queue.addOperation { [weak self] in
             for (url, modified, pixelWidth, natural) in snapshot {
@@ -176,16 +179,16 @@ public final class ImageController {
                 self.inFlight.remove(pending)
                 switch result {
                 case .some(let r):
-                    self.cache[url] = Cached(image: r.image, natural: r.natural, pixelWidth: r.pixelWidth, modified: r.modified, failedAt: nil)
+                    self.cache[url] = Cached(image: r.image, natural: r.natural, naturalPixels: r.naturalPixels, pixelWidth: r.pixelWidth, modified: r.modified, failedAt: nil)
                 case .none:
-                    self.cache[url] = Cached(image: nil, natural: .zero, pixelWidth: 0, modified: nil, failedAt: Date())
+                    self.cache[url] = Cached(image: nil, natural: .zero, naturalPixels: .zero, pixelWidth: 0, modified: nil, failedAt: Date())
                 }
                 self.onUpdate?(url)
             }
         }
     }
 
-    private struct Decoded { var image: CGImage; var natural: CGSize; var pixelWidth: Int; var modified: Date? }
+    private struct Decoded { var image: CGImage; var natural: CGSize; var naturalPixels: CGSize; var pixelWidth: Int; var modified: Date? }
 
     /// Runs on the image queue.
     private func fetchAndDecode(_ url: URL, target: Target) -> Decoded? {
@@ -212,7 +215,7 @@ public final class ImageController {
         let (n, off) = counters
         lock.unlock()
         DispatchQueue.main.async { [weak self] in self?.decodeCount = n; self?.lastDecodeWasOffMain = off }
-        return Decoded(image: decoded.image, natural: decoded.natural, pixelWidth: decoded.image.width, modified: modified)
+        return Decoded(image: decoded.image, natural: decoded.natural, naturalPixels: decoded.pixels, pixelWidth: decoded.image.width, modified: modified)
     }
 
     private func fetchRemote(_ url: URL) -> (Data, Date?)? {
@@ -238,40 +241,57 @@ public final class ImageController {
     }()
 
     /// Decodes `data` for the room it will take: fitted to `budget` (never enlarged) at `scale`
-    /// pixels per point, orientation applied. `natural` is the full size in pixels.
-    public static func decode(_ data: Data, fitting budget: Budget, scale: CGFloat) -> (image: CGImage, natural: CGSize)? {
-        guard let natural = naturalSize(of: data) else { return nil }
-        let size = fit(natural, in: budget)
+    /// pixels per point, orientation applied. `natural` is the picture's size in points (see
+    /// `sizes(of:)`), `pixels` its size in pixels.
+    public static func decode(_ data: Data, fitting budget: Budget, scale: CGFloat) -> (image: CGImage, natural: CGSize, pixels: CGSize)? {
+        guard let sizes = naturalSizes(of: data) else { return nil }
+        let size = fit(sizes.points, in: budget)
         return decode(data, maxPixelWidth: Int((size.width * scale).rounded(.up)))
     }
 
-    static func naturalSize(of data: Data) -> CGSize? {
-        let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
-        guard let src = CGImageSourceCreateWithData(data as CFData, opts as CFDictionary),
-              CGImageSourceGetCount(src) > 0,
+    /// How big a picture is: in pixels, and in points. A file that declares its resolution is
+    /// drawn at the size it declares (a retina screenshot is 144 dpi: its points are half its
+    /// pixels, as Preview and Finder show it); one that does not, or says 72, is a point per pixel.
+    /// Orientation is applied.
+    public static func sizes(of src: CGImageSource) -> (pixels: CGSize, points: CGSize)? {
+        guard CGImageSourceGetCount(src) > 0,
               let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
               let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
               let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, w > 0, h > 0
         else { return nil }
-        let orientation = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
-        return orientation >= 5 ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+        // Only a believable resolution counts (0 and 1 are what some writers put for "unknown").
+        func factor(_ key: CFString) -> Double {
+            guard let dpi = (props[key] as? NSNumber)?.doubleValue, dpi >= 24, dpi <= 2400 else { return 1 }
+            return 72 / dpi
+        }
+        var pixels = CGSize(width: w, height: h)
+        var points = CGSize(width: w * factor(kCGImagePropertyDPIWidth), height: h * factor(kCGImagePropertyDPIHeight))
+        if ((props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) >= 5 {
+            pixels = CGSize(width: pixels.height, height: pixels.width)
+            points = CGSize(width: points.height, height: points.width)
+        }
+        return (pixels, points)
     }
 
+    static func naturalSizes(of data: Data) -> (pixels: CGSize, points: CGSize)? {
+        let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let src = CGImageSourceCreateWithData(data as CFData, opts as CFDictionary) else { return nil }
+        return sizes(of: src)
+    }
+
+    /// The picture's size in points (see `sizes(of:)`).
+    static func naturalSize(of data: Data) -> CGSize? { naturalSizes(of: data)?.points }
+
     /// Decodes `data`, downsampled so the result is at most `maxPixelWidth` wide (and never
-    /// upscaled), orientation applied. `natural` is the full size in pixels.
-    public static func decode(_ data: Data, maxPixelWidth: Int) -> (image: CGImage, natural: CGSize)? {
+    /// upscaled), orientation applied. `natural` is the full size in points, `pixels` in pixels.
+    public static func decode(_ data: Data, maxPixelWidth: Int) -> (image: CGImage, natural: CGSize, pixels: CGSize)? {
         let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let src = CGImageSourceCreateWithData(data as CFData, opts as CFDictionary),
-              CGImageSourceGetCount(src) > 0,
-              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
-              let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
-              let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, w > 0, h > 0
-        else { return nil }
-        let orientation = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
-        let natural = orientation >= 5 ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
-        let target = max(1, min(Int(natural.width), maxPixelWidth))
+              let sizes = sizes(of: src) else { return nil }
+        let pixels = sizes.pixels
+        let target = max(1, min(Int(pixels.width), maxPixelWidth))
         // The longest side bounds the thumbnail: scale it so the width comes out at `target`.
-        let longest = Double(max(natural.width, natural.height)) * Double(target) / Double(natural.width)
+        let longest = Double(max(pixels.width, pixels.height)) * Double(target) / Double(pixels.width)
         let thumb: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -279,6 +299,6 @@ public final class ImageController {
             kCGImageSourceThumbnailMaxPixelSize: Int(longest.rounded(.up)),
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(src, 0, thumb as CFDictionary) else { return nil }
-        return (image, natural)
+        return (image, sizes.points, pixels)
     }
 }

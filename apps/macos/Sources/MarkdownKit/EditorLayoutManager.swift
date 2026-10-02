@@ -61,6 +61,28 @@ public final class EditorLayoutManager: NSLayoutManager {
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
 
+    /// The height of the panel of a fenced block with nothing in it (its fences are concealed).
+    static let emptyBlockHeight: CGFloat = 14
+
+    /// How far in a block's panel starts: the blanks before its opening fence (a code block inside
+    /// a list item is indented to the item's text), measured in the block's own font.
+    private func blockIndent(of run: NSRange, in storage: NSTextStorage) -> CGFloat {
+        let ns = storage.mutableString as NSString
+        guard run.location < ns.length else { return 0 }
+        var i = ns.lineRange(for: NSRange(location: run.location, length: 0)).location
+        var columns = 0
+        while i < ns.length {
+            let c = ns.character(at: i)
+            if c == 0x20 { columns += 1 } else if c == 0x09 { columns += 4 } else { break }
+            i += 1
+        }
+        // Only a fenced block: an indented one has its indentation as code.
+        guard i + 2 < ns.length, (ns.character(at: i) == 0x60 || ns.character(at: i) == 0x7E),
+              ns.character(at: i + 1) == ns.character(at: i), ns.character(at: i + 2) == ns.character(at: i) else { return 0 }
+        guard columns > 0, let font = storage.attribute(.font, at: min(run.location, ns.length - 1), effectiveRange: nil) as? NSFont else { return 0 }
+        return (CGFloat(columns) * (" " as NSString).size(withAttributes: [.font: font]).width).rounded()
+    }
+
     /// The panel rectangles (container coordinates) of the blocks touching `glyphs`.
     func blockBackgroundRects(forGlyphRange glyphs: NSRange) -> [(NSRect, NSColor)] {
         guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return [] }
@@ -80,27 +102,37 @@ public final class EditorLayoutManager: NSLayoutManager {
             let g = glyphRange(forCharacterRange: run, actualCharacterRange: nil)
             var rect = NSRect.null
             var lastLine = NSRect.null
+            // The concealed fences, for a block with nothing else (an empty fence still shows a panel).
+            var fences = NSRect.null
             let concealing = !live.isEmpty
             enumerateLineFragments(forGlyphRange: g) { [self] line, _, _, fragGlyphs, _ in
                 if concealing {
                     // Concealed fences take no part in the panel, and a fragment that only
                     // carries the next paragraph's hidden characters is not the block's.
                     let fc = characterRange(forGlyphRange: fragGlyphs, actualGlyphRange: nil)
-                    if collapsedLine(inFragment: fc) != nil { return }
+                    if collapsedLine(inFragment: fc) != nil { fences = fences.union(line); return }
                     let inside = NSIntersectionRange(fc, run)
                     if inside.length == 0 || (inside.location..<NSMaxRange(inside)).allSatisfy({ live.isHidden($0) }) { return }
                 }
                 rect = rect.union(line)
                 lastLine = line
             }
-            guard !rect.isNull else { continue }
-            // The line spacing under the last line is not part of the block: it ends where the
-            // last line's glyphs do, so the padding is the same above and below.
-            if let font = storage.attribute(.font, at: NSMaxRange(run) - 1, effectiveRange: nil) as? NSFont {
+            if rect.isNull, !fences.isNull {
+                // Nothing in the block but its two concealed fences: a small panel where they were.
+                rect = fences
+                rect.size.height = max(rect.height, Self.emptyBlockHeight)
+            } else if rect.isNull {
+                continue
+            } else if let font = storage.attribute(.font, at: NSMaxRange(run) - 1, effectiveRange: nil) as? NSFont {
+                // The line spacing under the last line is not part of the block: it ends where the
+                // last line's glyphs do, so the padding is the same above and below.
                 rect.size.height = min(rect.height, lastLine.minY + defaultLineHeight(for: font) - rect.minY)
             }
-            rect.origin.x = 0
-            rect.size.width = container.size.width
+            // A block inside a list item starts at the item's text, as the preview's does: the
+            // width of the blanks before its opening fence, in the code font.
+            let indent = blockIndent(of: run, in: storage)
+            rect.origin.x = indent
+            rect.size.width = max(0, container.size.width - indent)
             out.append((rect.insetBy(dx: -Self.blockOutset.width, dy: -Self.blockOutset.height), color))
         }
         return out

@@ -135,7 +135,8 @@ public final class EditorTextView: NSTextView {
         if changesSomething, !isCoalescingUndo, !undoing {
             session?.registerAuthorshipUndo()
         }
-        let ok = super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings)
+        let ok = session?.phase("shouldChangeSuper") { super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings) }
+            ?? super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings)
         if ok, let strings = replacementStrings, strings.count == affectedRanges.count, !affectedRanges.isEmpty {
             session?.pendingEdits = zip(affectedRanges, strings).map { ($0.rangeValue, ($1 as NSString).length) }
         } else {
@@ -161,7 +162,7 @@ public final class EditorTextView: NSTextView {
     }
 
     public override func didChangeText() {
-        super.didChangeText()
+        if let session { session.phase("didChangeSuper") { super.didChangeText() } } else { super.didChangeText() }
         // The overlay moved with the text; what was typed gets its colour before it is drawn.
         session?.overlay.apply()
         if !hasMarkedText() {
@@ -183,7 +184,7 @@ public final class EditorTextView: NSTextView {
            !(0xF700...0xF8FF).contains(c.value), c.value != 0x1B {
             onTyping?()
         }
-        super.keyDown(with: event)
+        if let session { session.phase("keyDown") { super.keyDown(with: event) } } else { super.keyDown(with: event) }
     }
 
     public override func doCommand(by selector: Selector) {
@@ -200,6 +201,25 @@ public final class EditorTextView: NSTextView {
                 if handleTab(outdent: false) { return }
             case #selector(NSResponder.insertBacktab(_:)):
                 if handleTab(outdent: true) { return }
+            case #selector(NSResponder.moveDown(_:)):
+                // Down into a picture's line puts the caret at the start of its source (where the
+                // line begins), not at the end of it where the picture's own width would leave it.
+                // (AppKit's memory of the column the caret came from is lost by that, so the rows
+                // below a picture start at their beginning.)
+                if let lm = layoutManager as? EditorLayoutManager, session?.viewMode == .live, selectedRange().length == 0,
+                   !lm.imageDecorations.isEmpty {
+                    let ns = string as NSString
+                    let before = selectedRange().location
+                    let pictures = lm.imageDecorations.map { ns.paragraphRange(for: NSRange(location: min($0.range.location, max(0, ns.length - 1)), length: 0)) }
+                    super.doCommand(by: selector)
+                    let after = selectedRange()
+                    if after.length == 0,
+                       let line = pictures.first(where: { NSLocationInRange(after.location, $0) || after.location == NSMaxRange($0) }),
+                       before < line.location, after.location > line.location {
+                        setSelectedRange(NSRange(location: line.location, length: 0))
+                    }
+                    return
+                }
             default: break
             }
         }

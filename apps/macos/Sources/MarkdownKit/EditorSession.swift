@@ -211,6 +211,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
 
     public func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                             range editedRange: NSRange, changeInLength delta: Int) {
+        phase("storageDelegate") { processedEditing(editedMask, range: editedRange, changeInLength: delta) }
+    }
+
+    private func processedEditing(_ editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
         // Attribute-only edits (the styler's own, find highlights...) never reach the core.
         guard editedMask.contains(.editedCharacters), !isStyling else { return }
         let change = TextChange(old: NSRange(location: editedRange.location, length: editedRange.length - delta),
@@ -260,6 +264,15 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             debt.add(range) // stale: never applied; owed to the next styling
         }
         scheduleDebt()
+    }
+
+    /// Instrumentation: main-thread seconds per named phase of a keystroke (the UI harness).
+    public var phaseTimes: [String: TimeInterval] = [:]
+    @inline(__always)
+    func phase<R>(_ name: String, _ body: () -> R) -> R {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        defer { phaseTimes[name, default: 0] += CFAbsoluteTimeGetCurrent() - t0 }
+        return body()
     }
 
     /// Instrumentation: main-thread time spent applying styles so far.
@@ -372,7 +385,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
 
     @objc private func selectionChanged(_ note: Notification) {
         guard let tv = textView, !isApplyingEdit else { return }
-        selectionChanged(in: tv)
+        phase("selectionChanged") { selectionChanged(in: tv) }
     }
 
     func selectionChanged(in tv: EditorTextView) {

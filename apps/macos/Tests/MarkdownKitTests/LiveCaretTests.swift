@@ -227,7 +227,10 @@ class LiveCaretTests: XCTestCase {
             if ns.substring(with: para).trimmingCharacters(in: .newlines) == row { columns.append(loc - para.location) }
         }
         XCTAssertEqual(columns.count, 5, "every plain row below visited: \(path)")
-        XCTAssertTrue(columns.allSatisfy { abs($0 - 5) <= 1 }, "the column is kept: \(columns) along \(path)")
+        // The column is kept up to the picture; moving down into a picture's line puts the caret at the
+        // start of its source, which starts the column over for the rows below it.
+        XCTAssertTrue(columns.prefix(2).allSatisfy { abs($0 - 5) <= 1 }, "the column is kept: \(columns) along \(path)")
+        XCTAssertTrue(columns.dropFirst(2).allSatisfy { $0 <= 1 }, "after the picture it starts again: \(columns) along \(path)")
     }
 
     // MARK: deleting

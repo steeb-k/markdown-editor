@@ -1,0 +1,99 @@
+[
+ {
+  "log": "First run: a document window opens centred at a sensible size with its chrome showing; the editor cannot scroll above its top; Help opens the guide and the notices as untitled documents."
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "new": true
+ },
+ {
+  "resize": [
+   860,
+   740
+  ]
+ },
+ {
+  "load": "# Scrolling\n\nA few lines.\n\nOf text.\n"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": -1000,
+  "notAbove": -32
+ },
+ {
+  "snapshot": "first-run-window"
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "action": "showWelcome:",
+  "edits": false
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "frontDocument": true
+ },
+ {
+  "assert": {
+   "edited": false
+  }
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "textContains": "Welcome to Markdown"
+  }
+ },
+ {
+  "assert": {
+   "textContains": "| Format > Strong | \u2318B |"
+  }
+ },
+ {
+  "snapshot": "help-guide"
+ },
+ {
+  "scroll": "end",
+  "notAbove": -32
+ },
+ {
+  "snapshot": "help-guide-end"
+ },
+ {
+  "action": "showAcknowledgements:",
+  "edits": false
+ },
+ {
+  "wait": 1.5
+ },
+ {
+  "frontDocument": true
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "assert": {
+   "textContains": "# Acknowledgements"
+  }
+ },
+ {
+  "snapshot": "acknowledgements"
+ }
+]

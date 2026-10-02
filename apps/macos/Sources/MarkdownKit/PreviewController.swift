@@ -40,6 +40,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     private var timer: Timer?
     private var jsInFlight = 0
     private var lineTable: (seq: Int, table: LineTable)?
+    /// The sizes of the pictures the page refers to, read from their files' headers (cached).
+    private let pictureSizes = PictureSizes()
 
     // Instrumentation.
     /// Renders started (the core ran), applied to the page, and thrown away because a newer text had arrived.
@@ -174,11 +176,16 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         renders += 1
         let first = !isLoaded
         let options = renderOptions(standalone: first)
+        let documentURL = session.documentURL()
+        let sizes = pictureSizes
         let started = CFAbsoluteTimeGetCurrent()
         // The body the page holds: the new one is sent as a patch against it, worked out here on
         // the analysis queue rather than on the main thread.
         let base = first ? nil : pageBody
         session.coordinator.async({ doc -> (String, BodyPatch?) in
+            // The pictures' sizes go into the page, so it reserves their room before they load.
+            var options = options
+            options.imageSizes = sizes.sizes(for: Set(doc.images().map(\.destination)), documentURL: documentURL)
             let html = doc.renderHtml(options: options)
             return (html, base.flatMap { BodyPatch.make(from: $0, to: html) })
         }) { [weak self] rendered, processedSeq in

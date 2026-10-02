@@ -59,6 +59,17 @@ public final class AnalysisCoordinator {
     private var _delay: TimeInterval = 0
     /// How long the last edit's analysis took on the queue.
     private var _lastAnalysis: TimeInterval = 0
+    /// Instrumentation: total seconds the queue spent in `process` (the core's replace and the
+    /// span fetch), and in the fetch alone; and how many edits that was.
+    private var _processTime: TimeInterval = 0
+    private var _fetchTime: TimeInterval = 0
+    private var _processed = 0
+    public var instrumentation: (process: TimeInterval, fetch: TimeInterval, edits: Int) {
+        lock.lock(); defer { lock.unlock() }
+        return (_processTime, _fetchTime, _processed)
+    }
+    /// Instrumentation: main-thread seconds spent blocked in `sync`.
+    public private(set) var totalSyncTime: TimeInterval = 0
 
     // Main-thread only:
     private var submittedSeq = 0
@@ -160,12 +171,16 @@ public final class AnalysisCoordinator {
         let behind = outstanding > 1
         if behind { outstanding -= 1 }
         _lastAnalysis = CFAbsoluteTimeGetCurrent() - started
+        _processTime += _lastAnalysis
+        _processed += 1
         lock.unlock()
         if behind { return } // a newer edit is queued; its result will cover this one
 
         let aligned = paragraphAligned(carry!)
         carry = nil
+        let fetchStart = CFAbsoluteTimeGetCurrent()
         let fetched = aligned.length <= Self.maxInlineSpanRange ? fetch(aligned) : nil
+        lock.lock(); _fetchTime += CFAbsoluteTimeGetCurrent() - fetchStart; lock.unlock()
         let result = AnalysisResult(seq: seq, range: aligned, spans: fetched?.0, prose: fetched?.1 ?? [])
         // Idle only once the result is in the inbox: `isIdle` (and so `isStyled`) must not be
         // true while the last edit's spans are still being fetched.
@@ -195,7 +210,9 @@ public final class AnalysisCoordinator {
     /// Runs `body` with the core document after every edit submitted so far has been analyzed.
     /// The one place the main thread touches the core.
     public func sync<R>(_ body: (Document) -> R) -> R {
-        queue.sync { body(document) }
+        let t0 = CFAbsoluteTimeGetCurrent()
+        defer { totalSyncTime += CFAbsoluteTimeGetCurrent() - t0 }
+        return queue.sync { body(document) }
     }
 
     /// Runs `body` on the queue and returns to the main thread with its result. `edit`

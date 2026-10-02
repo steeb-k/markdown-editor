@@ -12,6 +12,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationWillFinishLaunching(_ notification: Notification) {
         FontStore.registerBundledFonts()
+        // The menu has its own Enter Full Screen (with Control-Command-F); AppKit would add a second one.
+        UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
         NSWindow.allowsAutomaticWindowTabbing = true
         NSApp.mainMenu = MainMenu.build()
     }
@@ -30,7 +32,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         #endif
         return true
     }
-    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { !flag }
+    /// A click on the Dock icon with no document window shows one (an untitled document), even
+    /// when only the Settings window is open.
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag, NSDocumentController.shared.documents.isEmpty {
+            NSDocumentController.shared.newDocument(nil)
+            return false
+        }
+        return !flag
+    }
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     public func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
@@ -46,8 +56,58 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     @objc public func smallerText(_ sender: Any?) { Settings.shared.fontSize -= 1 }
     @objc public func actualSize(_ sender: Any?) { Settings.shared.fontSize = 17 }
 
-    @objc public func openHelp(_ sender: Any?) {
+    /// The CommonMark reference, on the web.
+    @objc public func openSyntaxReference(_ sender: Any?) {
         if let url = URL(string: "https://commonmark.org/help/") { NSWorkspace.shared.open(url) }
+    }
+
+    /// Help > Markdown Help: the bundled guide as a new, untitled document (so the guide is itself
+    /// an example of the editor), with its table of shortcuts read from the menus as they are now.
+    @objc public func showWelcome(_ sender: Any?) {
+        guard let template = HelpDocuments.resource("Welcome", extension: "md") else { NSSound.beep(); return }
+        let text = HelpDocuments.welcomeText(template: template, menu: NSApp.mainMenu ?? MainMenu.build())
+        Self.openBundledDocument(named: "Markdown Help", text: text, mode: .live)
+    }
+
+    /// Help > Acknowledgements: the third-party notices, as an untitled document.
+    @objc public func showAcknowledgements(_ sender: Any?) {
+        guard let text = HelpDocuments.resource("Acknowledgements", extension: "md") else { NSSound.beep(); return }
+        Self.openBundledDocument(named: "Acknowledgements", text: text, mode: .source)
+    }
+
+    /// Opens `text` as a new untitled document called `name`. Nothing is written anywhere and
+    /// closing it asks nothing until it is edited.
+    @discardableResult
+    static func openBundledDocument(named name: String, text: String, mode: ViewMode) -> MarkdownDocument? {
+        let controller = NSDocumentController.shared
+        guard let doc = try? controller.makeUntitledDocument(ofType: controller.defaultType ?? "net.daringfireball.markdown") as? MarkdownDocument else { return nil }
+        doc.session.load(text)
+        doc.session.setViewMode(mode)
+        doc.displayName = name
+        controller.addDocument(doc)
+        doc.makeWindowControllers()
+        doc.showWindows()
+        // The text view exists now: Live mode asks the core what to conceal, and nothing the
+        // document did to itself while loading counts as an edit.
+        doc.session.refreshLive(force: true)
+        doc.updateChangeCount(.changeCleared)
+        // (Styling that follows the window's first layout can register as an edit: cleared again once it has run.)
+        for delay in [0.2, 0.8] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak doc] in
+                guard let doc, doc.fileURL == nil, doc.undoManager?.canUndo != true || doc.session.text == text else { return }
+                doc.updateChangeCount(.changeCleared)
+            }
+        }
+        return doc
+    }
+
+    /// The standard About panel (name, icon, version and build, copyright from Info.plist) with
+    /// a line of credits.
+    @objc public func showAbout(_ sender: Any?) {
+        let credits = NSMutableAttributedString(
+            string: "Built on a Rust core. The writing fonts are the bundled Mono, Duo and Quattro faces (SIL Open Font License). Open Help \u{25B8} Acknowledgements for every component and its license.",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -55,6 +115,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         case #selector(toggleFormattingToolbar(_:)):
             item.title = Settings.shared.showFormattingToolbar ? "Hide Formatting Toolbar" : "Show Formatting Toolbar"
             return true
+        case #selector(showWelcome(_:)): return HelpDocuments.resource("Welcome", extension: "md") != nil
+        case #selector(showAcknowledgements(_:)): return HelpDocuments.resource("Acknowledgements", extension: "md") != nil
         case #selector(biggerText(_:)): return Settings.shared.fontSize < Settings.fontSizeRange.upperBound
         case #selector(smallerText(_:)): return Settings.shared.fontSize > Settings.fontSizeRange.lowerBound
         default: return true
