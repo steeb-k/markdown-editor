@@ -16,6 +16,11 @@ public final class Styler {
         didSet { prefixWidthCache.removeAll() }
     }
 
+    /// Live mode hides the whole `- [ ] ` of a task item and draws a checkbox in the bullet's
+    /// place, so a task paragraph hangs like a bullet item: the text starts where a bullet
+    /// item's would. (The same in every caret position; only the mode changes it.)
+    public var liveMode = false
+
     /// Instrumentation: every range this styler has rewritten, in order.
     public var recordsTouchedRanges = false
     public private(set) var touchedRanges: [NSRange] = []
@@ -90,7 +95,10 @@ public final class Styler {
                 storage.addAttribute(.font, value: font, range: r)
                 storage.addAttribute(.foregroundColor, value: p.heading, range: r)
                 let before = level <= 3 ? (size * 0.55).rounded() : (size * 0.35).rounded()
-                setParagraph(r, a.paragraphStyle(font: font, spacingBefore: before, spacingAfter: (size * 0.1).rounded(), multiple: 1.3))
+                // A heading in a quote hangs under the quote's text, like the rest of the quote.
+                let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
+                let hang = quoteHang(of: ns, paragraph: pr)
+                setParagraph(r, a.paragraphStyle(font: font, headIndent: hang, spacingBefore: before, spacingAfter: (size * 0.1).rounded(), multiple: 1.3))
             case .emphasis:
                 mapFonts(r) { fonts.variant(of: $0, italic: true) }
             case .strong:
@@ -137,6 +145,12 @@ public final class Styler {
                     let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
                     let w = prefixWidth(of: ns, paragraph: pr, list: true)
                     storage.addAttribute(.paragraphStyle, value: a.paragraphStyle(font: fonts.body, headIndent: w), range: pr)
+                } else if liveMode {
+                    let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
+                    if let (head, first) = taskIndents(of: ns, paragraph: pr) {
+                        storage.addAttribute(.paragraphStyle,
+                                             value: a.paragraphStyle(font: fonts.body, headIndent: head, firstLineHeadIndent: first), range: pr)
+                    }
                 }
             case .codeInfo, .linkDestination, .footnoteDefinition, .thematicBreak, .html, .hardBreak,
                  .markup, .tableDelimiterRow:
@@ -184,6 +198,47 @@ public final class Styler {
             // On the whole character: an attribute run must never split a surrogate pair.
             storage.addAttribute(.kern, value: target - w, range: sr)
         }
+    }
+
+    /// Width of the quote markers (`> `) a line starts with; 0 when it is not in a quote.
+    private func quoteHang(of ns: NSString, paragraph: NSRange) -> CGFloat {
+        let line = ns.substring(with: paragraph) as NSString
+        var i = 0
+        let n = line.length
+        func at(_ k: Int) -> unichar { k < n ? line.character(at: k) : 0 }
+        while at(i) == 0x20 || at(i) == 0x09 { i += 1 }
+        guard at(i) == 0x3E else { return 0 }
+        return prefixWidth(of: ns, paragraph: paragraph, list: false)
+    }
+
+    /// For a task item in Live mode: where wrapped lines hang (the text after the list marker, as
+    /// for a bullet) and how far the first line starts in (the width of the marker and the blank
+    /// after it, which is hidden along with the checkbox's `[ ]`).
+    private func taskIndents(of ns: NSString, paragraph: NSRange) -> (CGFloat, CGFloat)? {
+        let line = ns.substring(with: paragraph) as NSString
+        let n = line.length
+        func at(_ i: Int) -> unichar { i < n ? line.character(at: i) : 0 }
+        func skipBlanks(_ i: inout Int) { while at(i) == 0x20 || at(i) == 0x09 { i += 1 } }
+        var i = 0
+        skipBlanks(&i)
+        while at(i) == 0x3E { // >
+            i += 1
+            if at(i) == 0x20 { i += 1 }
+            let save = i
+            skipBlanks(&i)
+            if at(i) != 0x3E { i = save }
+        }
+        skipBlanks(&i)
+        let marker = i
+        guard at(i) == 0x2D || at(i) == 0x2A || at(i) == 0x2B else { return nil }
+        i += 1
+        skipBlanks(&i)
+        func width(_ end: Int) -> CGFloat {
+            let prefix = line.substring(to: end).replacingOccurrences(of: "\t", with: "    ")
+            return (prefix as NSString).size(withAttributes: [.font: appearance.fonts.body]).width.rounded(.up)
+        }
+        let head = width(i)
+        return (head, max(0, head - width(marker)))
     }
 
     /// Width of a line's quote/list prefix in the body font: wrapped lines hang under the text.

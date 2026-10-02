@@ -6,7 +6,8 @@ Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-a
 
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
-# an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes)
+# an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes,
+# Live-mode concealment)
 cargo test --workspace
 # Heavier fuzzing: the `fuzz` profile is optimized but keeps debug assertions, so the span
 # sanitizer's "nothing was dropped" check stays armed.
@@ -34,6 +35,7 @@ open build/Markdown.app
 
 # Drive the real app from a JSON script (no Accessibility permission needed): snapshots + log.json
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
+scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour -> build/ui/live/
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 ```
 

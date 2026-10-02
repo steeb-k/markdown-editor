@@ -54,6 +54,7 @@ public final class Settings: NSObject {
         static let spellCheck = "spellCheck"
         static let showToolbar = "showFormattingToolbar"
         static let autoHide = "autoHideChrome"
+        static let defaultViewMode = "defaultViewMode"
     }
 
     public init(defaults: UserDefaults) {
@@ -68,6 +69,7 @@ public final class Settings: NSObject {
             Key.spellCheck: true,
             Key.showToolbar: true,
             Key.autoHide: true,
+            Key.defaultViewMode: ViewMode.live.rawValue,
         ])
     }
 
@@ -118,6 +120,12 @@ public final class Settings: NSObject {
     public var showFormattingToolbar: Bool {
         get { defaults.bool(forKey: Key.showToolbar) }
         set { defaults.set(newValue, forKey: Key.showToolbar); changed() }
+    }
+
+    /// The mode new windows start in.
+    public var defaultViewMode: ViewMode {
+        get { ViewMode(rawValue: defaults.string(forKey: Key.defaultViewMode) ?? "") ?? .live }
+        set { defaults.set(newValue.rawValue, forKey: Key.defaultViewMode); changed() }
     }
 
     public var autoHideChrome: Bool {

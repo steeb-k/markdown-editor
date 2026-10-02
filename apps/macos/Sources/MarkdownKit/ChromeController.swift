@@ -38,10 +38,13 @@ final class ChromeController {
     /// What fades: the whole title bar view, so that labels AppKit adds later ("— Edited",
     /// which appears with the very keystroke that hides the chrome) fade with it.
     var titlebarViews: [NSView] {
-        guard let window else { return [] }
-        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] }
-        return [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) }
+        guard let window else { return extraTitlebarViews }
+        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] + extraTitlebarViews }
+        return [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) } + extraTitlebarViews
     }
+
+    /// Controls the window adds to the title bar itself (the view-mode switch), which fade with it.
+    var extraTitlebarViews: [NSView] = []
 
     private var generation = 0
 

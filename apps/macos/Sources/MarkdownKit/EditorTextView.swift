@@ -103,6 +103,7 @@ public final class EditorTextView: NSTextView {
         let local = rect.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: 0, dy: -EditorLayoutManager.blockOutset.height)
         let glyphs = lm.glyphRange(forBoundingRectWithoutAdditionalLayout: local, in: tc)
         lm.drawBlockBackgrounds(forGlyphRange: glyphs, at: origin)
+        lm.drawDecorations(forGlyphRange: glyphs, at: origin)
     }
 
     func visibleCharacterRange() -> NSRange {
@@ -114,7 +115,6 @@ public final class EditorTextView: NSTextView {
     // MARK: plain text only
 
     public override var readablePasteboardTypes: [NSPasteboard.PasteboardType] { [.string] }
-    public override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
     public override func pasteAsRichText(_ sender: Any?) { pasteAsPlainText(sender) }
     public override func changeFont(_ sender: Any?) {}
     public override func changeAttributes(_ sender: Any?) {}
@@ -124,11 +124,15 @@ public final class EditorTextView: NSTextView {
     public override func unmarkText() {
         super.unmarkText()
         session?.kickDebt()
+        session?.refreshLive()
     }
 
     public override func didChangeText() {
         super.didChangeText()
-        if !hasMarkedText() { session?.kickDebt() }
+        if !hasMarkedText() {
+            session?.kickDebt()
+            session?.refreshLive()
+        }
     }
 
     public override func toggleContinuousSpellChecking(_ sender: Any?) {
@@ -213,5 +217,12 @@ public final class EditorTextView: NSTextView {
         textStorage?.replaceCharacters(in: range, with: replacement)
         didChangeText()
         return true
+    }
+}
+
+extension EditorTextView {
+    /// Cursor rects and mouse tracking that Live mode needs (pointing hand over checkboxes).
+    func updateTrackingForLive() {
+        window?.invalidateCursorRects(for: self)
     }
 }

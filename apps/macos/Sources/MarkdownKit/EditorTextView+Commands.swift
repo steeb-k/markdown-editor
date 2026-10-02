@@ -50,6 +50,11 @@ extension EditorTextView {
         perform(actionName: "Image") { $0.format(command: .image(destination: dest, alt: alt), selection: $1) }
     }
 
+    // MARK: View mode
+
+    @objc public func showSourceMode(_ sender: Any?) { session?.setViewMode(.source) }
+    @objc public func showLiveMode(_ sender: Any?) { session?.setViewMode(.live) }
+
     // MARK: Table
 
     @objc public func insertTable(_ sender: Any?) {
@@ -128,6 +133,8 @@ extension EditorTextView {
     /// Shared by menu items and toolbar buttons. Returns nil for actions that are not ours.
     func validateEditorAction(_ action: Selector?, tag: Int) -> (enabled: Bool, on: Bool)? {
         guard let action else { return nil }
+        if action == #selector(showSourceMode(_:)) { return (true, session?.viewMode == .source) }
+        if action == #selector(showLiveMode(_:)) { return (true, session?.viewMode == .live) }
         let editable = isEditable && !hasMarkedText()
         let s = session?.formatState ?? EditorSession.emptyFormatState
         if Self.tableActions.contains(action) {
@@ -154,6 +161,10 @@ extension EditorTextView {
     }
 
     public override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSText.paste(_:)) {
+            let pb = NSPasteboard.general
+            if isEditable, pasteboardHasOnlyImage(pb) || pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) { return true }
+        }
         if let r = validateEditorAction(item.action, tag: item.tag) {
             if let m = item as? NSMenuItem { m.state = r.on ? .on : .off }
             return r.enabled

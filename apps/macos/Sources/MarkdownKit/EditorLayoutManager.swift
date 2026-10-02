@@ -1,11 +1,51 @@
 import AppKit
 
 /// TextKit 1 layout manager. Knows where block backgrounds (code blocks) go: one continuous
-/// panel across the text column. M3 adds glyph concealment here.
+/// panel across the text column. It is also Live mode's concealer (see
+/// `EditorLayoutManager+Live.swift`): the state the core computed lives in `live`, and the
+/// layout manager's delegate methods turn it into null glyphs and collapsed lines without
+/// touching the text storage.
 public final class EditorLayoutManager: NSLayoutManager {
     /// How far a block panel reaches into the margins, and above/below its text.
     static let blockOutset = NSSize(width: 12, height: 6)
     static let blockCornerRadius: CGFloat = 6
+
+    /// What Live mode currently conceals and decorates. Set through `setLive`.
+    public internal(set) var live = LiveState()
+    /// Characters whose glyphs `drawGlyphs` skips because a decoration is drawn in their place.
+    var markerRanges: [NSRange] = []
+    /// Image decorations and collapsed lines, for the line fragment delegate.
+    var imageDecorations: [LiveDecoration] = []
+    /// Text whose concealment was dropped because an edit touched it: its glyphs are regenerated
+    /// with the next state, whether or not that state differs.
+    var staleRanges: [NSRange] = []
+    /// The hidden `- [ ] ` of each task item: zero width, unlike other hidden leading markup.
+    var taskPrefixes: [NSRange] = []
+
+    /// Set by the session: the room images may take, and what to draw for one.
+    var imageBudget: () -> ImageController.Budget = { ImageController.Budget(width: 600, maxHeight: 400) }
+    var imageEntry: ((String, ImageController.Budget) -> ImageController.Entry)?
+    /// Instrumentation: the character ranges whose glyphs and layout `setLive` invalidated.
+    var recordsInvalidations = false
+    var invalidatedRanges: [NSRange] = []
+    /// Where the background being drawn is anchored (see `fillBackgroundRectArray`).
+    var drawOrigin = NSPoint.zero
+    /// Set by the session on every appearance change.
+    var palette: ThemePalette?
+    var bodyFont: NSFont = .systemFont(ofSize: 17)
+
+    /// Height of a collapsed line (a concealed fence or delimiter), and the breathing room
+    /// above and below a drawn image.
+    static let collapsedHeight: CGFloat = 2
+    static let fenceCollapsedHeight: CGFloat = 8
+    static let imagePadding: CGFloat = 6
+
+    public override init() {
+        super.init()
+        delegate = self
+    }
+
+    public required init?(coder: NSCoder) { fatalError("not supported") }
 
     /// The panel rectangles (container coordinates) of the blocks touching `glyphs`.
     func blockBackgroundRects(forGlyphRange glyphs: NSRange) -> [(NSRect, NSColor)] {
@@ -26,7 +66,16 @@ public final class EditorLayoutManager: NSLayoutManager {
             let g = glyphRange(forCharacterRange: run, actualCharacterRange: nil)
             var rect = NSRect.null
             var lastLine = NSRect.null
-            enumerateLineFragments(forGlyphRange: g) { line, _, _, _, _ in
+            let concealing = !live.isEmpty
+            enumerateLineFragments(forGlyphRange: g) { [self] line, _, _, fragGlyphs, _ in
+                if concealing {
+                    // Concealed fences take no part in the panel, and a fragment that only
+                    // carries the next paragraph's hidden characters is not the block's.
+                    let fc = characterRange(forGlyphRange: fragGlyphs, actualGlyphRange: nil)
+                    if collapsedLine(inFragment: fc) != nil { return }
+                    let inside = NSIntersectionRange(fc, run)
+                    if inside.length == 0 || (inside.location..<NSMaxRange(inside)).allSatisfy({ live.isHidden($0) }) { return }
+                }
                 rect = rect.union(line)
                 lastLine = line
             }

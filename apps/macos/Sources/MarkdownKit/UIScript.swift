@@ -68,9 +68,13 @@ final class UIScriptRunner {
         }
     }
 
+    /// The last URL a Cmd-click asked to open (nothing is really opened while a script runs).
+    private static var opened: URL?
+
     static func startIfRequested() {
         guard let path = scriptPath else { return }
         logExceptions()
+        LinkOpener.opened = { url in UIScriptRunner.opened = url; return true }
         let runner = UIScriptRunner(script: URL(fileURLWithPath: path))
         running = runner
         later(0.3) { runner.run() }
@@ -161,7 +165,50 @@ final class UIScriptRunner {
         func num(_ k: String) -> Double? { (step[k] as? NSNumber)?.doubleValue }
 
         if let path = str("open") {
-            open(path, then: done)
+            open(path, folder: step["folder"] as? Bool ?? false, then: done)
+        } else if let mode = str("viewMode") {
+            session?.setViewMode(ViewMode(rawValue: mode) ?? .source)
+            record(["viewMode": mode], ok: session?.viewMode.rawValue == mode)
+            done()
+        } else if let n = step["clickCheckbox"] as? Int {
+            var ok = false
+            if let tv = textView, let lm = tv.layoutManager as? EditorLayoutManager, let tc = tv.textContainer {
+                let boxes = lm.live.decorations.filter { if case .checkbox = $0.kind { return true } else { return false } }
+                if n < boxes.count, let f = lm.checkboxFrame(of: boxes[n], in: tc) {
+                    let o = tv.textContainerOrigin
+                    ok = tv.handleCheckboxClick(at: NSPoint(x: f.midX + o.x, y: f.midY + o.y))
+                }
+            }
+            record(["clickCheckbox": n], ok: ok)
+            done()
+        } else if let needle = str("cmdClickLink") {
+            var ok = false
+            if let tv = textView, let lm = tv.layoutManager, let tc = tv.textContainer {
+                let r = ((session?.text ?? "") as NSString).range(of: needle)
+                if r.location != NSNotFound {
+                    let g = lm.glyphRange(forCharacterRange: NSRange(location: r.location, length: 1), actualCharacterRange: nil)
+                    let b = lm.boundingRect(forGlyphRange: g, in: tc)
+                    let o = tv.textContainerOrigin
+                    ok = tv.openLink(at: NSPoint(x: b.midX + o.x, y: b.midY + o.y))
+                }
+            }
+            record(["cmdClickLink": needle, "opened": Self.opened.map { $0.absoluteString }], ok: ok)
+            done()
+        } else if let path = str("dropFile") {
+            let pb = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
+            pb.clearContents()
+            pb.writeObjects([resolve(path) as NSURL])
+            let ok = textView?.handleDrop(pb, at: textView?.selectedRange().location ?? 0) ?? false
+            pb.releaseGlobally()
+            record(["dropFile": path], ok: ok)
+            done()
+        } else if let w = num("waitImages") {
+            let deadline = Date(timeIntervalSinceNow: w)
+            func poll() {
+                if (session?.imageController.isLoading ?? false) && Date() < deadline { later(0.05, poll) } else { later(0.2, done) }
+            }
+            record(["waitImages": w], ok: true)
+            poll()
         } else if let g = step["openGenerated"] as? [String: Any], let from = g["from"] as? String {
             // A big document: `from` repeated until it is at least `minLength` UTF-16 units.
             let unit = (try? String(contentsOf: resolve(from), encoding: .utf8)) ?? "x\n"
@@ -297,6 +344,8 @@ final class UIScriptRunner {
             done()
         } else if let m = step["measureTyping"] as? [String: Any] {
             measureTyping(m, then: done)
+        } else if let m = step["measureCaret"] as? [String: Any] {
+            measureCaret(m, then: done)
         } else if step["close"] != nil {
             close(then: done)
         } else if step["controlLeakProbe"] != nil {
@@ -349,6 +398,28 @@ final class UIScriptRunner {
             }
             record(["dump": d], ok: true)
             done()
+        } else if let needle = str("dumpLayout") {
+            var out: [String] = []
+            if let s = session, let lm = textView?.layoutManager {
+                let ns = s.text as NSString
+                let r = ns.range(of: needle)
+                if r.location != NSNotFound {
+                    let para = ns.paragraphRange(for: r)
+                    let g = lm.glyphRange(forCharacterRange: para, actualCharacterRange: nil)
+                    lm.enumerateLineFragments(forGlyphRange: g) { rect, used, _, fg, _ in
+                        var items: [String] = []
+                        for gi in fg.location..<NSMaxRange(fg) {
+                            let ci = lm.characterIndexForGlyph(at: gi)
+                            let p = lm.location(forGlyphAt: gi)
+                            let n = lm.propertyForGlyph(at: gi).contains(.null) ? "N" : (lm.propertyForGlyph(at: gi).contains(.controlCharacter) ? "C" : "")
+                            items.append("\(ns.substring(with: NSRange(location: ci, length: 1)))@\(Int(p.x))\(n)")
+                        }
+                        out.append("y=\(Int(rect.minY)) h=\(Int(rect.height)) used=\(NSStringFromRect(used)) " + items.joined(separator: " "))
+                    }
+                }
+            }
+            record(["dumpLayout": out], ok: !out.isEmpty)
+            done()
         } else if let msg = str("log") {
             record(["log": msg], ok: true)
             done()
@@ -377,12 +448,21 @@ final class UIScriptRunner {
         return scriptURL.deletingLastPathComponent().appendingPathComponent(path)
     }
 
-    private func open(_ path: String, then done: @escaping () -> Void) {
+    private func open(_ path: String, folder: Bool = false, then done: @escaping () -> Void) {
         let src = resolve(path)
         let work = outDir.appendingPathComponent("work", isDirectory: true)
         try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
         let copy = work.appendingPathComponent(src.lastPathComponent)
         try? FileManager.default.removeItem(at: copy)
+        if folder {
+            // Images and other files the document refers to by relative path.
+            let dir = src.deletingLastPathComponent()
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where !name.hasPrefix(".") && name != src.lastPathComponent {
+                let dst = work.appendingPathComponent(name)
+                try? FileManager.default.removeItem(at: dst)
+                try? FileManager.default.copyItem(at: dir.appendingPathComponent(name), to: dst)
+            }
+        }
         do {
             try FileManager.default.copyItem(at: src, to: copy)
         } catch {
@@ -535,6 +615,40 @@ final class UIScriptRunner {
         step()
     }
 
+    /// Moves the caret through the text, `count` steps of `stride` characters, and records how
+    /// long the main thread was busy per move (the selection change and everything it causes:
+    /// the concealment query and its application), as the arrow keys would.
+    private func measureCaret(_ m: [String: Any], then done: @escaping () -> Void) {
+        let count = m["count"] as? Int ?? 100
+        let stride = m["stride"] as? Int ?? 7
+        var perMove: [Double] = []
+        var i = 0
+        var loc = textView?.selectedRange().location ?? 0
+        func step() {
+            guard i < count, let tv = textView, let s = session else {
+                let sorted = perMove.sorted()
+                func pct(_ p: Double) -> Double { sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] * 1000 }
+                let stats: [String: Any] = [
+                    "moves": perMove.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000,
+                    "mean_ms": perMove.reduce(0, +) / Double(max(1, perMove.count)) * 1000,
+                    "live_queries": session?.liveQueries ?? 0,
+                ]
+                let limit = (m["maxMs"] as? NSNumber)?.doubleValue
+                record(["measureCaret": stats], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
+                done()
+                return
+            }
+            loc = (loc + stride) % max(1, s.storage.length)
+            let t0 = CFAbsoluteTimeGetCurrent()
+            tv.setSelectedRange(NSRange(location: loc, length: 0))
+            tv.layoutManager?.ensureLayout(forCharacterRange: NSRange(location: max(0, loc - 200), length: min(400, s.storage.length - max(0, loc - 200))))
+            perMove.append(CFAbsoluteTimeGetCurrent() - t0)
+            i += 1
+            later(0.005, step)
+        }
+        step()
+    }
+
     // MARK: windows
 
     private func snapshot(_ name: String, which: String?) {
@@ -660,6 +774,30 @@ final class UIScriptRunner {
             let bottom = c.toolbar.isHidden ? 0 : c.toolbar.frame.maxY
             check("caret visible", inWindow.minY >= bottom && inWindow.maxY <= top, "caret \(inWindow) clear area \(bottom)...\(top)")
         }
+        if let v = a["viewMode"] as? String { check("viewMode \(v)", session?.viewMode.rawValue == v, session?.viewMode.rawValue ?? "nil") }
+        if let v = a["hidden"] as? [String], let s = session {
+            _ = s.waitUntilStyled(timeout: 30)
+            s.refreshLive()
+            let got = s.layoutManager.live.hidden.map { (text as NSString).substring(with: $0) }
+            check("hidden \(v)", got == v, "\(got)")
+        }
+        if let v = a["decorations"] as? [String: Int], let s = session {
+            var counts: [String: Int] = [:]
+            for d in s.layoutManager.live.decorations {
+                let k: String
+                switch d.kind {
+                case .bullet: k = "bullet"
+                case .checkbox: k = "checkbox"
+                case .rule: k = "rule"
+                case .image: k = "image"
+                case .quoteBar: k = "quoteBar"
+                }
+                counts[k, default: 0] += 1
+            }
+            check("decorations \(v)", v.allSatisfy { counts[$0.key, default: 0] == $0.value }, "\(counts)")
+        }
+        if let v = a["collapsedLines"] as? Int, let s = session { check("collapsed lines \(v)", s.layoutManager.live.collapsed.count == v, "\(s.layoutManager.live.collapsed.count)") }
+        if let v = a["linkOpened"] as? String { check("linkOpened \(v)", Self.opened?.absoluteString == v, Self.opened?.absoluteString ?? "nil") }
         if let v = a["inTable"] as? Bool { check("inTable \(v)", session?.formatState.inTable == v) }
         if let v = a["theme"] as? String { check("theme \(v)", session?.appearance.theme.id == v, session?.appearance.theme.id ?? "nil") }
         if a["styled"] != nil, let s = session { check("styled", s.waitUntilStyled(timeout: 30)) }

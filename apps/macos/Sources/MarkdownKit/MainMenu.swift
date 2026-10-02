@@ -141,6 +141,9 @@ enum MainMenu {
         }
 
         _ = submenu(main, "View") { m in
+            _ = item(m, "Source", #selector(EditorTextView.showSourceMode(_:)), "1", [.command, .option])
+            _ = item(m, "Live", #selector(EditorTextView.showLiveMode(_:)), "2", [.command, .option])
+            m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
             m.addItem(.separator())
             _ = item(m, "Make Text Bigger", #selector(AppDelegate.biggerText(_:)), "+")

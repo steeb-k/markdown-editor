@@ -15,12 +15,32 @@ public final class MarkdownDocument: NSDocument {
         super.init()
     }
 
+    public override var fileURL: URL? {
+        didSet { if fileURL != oldValue { session.documentURLChanged() } }
+    }
+
     public override class var autosavesInPlace: Bool { true }
     public override class var autosavesDrafts: Bool { true }
     public override class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { false }
     public override class var preservesVersions: Bool { true }
 
+    /// Saves an untitled document (the standard save panel) so files can be written beside it.
+    /// `done` is told whether the document has a file afterwards.
+    func saveForAssets(_ done: @escaping (Bool) -> Void) {
+        if fileURL != nil { done(true); return }
+        let box = SaveCompletion(done)
+        save(withDelegate: self, didSave: #selector(document(_:didSave:contextInfo:)),
+             contextInfo: Unmanaged.passRetained(box).toOpaque())
+    }
+
+    @objc private func document(_ doc: NSDocument, didSave ok: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        guard let contextInfo else { return }
+        let box = Unmanaged<SaveCompletion>.fromOpaque(contextInfo).takeRetainedValue()
+        box.done(ok && fileURL != nil)
+    }
+
     public override func makeWindowControllers() {
+        session.requestSave = { [weak self] done in self?.saveForAssets(done) ?? done(false) }
         addWindowController(EditorWindowController(document: self))
     }
 
@@ -45,4 +65,9 @@ public final class MarkdownDocument: NSDocument {
     public override func write(to url: URL, ofType typeName: String) throws {
         try DocumentFileAccess.write(data(ofType: typeName), to: url)
     }
+}
+
+private final class SaveCompletion {
+    let done: (Bool) -> Void
+    init(_ done: @escaping (Bool) -> Void) { self.done = done }
 }

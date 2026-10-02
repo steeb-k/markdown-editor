@@ -61,6 +61,9 @@ struct SettingsView: View {
             Stepper(value: Binding(get: { s.lineWidth }, set: { s.lineWidth = $0 }), in: Settings.lineWidthRange, step: 2) {
                 Text("Line width: \(s.lineWidth) characters")
             }
+            Picker("Default view", selection: Binding(get: { s.defaultViewMode }, set: { s.defaultViewMode = $0 })) {
+                ForEach(ViewMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
             Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
             Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))

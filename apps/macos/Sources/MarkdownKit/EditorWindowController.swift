@@ -11,6 +11,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
     /// Text scrolled up under the transparent title bar fades out instead of colliding with the
     /// traffic lights and the title.
     let titlebarFade = EdgeFadeView()
+    /// The view-mode switch in the title bar (Source, Live; Split and Preview come later).
+    let modeSwitch = NSSegmentedControl()
+    private var modeAccessory: NSTitlebarAccessoryViewController?
     private var fadeHeight: NSLayoutConstraint!
     private let root = EditorRootView()
     private var chrome: ChromeController!
@@ -79,6 +82,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
         }
 
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome)
+        installModeSwitch(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
         textView.onTyping = { [weak self] in self?.chrome.send(.typingStarted) }
         session.onFormatStateChange = { [weak self] in
@@ -94,6 +98,43 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
+
+    private func installModeSwitch(in window: NSWindow) {
+        modeSwitch.segmentCount = ViewMode.allCases.count
+        for (i, mode) in ViewMode.allCases.enumerated() {
+            modeSwitch.setLabel(mode.title, forSegment: i)
+            modeSwitch.setWidth(0, forSegment: i)
+        }
+        modeSwitch.trackingMode = .selectOne
+        modeSwitch.segmentStyle = .rounded
+        modeSwitch.controlSize = .small
+        modeSwitch.target = self
+        modeSwitch.action = #selector(modeSwitchChanged(_:))
+        modeSwitch.setAccessibilityLabel("View mode")
+        modeSwitch.sizeToFit()
+        let holder = NSView(frame: NSRect(x: 0, y: 0, width: modeSwitch.frame.width + 20, height: modeSwitch.frame.height + 8))
+        modeSwitch.frame.origin = NSPoint(x: 8, y: 4)
+        holder.addSubview(modeSwitch)
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = holder
+        accessory.layoutAttribute = .trailing
+        window.addTitlebarAccessoryViewController(accessory)
+        modeAccessory = accessory
+        chrome.extraTitlebarViews = [holder]
+        session.onViewModeChange = { [weak self] in self?.syncModeSwitch() }
+        syncModeSwitch()
+    }
+
+    @objc private func modeSwitchChanged(_ sender: NSSegmentedControl) {
+        let modes = ViewMode.allCases
+        guard sender.selectedSegment >= 0, sender.selectedSegment < modes.count else { return }
+        session.setViewMode(modes[sender.selectedSegment])
+        window?.makeFirstResponder(textView)
+    }
+
+    private func syncModeSwitch() {
+        if let i = ViewMode.allCases.firstIndex(of: session.viewMode) { modeSwitch.selectedSegment = i }
+    }
 
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
@@ -159,6 +200,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate 
 
     public func windowDidBecomeKey(_ notification: Notification) {
         session.refreshAppearance()
+        // Pictures another app changed while this window was in the background.
+        session.imageController.revalidate()
     }
 
     // MARK: for tests and UI scripts

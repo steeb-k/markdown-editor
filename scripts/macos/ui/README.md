@@ -26,7 +26,7 @@ captured with `"window": "sheet"`.
 
 | Step | Does |
 | --- | --- |
-| `{"open": "path"}` | Opens a copy of a file (relative to `--ui-root`, the cwd or the script). |
+| `{"open": "path"}` | Opens a copy of a file (relative to `--ui-root`, the cwd or the script). `"folder": true` also copies everything beside it (the images a document refers to by relative path). |
 | `{"openGenerated": {"from": "path", "minLength": 1000000}}` | Opens `from` repeated to at least that many UTF-16 units. |
 | `{"new": true}`, `{"load": "text"}` | New untitled document; replace its text. |
 | `{"type": "text", "interval": 0.05}` | Key events (`\n` Return, `\t` Tab, `⇤` Shift-Tab). |
@@ -42,8 +42,23 @@ captured with `"window": "sheet"`.
 | `{"newTab": true}`, `{"switchTo": 0}`, `{"settingsWindow": "show"}`, `{"sheet": "end"}` | Windows. |
 | `{"pointer": "moved"}` | What a mouse move does to the auto-hiding chrome. |
 | `{"undo": true}`, `{"redo": true}` | Document undo manager. |
+| `{"viewMode": "live"}` | Sets the window's view mode (`source`, `live`); the title-bar switch and View menu do the same. |
+| `{"clickCheckbox": 0}`, `{"cmdClickLink": "needle"}`, `{"dropFile": "path"}` | The n-th task checkbox is clicked; the link under the needle is Cmd-clicked (nothing is really opened: the URL is recorded for `linkOpened`); a file is dropped at the caret. |
+| `{"waitImages": 5}`, `{"dumpLayout": "needle"}` | Waits for pictures to load; logs line fragments and glyph positions (`N` null, `C` control) of the paragraph holding the needle. |
 | `{"measureTyping": {"count": 150, "interval": 0.06, "maxMs": 10}}` | Main-thread time per keystroke and the longest run-loop gap. |
+| `{"measureCaret": {"count": 200, "stride": 97}}` | Main-thread time per caret move (the selection change and the concealment it triggers). |
 | `{"close": true}` | Closes the document and checks that it, its window controller, session and coordinator are freed. |
 | `{"controlLeakProbe": true}` | The same check for a plain AppKit window (AppKit keeps closed windows for a while). |
 | `{"dump": true}`, `{"log": "text"}` | Diagnostics. |
-| `{"assert": {...}}` | `textEquals`, `textContains`, `textLacks`, `selection`, `selectedText`, `toolbarLit`, `headingTitle`, `chromeVisible`, `toolbarIgnoresClicksWhenHidden`, `inTable`, `theme`, `styled`, `coreMatchesText`, `edited`, `fullScreen`, `sheet`, `fontFamily`, `boldDiffers`, `columnCentered`, `caretVisible`, `spellingAllowedIn`, `spellingSuppressedIn`, `closedDocumentsFreed`. |
+| `{"assert": {...}}` | `textEquals`, `textContains`, `textLacks`, `selection`, `selectedText`, `toolbarLit`, `headingTitle`, `chromeVisible`, `toolbarIgnoresClicksWhenHidden`, `inTable`, `theme`, `styled`, `coreMatchesText`, `edited`, `fullScreen`, `sheet`, `fontFamily`, `boldDiffers`, `columnCentered`, `caretVisible`, `spellingAllowedIn`, `spellingSuppressedIn`, `closedDocumentsFreed`, `viewMode`, `hidden` (the exact list of hidden source pieces), `decorations` (counts per kind), `collapsedLines`, `linkOpened`. |
+
+## Scripts
+
+| Script | What it shows |
+| --- | --- |
+| `smoke.json` | The M2 tour: typography, themes, chrome, commands, tables, closing. |
+| `live.json` | Live mode: a tour document with the caret in plain prose (no markup visible; bullets, checkboxes, rule, quote bar and picture drawn; fences collapsed), then entering bold, a link, a heading, a code block, an image paragraph, a quote, front matter and a setext heading; a checkbox click and its undo; typing in Live mode; Cmd-click on a link; Source and back; other themes; Settings. |
+| `live-edge.json` | Nested quotes, headings and tasks in quotes, a fence in a list item, footnotes, reference links, hard breaks, raw HTML, an unclosed fence, in three themes. |
+| `big.json`, `big-live.json` | A 1 MB document: typing and caret moves in Source mode and in Live mode (run with `RELEASE=1`). |
+
+`fixtures/live.md` and `fixtures/live-edge.md` use `fixtures/images/sample.png`.

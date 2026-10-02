@@ -14,6 +14,16 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public let styler: Styler
     public private(set) var appearance: EditorAppearance
     public private(set) weak var textView: EditorTextView?
+    /// Loads and caches the images Live mode draws.
+    public let imageController = ImageController()
+    /// How the text is shown in this window. Set through `setViewMode`.
+    public internal(set) var viewMode: ViewMode
+    public var onViewModeChange: (() -> Void)?
+    /// The text range the layout manager's live state was last computed for.
+    var liveWindow = NSRange(location: 0, length: 0)
+    var liveToken = 0
+    var livePending = false
+    var liveQueries = 0
 
     /// The format state at the selection, refreshed off the main thread on every selection change.
     public private(set) var formatState: FormatState = EditorSession.emptyFormatState
@@ -29,6 +39,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var forcedAppearance: NSAppearance?
     /// The saved file's URL, for paths relative to the document.
     public var documentURL: () -> URL? = { nil }
+    /// Asks the document to be saved (an untitled one shows the save panel) and reports whether
+    /// it now has a file; used before writing pasted images next to it.
+    public var requestSave: ((@escaping (Bool) -> Void) -> Void)?
 
     public static let chunkSize = 12_000
     public static let emptyFormatState = FormatState(
@@ -54,7 +67,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         coordinator = AnalysisCoordinator()
         appearance = EditorAppearance(settings: settings, appearance: forcedAppearance)
         styler = Styler(appearance: appearance)
+        viewMode = settings.defaultViewMode
+        styler.liveMode = viewMode == .live
         super.init()
+        configureLive()
         storage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(container)
         layoutManager.allowsNonContiguousLayout = true
@@ -102,6 +118,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         textView?.undoManager?.removeAllActions()
         activeTable = nil
         formatState = Self.emptyFormatState
+        liveWindow = NSRange(location: 0, length: 0)
+        layoutManager.setLive(LiveState())
     }
 
     public var text: String { storage.string }
@@ -117,6 +135,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let replacement = storage.mutableString.substring(with: editedRange)
         debt.shift(through: change)
         debt.clamp(toLength: storage.length)
+        layoutManager.shiftLive(through: change)
+        liveWindow = RangeMath.shift(liveWindow, through: change)
         if let t = activeTable { activeTable = RangeMath.shift(t, through: change) }
         // What counts as editing a table (so leaving it realigns): typing and commands, not undo
         // or redo (undoing a realign must not bring it straight back) and not the realign itself.
@@ -169,6 +189,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange), insideProcessing: inDelegate)
         isStyling = false
         textView?.refreshTypingAttributes()
+        if viewMode == .live, !inDelegate { refreshLive() } else if viewMode == .live { scheduleLiveRefresh() }
         onStyled?()
     }
 
@@ -215,6 +236,12 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
 
     // MARK: appearance
 
+    /// Styling is owed for the whole text again (the mode or the theme changed what the styler writes).
+    func restyleEverything() {
+        debt.add(NSRange(location: 0, length: storage.length))
+        kickDebt()
+    }
+
     private func settingsChanged() {
         let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance())
         applyAppearance(new)
@@ -235,6 +262,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             || new.choice != appearance.choice
         appearance = new
         styler.appearance = new
+        layoutManager.palette = new.palette
+        layoutManager.bodyFont = new.fonts.body
         textView?.configure(appearance: new, settings: settings)
         if changed {
             debt.add(NSRange(location: 0, length: storage.length))
@@ -255,6 +284,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let token = selectionToken
         tv.refreshTypingAttributes()
         let selection = tv.selectedRange()
+        refreshLive()
 
         if let table = activeTable, !tableContains(table, selection), canRealign(tv) {
             activeTable = nil

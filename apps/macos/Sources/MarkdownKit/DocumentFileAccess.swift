@@ -11,6 +11,28 @@ public enum DocumentFileAccess {
         try data.write(to: url, options: .atomic)
     }
 
+    /// When the file was last modified; nil when it cannot be read.
+    public static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    public static func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    public static func createDirectory(_ url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    /// `<name>.<ext>` in `directory`, or `<name> 2.<ext>`, `<name> 3.<ext>`... when taken.
+    public static func uniqueURL(in directory: URL, name: String, ext: String) -> URL {
+        var candidate = directory.appendingPathComponent(name).appendingPathExtension(ext)
+        var n = 2
+        while exists(candidate) {
+            candidate = directory.appendingPathComponent("\(name) \(n)").appendingPathExtension(ext)
+            n += 1
+        }
+        return candidate
+    }
+
     /// `file`'s path relative to the folder holding `document`, or the absolute path when
     /// `document` is nil (not saved yet).
     public static func path(of file: URL, relativeTo document: URL?) -> String {

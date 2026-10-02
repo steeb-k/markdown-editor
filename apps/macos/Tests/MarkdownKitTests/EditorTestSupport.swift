@@ -19,6 +19,8 @@ func isolatedSettings() -> Settings {
     let name = "markdown-tests-\(UUID().uuidString)"
     let d = UserDefaults(suiteName: name)!
     d.removePersistentDomain(forName: name)
+    // Most tests are about styled source; Live mode tests ask for it.
+    d.set(ViewMode.source.rawValue, forKey: "defaultViewMode")
     return Settings(defaults: d)
 }
 

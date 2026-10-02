@@ -38,12 +38,12 @@ public struct EditorAppearance {
         return max(0, (font.pointSize * (multiple ?? lineHeight) - natural).rounded())
     }
 
-    public func paragraphStyle(font: NSFont, headIndent: CGFloat = 0, spacingBefore: CGFloat = 0,
-                               spacingAfter: CGFloat = 0, multiple: CGFloat? = nil) -> NSParagraphStyle {
+    public func paragraphStyle(font: NSFont, headIndent: CGFloat = 0, firstLineHeadIndent: CGFloat = 0,
+                               spacingBefore: CGFloat = 0, spacingAfter: CGFloat = 0, multiple: CGFloat? = nil) -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
         p.lineSpacing = lineSpacing(for: font, multiple: multiple)
         p.headIndent = headIndent
-        p.firstLineHeadIndent = 0
+        p.firstLineHeadIndent = firstLineHeadIndent
         p.paragraphSpacingBefore = spacingBefore
         p.paragraphSpacing = spacingAfter
         p.lineBreakMode = .byWordWrapping

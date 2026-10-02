@@ -49,6 +49,8 @@ public final class AnalysisCoordinator {
     private var mirror: NSMutableString
     private var carry: NSRange?
     private var processedSeq = 0
+    /// Queue-confined cache for `cachedImages(of:)`.
+    var imageCache: (revision: UInt64, images: [ImageRef])?
 
     // Shared, guarded by `lock`:
     private let lock = NSCondition()

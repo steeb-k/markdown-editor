@@ -1,0 +1,337 @@
+[
+ {
+  "log": "--- Live mode tour: prose, then the caret enters each construct"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/live.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   980
+  ]
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "selectText": "Writing should feel",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitImages": 5
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "viewMode": "live",
+   "coreMatchesText": true,
+   "edited": false
+  }
+ },
+ {
+  "snapshot": "01-live-prose"
+ },
+ {
+  "assert": {
+   "decorations": {
+    "bullet": 3,
+    "checkbox": 2,
+    "rule": 1,
+    "image": 1,
+    "quoteBar": 1
+   },
+   "collapsedLines": 5
+  }
+ },
+ {
+  "log": "--- caret in a bold word"
+ },
+ {
+  "selectText": "bold words",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "02-caret-in-bold"
+ },
+ {
+  "log": "--- caret in the link"
+ },
+ {
+  "selectText": "link to the site",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "03-caret-in-link"
+ },
+ {
+  "log": "--- caret in the heading line"
+ },
+ {
+  "selectText": "A quiet list",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "04-caret-in-heading"
+ },
+ {
+  "log": "--- caret in the code block"
+ },
+ {
+  "selectText": "let greeting",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "05-caret-in-code"
+ },
+ {
+  "log": "--- caret in the image paragraph"
+ },
+ {
+  "selectText": "A bright test",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "06-caret-in-image"
+ },
+ {
+  "log": "--- caret in the quote"
+ },
+ {
+  "selectText": "second paragraph with",
+  "offset": 4,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "07-caret-in-quote"
+ },
+ {
+  "log": "--- caret in the front matter"
+ },
+ {
+  "selectText": "Live mode tour",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "08-caret-in-frontmatter"
+ },
+ {
+  "log": "--- caret in the setext heading"
+ },
+ {
+  "selectText": "Setext Heading",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "09-caret-in-setext"
+ },
+ {
+  "log": "--- click a checkbox: toggles, one undo step"
+ },
+ {
+  "selectText": "The end",
+  "offset": 3,
+  "length": 0
+ },
+ {
+  "clickCheckbox": 0
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "textContains": "- [x] An open task"
+  }
+ },
+ {
+  "snapshot": "10-after-checkbox"
+ },
+ {
+  "undo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "textContains": "- [ ] An open task",
+   "edited": false
+  }
+ },
+ {
+  "log": "--- typing in Live mode"
+ },
+ {
+  "selectText": "Text below the picture",
+  "offset": 22,
+  "length": 0
+ },
+ {
+  "type": " with **fresh"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "11-typing-bold-open"
+ },
+ {
+  "type": "** words"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "12-typed-caret-after-bold"
+ },
+ {
+  "assert": {
+   "coreMatchesText": true
+  }
+ },
+ {
+  "log": "--- cmd-click a link"
+ },
+ {
+  "cmdClickLink": "link to the site"
+ },
+ {
+  "assert": {
+   "linkOpened": "https://example.com/page"
+  }
+ },
+ {
+  "log": "--- toggle to Source and back"
+ },
+ {
+  "action": "showSourceMode:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "viewMode": "source",
+   "hidden": []
+  }
+ },
+ {
+  "snapshot": "13-source-mode"
+ },
+ {
+  "action": "showLiveMode:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "viewMode": "live",
+   "coreMatchesText": true
+  }
+ },
+ {
+  "snapshot": "14-live-again"
+ },
+ {
+  "log": "--- other themes and the default-mode setting"
+ },
+ {
+  "selectText": "Writing should feel",
+  "offset": 20,
+  "length": 0
+ },
+ {
+  "scroll": 0
+ },
+ {
+  "setting": {
+   "theme": "dark"
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "15-dark"
+ },
+ {
+  "setting": {
+   "theme": "sepia"
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "snapshot": "16-sepia"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "settingsWindow": "show"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "snapshot": "17-settings",
+  "window": "settings"
+ },
+ {
+  "settingsWindow": "hide"
+ }
+]
