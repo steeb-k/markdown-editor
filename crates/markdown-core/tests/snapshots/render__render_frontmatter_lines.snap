@@ -1,0 +1,11 @@
+---
+source: crates/markdown-core/tests/render.rs
+expression: d.render_html(&lines())
+---
+<h1 id="document" data-line="6">Document</h1>
+<pre data-line="8"><code class="language-rust"><span class="s-storage s-type s-function">fn</span> <span class="s-entity s-name s-function">main</span>() {
+    <span class="s-support s-macro s-rust">println!</span>(<span class="s-string s-quoted s-double">"hello"</span>);
+}
+</code></pre>
+<pre data-line="14"><code class="language-python"><span class="s-support s-function s-builtin">print</span>(<span class="s-string s-quoted s-double">"</span><span class="s-string s-quoted s-double">tilde fence"</span>)
+</code></pre>

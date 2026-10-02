@@ -370,3 +370,41 @@ pub fn run_marked(
     assert!(results.iter().all(|r| *r == results[0]), "encodings disagree for {before:?}: {results:?}");
     results.remove(0)
 }
+
+// ----- random documents (shared by the robustness, rendering and fuzz tests) ----------------------
+
+pub fn lcg(seed: &mut u64) -> u64 {
+    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed >> 33
+}
+
+pub const TOKENS: &[&str] = &[
+    "# ", "## ", "> ", "- ", "* ", "1. ", "- [ ] ", "- [x] ", "```", "```rs\n", "~~~", "---\n", "***", "\n", "\n\n",
+    "\r\n", "\r", "  \n", "*", "**", "_", "__", "~~", "`", "``", "[", "](", ")", "![", "]", "[^1]", "[^1]: ", "|",
+    "| a | b |\n", "|---|---|\n", "<div>", "</div>", "<b>", "<!--", "-->", "<http://a.b>", "www.a.b/c", "https://a.b/x_y ", "\\", "\\*", "word ",
+    "text", " ", "    ", "\t", "=== ", "===\n", "[r]: /u\n", "[r]", "[r][]", "[t][r]", "\u{1F389}", "e\u{301}",
+    "&amp;", "&#", "#", ":", "\"t\"", "'", "(", "<", ">", "\\\n", "x\\|y", "\u{0}", "\u{FEFF}", "+++\n", "...\n",
+];
+
+pub fn token_doc(seed: &mut u64, bytes: usize, tokens: &[&str]) -> String {
+    let mut s = String::with_capacity(bytes + 64);
+    while s.len() < bytes {
+        s.push_str(tokens[(lcg(seed) as usize) % tokens.len()]);
+    }
+    s
+}
+
+pub fn random_unicode(seed: &mut u64, chars: usize) -> String {
+    (0..chars)
+        .map(|_| {
+            let r = lcg(seed);
+            match r % 4 {
+                0 => char::from((r >> 8) as u8 & 0x7f),
+                1 => char::from_u32(((r >> 8) % 0x800) as u32).unwrap_or('x'),
+                2 => char::from_u32(((r >> 8) % 0x10000) as u32).unwrap_or('\u{FFFD}'),
+                _ => char::from_u32(0x10000 + ((r >> 8) % 0x10000) as u32).unwrap_or('\u{1F600}'),
+            }
+        })
+        .collect()
+}
+

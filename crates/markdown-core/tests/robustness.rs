@@ -51,41 +51,6 @@ fn typing_into_a_parser_panic_keeps_the_document_consistent() {
 
 // ----- release-only fuzzing ---------------------------------------------------------------
 
-fn lcg(seed: &mut u64) -> u64 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    *seed >> 33
-}
-
-const TOKENS: &[&str] = &[
-    "# ", "## ", "> ", "- ", "* ", "1. ", "- [ ] ", "- [x] ", "```", "```rs\n", "~~~", "---\n", "***", "\n", "\n\n",
-    "\r\n", "\r", "  \n", "*", "**", "_", "__", "~~", "`", "``", "[", "](", ")", "![", "]", "[^1]", "[^1]: ", "|",
-    "| a | b |\n", "|---|---|\n", "<div>", "</div>", "<b>", "<!--", "-->", "<http://a.b>", "www.a.b/c", "https://a.b/x_y ", "\\", "\\*", "word ",
-    "text", " ", "    ", "\t", "=== ", "===\n", "[r]: /u\n", "[r]", "[r][]", "[t][r]", "\u{1F389}", "e\u{301}",
-    "&amp;", "&#", "#", ":", "\"t\"", "'", "(", "<", ">", "\\\n", "x\\|y", "\u{0}", "\u{FEFF}", "+++\n", "...\n",
-];
-
-fn token_doc(seed: &mut u64, bytes: usize, tokens: &[&str]) -> String {
-    let mut s = String::with_capacity(bytes + 64);
-    while s.len() < bytes {
-        s.push_str(tokens[(lcg(seed) as usize) % tokens.len()]);
-    }
-    s
-}
-
-fn random_unicode(seed: &mut u64, chars: usize) -> String {
-    (0..chars)
-        .map(|_| {
-            let r = lcg(seed);
-            match r % 4 {
-                0 => char::from((r >> 8) as u8 & 0x7f),
-                1 => char::from_u32(((r >> 8) % 0x800) as u32).unwrap_or('x'),
-                2 => char::from_u32(((r >> 8) % 0x10000) as u32).unwrap_or('\u{FFFD}'),
-                _ => char::from_u32(0x10000 + ((r >> 8) % 0x10000) as u32).unwrap_or('\u{1F600}'),
-            }
-        })
-        .collect()
-}
-
 /// Analysis and a mid-document edit of a 1 MB document, for one generator. Returns the
 /// slower of the two and the time pulldown-cmark alone takes to parse the text.
 fn time_one(name: &str, text: &str) -> (f64, f64) {

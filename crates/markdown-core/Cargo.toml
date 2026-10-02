@@ -7,14 +7,22 @@ edition = "2024"
 # Pinned: span derivation works around this version's range quirks (see analysis.rs) and
 # tests/oracle.rs pins its known rendering gaps; re-run the oracle when upgrading.
 # `getopts` (default) is only for pulldown-cmark's own command-line tool.
-pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "=0.13.4", default-features = false }
+# The escaping the HTML renderer shares with pulldown-cmark's own (hrefs, attributes, text).
+pulldown-cmark-escape = "0.11.0"
 sha2 = "0.11"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.6"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
+# Fenced-code highlighting for the preview. Pure-Rust regex backend (fancy-regex): no onig, no C,
+# so it builds for both macOS architectures and for Linux. Only the parser and the bundled syntaxes;
+# the class-based HTML is written by `highlight.rs`, and the bundled colour themes and plist/yaml loaders stay out.
+syntect = { version = "5.3.0", default-features = false, features = ["parsing", "default-syntaxes", "dump-load", "regex-fancy"] }
 
 [dev-dependencies]
+# pulldown-cmark's own HTML writer, as the reference the renderer is compared with (tests/render.rs).
+pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }
 insta = "1.48.0"
 proptest = "1.11.0"
 serde_json = "1.0.151"

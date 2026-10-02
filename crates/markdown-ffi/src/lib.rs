@@ -313,6 +313,42 @@ pub struct Theme {
     pub colors: ThemeColors,
 }
 
+// ----- preview and export ----------------------------------------------------------------------
+
+/// How the preview's text is set: the editor's own settings in CSS terms. See `core::Typography`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Typography {
+    pub font_family: String,
+    pub mono_family: String,
+    pub font_size_px: f64,
+    pub line_height: f64,
+    pub measure_ch: f64,
+}
+
+/// A theme and typography for a standalone document's stylesheet.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct PreviewStyle {
+    pub theme: Theme,
+    pub typography: Typography,
+}
+
+/// What `Document::render_html` renders and how. See `core::RenderOptions`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RenderOptions {
+    #[uniffi(default = false)]
+    pub source_lines: bool,
+    #[uniffi(default = false)]
+    pub standalone: bool,
+    #[uniffi(default = false)]
+    pub sanitize: bool,
+    #[uniffi(default = true)]
+    pub highlight: bool,
+    #[uniffi(default = "")]
+    pub fallback_title: String,
+    #[uniffi(default = None)]
+    pub style: Option<PreviewStyle>,
+}
+
 // ----- conversions (field-by-field, no logic) -----------------------------------------------
 
 impl From<Utf16Range> for core::TextRange {
@@ -684,6 +720,76 @@ impl From<core::theme::Colors> for ThemeColors {
     }
 }
 
+impl From<ThemeColor> for core::Color {
+    fn from(c: ThemeColor) -> Self {
+        core::Color { r: c.r, g: c.g, b: c.b, a: c.a }
+    }
+}
+
+impl From<ThemeColors> for core::theme::Colors {
+    fn from(c: ThemeColors) -> Self {
+        core::theme::Colors {
+            background: c.background.into(),
+            text: c.text.into(),
+            markup: c.markup.into(),
+            heading: c.heading.into(),
+            link: c.link.into(),
+            code_text: c.code_text.into(),
+            code_background: c.code_background.into(),
+            quote: c.quote.into(),
+            selection: c.selection.into(),
+            caret: c.caret.into(),
+            focus_dim: c.focus_dim.into(),
+            pos_noun: c.pos_noun.into(),
+            pos_verb: c.pos_verb.into(),
+            pos_adjective: c.pos_adjective.into(),
+            pos_adverb: c.pos_adverb.into(),
+            pos_conjunction: c.pos_conjunction.into(),
+            author_ai: c.author_ai.into(),
+            author_reference: c.author_reference.into(),
+            rule: c.rule.into(),
+            table_border: c.table_border.into(),
+        }
+    }
+}
+
+impl From<Theme> for core::Theme {
+    fn from(t: Theme) -> Self {
+        core::Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into() }
+    }
+}
+
+impl From<Typography> for core::Typography {
+    fn from(t: Typography) -> Self {
+        core::Typography {
+            font_family: t.font_family,
+            mono_family: t.mono_family,
+            font_size_px: t.font_size_px,
+            line_height: t.line_height,
+            measure_ch: t.measure_ch,
+        }
+    }
+}
+
+impl From<PreviewStyle> for core::PreviewStyle {
+    fn from(s: PreviewStyle) -> Self {
+        core::PreviewStyle { theme: s.theme.into(), typography: s.typography.into() }
+    }
+}
+
+impl From<RenderOptions> for core::RenderOptions {
+    fn from(o: RenderOptions) -> Self {
+        core::RenderOptions {
+            source_lines: o.source_lines,
+            standalone: o.standalone,
+            sanitize: o.sanitize,
+            highlight: o.highlight,
+            fallback_title: o.fallback_title,
+            style: o.style.map(Into::into),
+        }
+    }
+}
+
 impl From<core::Theme> for Theme {
     fn from(t: core::Theme) -> Self {
         Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into() }
@@ -811,6 +917,16 @@ impl Document {
     pub fn table_at(&self, offset: u32) -> Option<TableInfo> {
         self.with(|d| d.table_at(offset).map(TableInfo::from))
     }
+
+    /// The document as HTML: the body, or a complete page with `options.standalone`.
+    pub fn render_html(&self, options: RenderOptions) -> String {
+        self.with(|d| d.render_html(&options.into()))
+    }
+
+    /// The whole blocks `range` touches as HTML; an empty range is the whole document.
+    pub fn render_html_fragment(&self, range: Utf16Range, options: RenderOptions) -> String {
+        self.with(|d| d.render_html_fragment(range.into(), &options.into()))
+    }
 }
 
 /// Words of a unit's joined text (ranges in its coordinates) as document ranges.
@@ -834,6 +950,25 @@ pub fn builtin_themes() -> Vec<Theme> {
 #[uniffi::export]
 pub fn theme_by_id(id: String) -> Option<Theme> {
     core::theme_by_id(&id).map(Theme::from)
+}
+
+/// The preview's stylesheet for a theme set in the given typography (with its print section).
+#[uniffi::export]
+pub fn preview_css(theme: Theme, typography: Typography) -> String {
+    core::preview_css(&theme.into(), &typography.into())
+}
+
+/// Loads the code highlighter's syntaxes now. Call once from a background thread before the first
+/// preview is shown (the work is done lazily otherwise, on the first fenced block).
+#[uniffi::export]
+pub fn warm_up_highlighting() {
+    core::highlight::warm_up();
+}
+
+/// The id the renderer gives a heading with this text (before de-duplication).
+#[uniffi::export]
+pub fn heading_slug(text: String) -> String {
+    core::slug(&text)
 }
 
 #[uniffi::export]
@@ -907,5 +1042,37 @@ mod tests {
         let u = d.replace(Utf16Range { start: 2, end: 2 }, "*a*".into()).unwrap();
         assert_eq!(u.revision, 1);
         assert_eq!(d.spans(None).len(), 3);
+    }
+
+    #[test]
+    fn rendering_crosses_the_boundary() {
+        let d = Document::new("# T\n\n```rust\nlet a = 1;\n```\n\nbody \u{1F389}\n".into());
+        let opts = RenderOptions {
+            source_lines: true,
+            standalone: false,
+            sanitize: false,
+            highlight: true,
+            fallback_title: String::new(),
+            style: None,
+        };
+        let h = d.render_html(opts.clone());
+        assert!(h.contains("<h1 id=\"t\" data-line=\"0\">T</h1>") && h.contains("s-storage"), "{h}");
+        // The fragment's range is in UTF-16 units: the emoji is two.
+        let frag = d.render_html_fragment(Utf16Range { start: 29, end: 34 }, opts.clone());
+        assert_eq!(frag, "<p data-line=\"6\">body \u{1F389}</p>\n", "{frag}");
+        let theme = theme_by_id("dark".into()).unwrap();
+        let typography = Typography {
+            font_family: "serif".into(),
+            mono_family: "monospace".into(),
+            font_size_px: 18.0,
+            line_height: 1.5,
+            measure_ch: 70.0,
+        };
+        let css = preview_css(theme.clone(), typography.clone());
+        assert!(css.contains("max-width: 70ch") && css.contains("@media print"));
+        let page = d.render_html(RenderOptions { standalone: true, style: Some(PreviewStyle { theme, typography }), ..opts });
+        assert!(page.starts_with("<!DOCTYPE html>") && page.contains("max-width: 70ch"));
+        assert_eq!(heading_slug("Hello, World".into()), "hello-world");
+        warm_up_highlighting();
     }
 }

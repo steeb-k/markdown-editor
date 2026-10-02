@@ -8,13 +8,19 @@ mod dirty;
 mod document;
 mod edit;
 mod focus;
+pub mod highlight;
 mod lines;
 mod offsets;
 mod pos;
+mod preview_css;
+mod render;
+mod sanitize;
 pub mod theme;
 mod types;
 
 pub use document::Document;
+pub use preview_css::{preview_css, syntax_palette, PreviewStyle, SyntaxPalette, Typography};
+pub use render::{slug, RenderOptions};
 pub use theme::{builtin_themes, contrast_ratio, theme_by_id, Color, Colors, Theme};
 pub use types::*;
 

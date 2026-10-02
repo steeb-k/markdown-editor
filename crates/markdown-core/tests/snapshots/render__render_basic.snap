@@ -1,0 +1,32 @@
+---
+source: crates/markdown-core/tests/render.rs
+expression: "d.render_html(&RenderOptions::default())"
+---
+<h1 id="heading-one">Heading One</h1>
+<p>A paragraph with <em>emphasis</em>, <strong>strong</strong>, <code>inline code</code>, and a <a href="https://example.com" title="title">link</a>.
+A hard break follows<br />
+on the next line.</p>
+<h2 id="lists">Lists</h2>
+<ul>
+<li>one</li>
+<li>two
+<ul>
+<li>nested</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li>first</li>
+<li>second</li>
+</ol>
+<blockquote>
+<p>A block quote
+over two lines.</p>
+</blockquote>
+<hr />
+<pre><code>plain fence
+</code></pre>
+<pre><code>indented code
+</code></pre>
+<p><img src="images/pic.png" alt="alt text" title="An image" /></p>
+<div>raw html</div>

@@ -1,0 +1,32 @@
+---
+source: crates/markdown-core/tests/render.rs
+expression: d.render_html(&lines())
+---
+<h1 id="heading-one" data-line="0">Heading One</h1>
+<p data-line="2">A paragraph with <em>emphasis</em>, <strong>strong</strong>, <code>inline code</code>, and a <a href="https://example.com" title="title">link</a>.
+A hard break follows<br />
+on the next line.</p>
+<h2 id="lists" data-line="6">Lists</h2>
+<ul>
+<li data-line="8">one</li>
+<li data-line="9">two
+<ul>
+<li data-line="10">nested</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li data-line="11">first</li>
+<li data-line="12">second</li>
+</ol>
+<blockquote data-line="14">
+<p data-line="14">A block quote
+over two lines.</p>
+</blockquote>
+<hr data-line="17" />
+<pre data-line="19"><code>plain fence
+</code></pre>
+<pre data-line="23"><code>indented code
+</code></pre>
+<p data-line="25"><img src="images/pic.png" alt="alt text" title="An image" /></p>
+<div>raw html</div>

@@ -141,7 +141,7 @@ pub(crate) struct Analysis {
 /// Block quotes nested deeper than this get their element span but no `>` markup.
 const MAX_QUOTE_MARKUP_DEPTH: usize = 32;
 
-fn options() -> Options {
+pub(crate) fn options() -> Options {
     // GFM-style bare URL autolinks (`https://example.com` without angle brackets) are
     // not offered by pulldown-cmark 0.13; only `<...>` autolinks are recognised. The core
     // finds bare URLs itself (see `autolink`).

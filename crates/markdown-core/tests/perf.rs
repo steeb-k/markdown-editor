@@ -232,3 +232,65 @@ fn focus_and_pos_units_in_one_giant_paragraph() {
         );
     }
 }
+
+/// Rendering a 1 MB document to HTML (target: under about 60 ms, first-use syntax loading excluded).
+#[test]
+#[ignore]
+fn one_megabyte_render() {
+    let text = realistic(1 << 20);
+    let doc = Document::new(&text, OffsetEncoding::Utf16);
+    // First use: the bundled syntaxes load once (a static).
+    let t = Instant::now();
+    markdown_core::highlight::warm_up();
+    println!("syntax set load (first use): {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+    let cases: [(&str, RenderOptions); 4] = [
+        ("body, highlighted", RenderOptions::default()),
+        ("body, no highlighting", RenderOptions { highlight: false, ..Default::default() }),
+        ("with source lines", RenderOptions { source_lines: true, ..Default::default() }),
+        ("standalone + sanitize", RenderOptions { standalone: true, sanitize: true, ..Default::default() }),
+    ];
+    for (name, options) in cases {
+        let mut times = vec![];
+        let mut cold = vec![];
+        let mut len = 0;
+        for _ in 0..7 {
+            markdown_core::highlight::clear_cache();
+            let t = Instant::now();
+            len = doc.render_html(&options).len();
+            cold.push(t.elapsed().as_secs_f64() * 1e3);
+            // The second render finds the highlighted blocks in the cache, as the next keystroke's does.
+            let t = Instant::now();
+            doc.render_html(&options);
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+        }
+        println!("{name}: median {:.1} ms with the highlight cache warm, {:.1} ms cold (output {} KB)", med(times), med(cold), len / 1024);
+    }
+    let t = Instant::now();
+    let fragment = doc.render_html_fragment(TextRange::new(500_000, 501_000), &RenderOptions::default());
+    println!("a 1 KB fragment of the 1 MB document: {:.1} ms ({} bytes)", t.elapsed().as_secs_f64() * 1e3, fragment.len());
+}
+
+/// The same, with a different code block each time (the worst case for the highlight cache).
+#[test]
+#[ignore]
+fn one_megabyte_render_with_distinct_code() {
+    let mut text = String::new();
+    let mut i = 0;
+    while text.len() < 1 << 20 {
+        text.push_str(&format!("# Section {i}\n\nA paragraph with *emphasis* and a [link](https://example.com/{i}). More words follow here.\n\n```rust\nfn main() {{\n    println!(\"hello {i}\");\n}}\n```\n\n- item {i}\n- [x] done\n\n"));
+        i += 1;
+    }
+    let doc = Document::new(&text, OffsetEncoding::Utf16);
+    markdown_core::highlight::warm_up();
+    for (name, highlight) in [("highlighted", true), ("not highlighted", false)] {
+        let options = RenderOptions { highlight, ..Default::default() };
+        let mut times = vec![];
+        for _ in 0..5 {
+            markdown_core::highlight::clear_cache();
+            let t = Instant::now();
+            doc.render_html(&options);
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+        }
+        println!("{} blocks, distinct code, {name}: median {:.1} ms cold, {} KB of Markdown", i, med(times), text.len() / 1024);
+    }
+}

@@ -1,0 +1,41 @@
+---
+source: crates/markdown-core/tests/render.rs
+expression: d.render_html(&lines())
+---
+<h1 id="the-quiet-page" data-line="5">The quiet page</h1>
+<p data-line="7">Writing should feel calm. This paragraph is long enough to wrap across several lines of the text column, so that the line height, the measure and the margins can be judged at a glance, the way a reader would meet them. A misspeled word belongs here, and another one: teh.</p>
+<h2 id="lists-that-wrap" data-line="9">Lists that wrap</h2>
+<ul>
+<li data-line="11">A short item.</li>
+<li data-line="12">A much longer item whose text keeps going well past the end of the first line, so the wrapped part should hang under the text and not under the dash.
+<ul>
+<li data-line="13">A nested item that also runs long enough to wrap onto a second line and show its hanging indent.</li>
+</ul>
+</li>
+<li class="task-list-item" data-line="14"><input disabled="" type="checkbox" /> An open task with enough words to wrap around to the next line of the column.</li>
+<li class="task-list-item" data-line="15"><input disabled="" type="checkbox" checked="" /> A finished task.</li>
+</ul>
+<ol>
+<li data-line="17">First, numbered.</li>
+<li data-line="18">Second, also numbered, and long enough to wrap onto another line so the hang is visible.</li>
+<li data-line="19">Tenth, with a wider marker.</li>
+</ol>
+<blockquote data-line="21">
+<p data-line="21">A block quote that is long enough to wrap onto a second line, where the continuation should line up with the text after the marker.</p>
+<p data-line="23">A second paragraph in the same quote.</p>
+</blockquote>
+<h2 id="code" data-line="25">Code</h2>
+<p data-line="27">Inline <code>code with a mispeled wrod</code> and a bare URL <a href="https://example.com/a-misspeled-path">https://example.com/a-misspeled-path</a> plus <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
+<pre data-line="29"><code class="language-swift">// A fenced block: one continuous panel, no stripes.
+let greeting = "helo wrold"
+for i in 0..&lt;3 {
+    print(greeting, i)
+}
+</code></pre>
+<h2 id="tables" data-line="37">Tables</h2>
+<table data-line="39"><thead><tr data-line="39"><th style="text-align: left">Name</th><th style="text-align: right">Value</th><th style="text-align: center">Notes</th></tr></thead><tbody>
+<tr data-line="41"><td style="text-align: left">alpha</td><td style="text-align: right">1</td><td style="text-align: center">first</td></tr>
+<tr data-line="42"><td style="text-align: left">日本語</td><td style="text-align: right">22</td><td style="text-align: center">wide</td></tr>
+<tr data-line="43"><td style="text-align: left">emoji 🎉</td><td style="text-align: right">333</td><td style="text-align: center">ok</td></tr>
+</tbody></table>
+<p data-line="45">The end.</p>

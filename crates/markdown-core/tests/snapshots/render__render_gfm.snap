@@ -1,0 +1,21 @@
+---
+source: crates/markdown-core/tests/render.rs
+expression: "d.render_html(&RenderOptions::default())"
+---
+<h1 id="gfm">GFM</h1>
+<table><thead><tr><th style="text-align: left">Left</th><th style="text-align: center">Center</th><th style="text-align: right">Right</th></tr></thead><tbody>
+<tr><td style="text-align: left">a</td><td style="text-align: center">b</td><td style="text-align: right">c</td></tr>
+<tr><td style="text-align: left">1</td><td style="text-align: center">2</td><td style="text-align: right">3</td></tr>
+</tbody></table>
+<ul>
+<li class="task-list-item"><input disabled="" type="checkbox" /> open task</li>
+<li class="task-list-item"><input disabled="" type="checkbox" checked="" /> done task</li>
+</ul>
+<p>This is <del>struck</del> text with an autolink <a href="https://example.com">https://example.com</a> and a footnote.<sup class="footnote-ref" id="fnref-1"><a href="#fn-1">1</a></sup></p>
+<section class="footnotes">
+<ol>
+<li id="fn-1">
+<p>The footnote body. <a href="#fnref-1" class="footnote-backref" aria-label="Back to reference">↩</a></p>
+</li>
+</ol>
+</section>
