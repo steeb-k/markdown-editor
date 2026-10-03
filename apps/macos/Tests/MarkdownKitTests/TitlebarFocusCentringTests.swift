@@ -545,14 +545,24 @@ final class FocusCentringTests: XCTestCase {
         (Self.text as NSString).range(of: "Line number \(line) ").location
     }
 
-    /// The vertical middle of the caret's line and of what the reader sees, in the same coordinates.
+    /// The vertical middle of the caret's line and of what the reader sees, in the same coordinates
+    /// (the clip view's: where the text view sits in it counts).
     private func offsets(_ wc: EditorWindowController) throws -> (line: CGFloat, middle: CGFloat) {
         let c = wc.centring
-        let mid = try XCTUnwrap(c.lineMidY(at: wc.textView.selectedRange().location))
         let clip = wc.scrollView.contentView
+        let mid = try XCTUnwrap(c.lineMidY(at: wc.textView.selectedRange().location)) + wc.textView.frame.minY
         let scroll = wc.editorScrollView
         let visible = clip.bounds.height - scroll.baseInsetTop - scroll.baseInsetBottom
         return (mid - clip.bounds.minY, scroll.baseInsetTop + visible / 2)
+    }
+
+    /// The caret's line in view but well off the middle (AppKit's own scroll to a far line centres it).
+    private func bringOffMiddle(_ wc: EditorWindowController) {
+        let tv = wc.textView
+        tv.scrollRangeToVisible(tv.selectedRange())
+        let clip = wc.scrollView.contentView
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: clip.bounds.minY + 150))
+        wc.scrollView.reflectScrolledClipView(clip)
     }
 
     // The maths, with no views.
@@ -658,9 +668,9 @@ final class FocusCentringTests: XCTestCase {
         c.enterDuration = 0.3
         let tv = wc.textView
         tv.setSelectedRange(NSRange(location: location(of: 40), length: 0))
-        tv.scrollRangeToVisible(tv.selectedRange())
+        bringOffMiddle(wc)
         pump(0.1)
-        // The caret's line is near the bottom edge (where scrolling it into view left it); focus on.
+        // The caret's line is in view, well off the middle; focus on.
         let clip = wc.scrollView.contentView
         let start = clip.bounds.minY
         doc.session.setFocusEnabled(true)
@@ -705,7 +715,7 @@ final class FocusCentringTests: XCTestCase {
         c.editorShown = { true }
         let tv = wc.textView
         tv.setSelectedRange(NSRange(location: location(of: 40), length: 0))
-        tv.scrollRangeToVisible(tv.selectedRange())
+        bringOffMiddle(wc)
         pump(0.1)
         doc.session.setFocusEnabled(true)
         XCTAssertTrue(c.isSliding)
@@ -884,6 +894,93 @@ final class FocusCentringTests: XCTestCase {
         doc.session.setFocusEnabled(false)
         pump(0.1)
         XCTAssertEqual(wc.editorScrollView.focusInset, 0, "no room left behind")
+    }
+
+    /// Long paragraphs that wrap: a change of width moves every line below the first.
+    private static let wrapping = (1...60).map { n in
+        "Paragraph \(n): " + String(repeating: "words that wrap at any width the window has ", count: 1 + n % 4)
+    }.joined(separator: "\n\n") + "\n"
+
+    /// A live resize (the user dragging the window's corner) in many small steps, narrower, wider,
+    /// shorter and taller, with no keystroke anywhere: after every step, once the window has laid
+    /// itself out as it does before it draws a frame, the caret's line is in the middle. Nothing is
+    /// left to a later turn of the run loop (no slide, no check that corrects it afterwards), and
+    /// when the resize ends nothing moves. In the editor and in Split, with and without the
+    /// formatting bar, with motion (a resize never animates).
+    func testALiveResizeKeepsTheLineInTheMiddleAtEveryStep() throws {
+        for (layout, mode) in [(LayoutMode.editor, ViewMode.source), (.editor, .live), (.split, .source)] {
+            for toolbar in [true, false] {
+                _ = NSApplication.shared
+                let settings = isolatedSettings()
+                settings.showFormattingToolbar = toolbar
+                let doc = MarkdownDocument(settings: settings)
+                try doc.read(from: Data(Self.wrapping.utf8), ofType: "net.daringfireball.markdown")
+                doc.makeWindowControllers()
+                let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+                wc.showWindow(nil)
+                let window = try XCTUnwrap(wc.window)
+                window.setContentSize(NSSize(width: layout == .split ? 1100 : 800, height: 640))
+                window.layoutIfNeeded()
+                XCTAssertTrue(doc.session.waitUntilStyled())
+                doc.session.setLayout(layout)
+                doc.session.setViewMode(mode)
+                XCTAssertTrue(doc.session.waitUntilStyled())
+                let c = wc.centring
+                c.reduceMotion = { false }
+                c.editorShown = { true }
+                let tv = wc.textView
+                let text = Self.wrapping as NSString
+                tv.setSelectedRange(NSRange(location: text.range(of: "Paragraph 31: ").location + 40, length: 0))
+                doc.session.setFocusEnabled(true)
+                let settle = Date(timeIntervalSinceNow: 3)
+                while !c.isSettled, Date() < settle { pump(0.02) }
+                pump(0.1)
+                let label = "\(layout) \(mode) toolbar \(toolbar)"
+                var o = try offsets(wc)
+                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred before the resize")
+                // What the window tells every view as a live resize starts and ends (the text view's own
+                // end of a live resize scrolls the clip view).
+                let content = try XCTUnwrap(window.contentView)
+                func tell(_ v: NSView, _ start: Bool) {
+                    if start { v.viewWillStartLiveResize() } else { v.viewDidEndLiveResize() }
+                    v.subviews.forEach { tell($0, start) }
+                }
+                tell(content, true)
+                var size = window.frame.size
+                var worst: CGFloat = 0
+                let steps: [(CGFloat, CGFloat)] = Array(repeating: (-23, 0), count: 8) + Array(repeating: (0, -17), count: 6)
+                    + Array(repeating: (31, 11), count: 8) + Array(repeating: (-7, 29), count: 5)
+                for (i, (dw, dh)) in steps.enumerated() {
+                    size.width += dw
+                    size.height += dh
+                    var f = window.frame
+                    f.origin.y += f.height - size.height
+                    f.size = size
+                    window.setFrame(f, display: false)
+                    // What AppKit does before it draws the frame: layout, then display.
+                    window.layoutIfNeeded()
+                    window.displayIfNeeded()
+                    o = try offsets(wc)
+                    worst = max(worst, abs(o.line - o.middle))
+                    XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): step \(i) at \(size)")
+                    XCTAssertFalse(c.isSliding, "\(label): no slide during a live resize (step \(i))")
+                }
+                tell(content, false)
+                window.layoutIfNeeded()
+                o = try offsets(wc)
+                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred as the resize ends")
+                let end = wc.scrollView.contentView.bounds.minY
+                pump(0.5)
+                XCTAssertEqual(wc.scrollView.contentView.bounds.minY, end, accuracy: 0.5, "\(label): nothing moves after the resize")
+                o = try offsets(wc)
+                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred after the resize")
+                // Where a fresh keystroke would put it.
+                let target = try XCTUnwrap(c.targetOrigin(for: tv.selectedRange()))
+                XCTAssertEqual(wc.scrollView.contentView.bounds.minY, target, accuracy: 0.5, "\(label): where a keystroke would put it")
+                print("live resize \(label): worst offset \(worst)")
+                doc.close()
+            }
+        }
     }
 
     /// AppKit calls `scrollRangeToVisible` with the text on screen when the text view changes size.

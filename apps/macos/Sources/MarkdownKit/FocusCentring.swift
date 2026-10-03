@@ -249,7 +249,7 @@ final class FocusCentring {
         // the caret has left: during key repeat, a slide back and forth).
         requestGeneration += 1
         if mouse { verifications = 0; return }
-        centre(on: range, duration: reduceMotion() || !editorShown() ? 0 : followDuration)
+        centre(on: range, duration: placesDirectly ? 0 : followDuration)
         verifySoon(range)
     }
 
@@ -276,9 +276,22 @@ final class FocusCentring {
         guard isActive, !userScrolling, !requestPending, !fromMouse else { return }
         guard let target = targetOrigin(for: range), let clip = scrollView?.contentView else { return }
         if slide == nil, abs(clip.bounds.minY - target) >= 0.5 {
-            centre(on: range, duration: reduceMotion() || !editorShown() ? 0 : followDuration)
+            centre(on: range, duration: placesDirectly ? 0 : followDuration)
         }
         verifySoon(range)
+    }
+
+    /// No slide: Reduce Motion, the editor not on screen, or a live resize (the window draws a frame
+    /// per step of the drag, and the line is placed in the middle of each one).
+    private var placesDirectly: Bool { reduceMotion() || !editorShown() || scrollView?.inLiveResize == true }
+
+    /// A live resize ended. AppKit's text view then scrolls its clip view by itself, straight to the
+    /// rectangle it kept in view (`viewDidEndLiveResize`, which goes round `scrollRangeToVisible`):
+    /// the text landed anywhere, and stayed there until the next keystroke. The line goes back to
+    /// the middle at once, before the window draws again; the user's own scroll is left alone.
+    func liveResizeEnded() {
+        guard isActive, !userScrolling else { return }
+        centre(on: caretRange(), duration: 0)
     }
 
     /// The user is scrolling (wheel, trackpad, scroller): the slide stops and nothing is centred

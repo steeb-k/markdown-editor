@@ -548,6 +548,8 @@ final class UIScriptRunner {
             snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false, then: done)
         } else if let d = step["doubleClickTitlebar"] as? [String: Any] {
             doubleClickTitlebar(d, then: done)
+        } else if let d = step["liveResize"] as? [String: Any] {
+            liveResize(d, then: done)
         } else if let d = step["scrollWheel"] as? [String: Any] {
             scrollWheel(d)
             later((d["wait"] as? NSNumber)?.doubleValue ?? 0.2, done)
@@ -1085,6 +1087,86 @@ final class UIScriptRunner {
             later(0.05, poll)
         }
         poll()
+    }
+
+    /// A live resize as a person makes one: a mouse-down on the window's bottom-right corner starts
+    /// AppKit's own resize loop (`inLiveResize` true throughout), and a timer that runs inside that
+    /// loop feeds it one drag at a time (queued all at once they would be coalesced into one), then
+    /// the mouse-up. Before each drag, once the window has laid itself out and drawn the frame of
+    /// the one before, the caret line's distance from the middle is recorded; then at the mouse-up,
+    /// and once things have settled, with every move of the editor's clip view after the mouse-up
+    /// (a late correction) and the distance from where a keystroke would put it.
+    /// `"steps": [[dw, dh], ...]` in points; `"maxOffset"` fails the step above that distance.
+    private func liveResize(_ d: [String: Any], then done: @escaping () -> Void) {
+        guard let w = window, let c = controller else { record(["liveResize": "no window"], ok: false); done(); return }
+        let steps = ((d["steps"] as? [[Double]]) ?? []).filter { $0.count == 2 }
+        let maxOffset = (d["maxOffset"] as? NSNumber)?.doubleValue ?? 0.5
+        func offset() -> Double? {
+            guard let middle = visibleMiddleInWindow(), let tv = textView else { return nil }
+            var y: CGFloat
+            if let caret = caretRectInWindow(), caret.height > 0 {
+                y = caret.midY
+            } else if let mid = c.centring.lineMidY(at: tv.selectedRange().location) {
+                // Scrolled out of sight (the text system gives no caret rectangle): the line's middle from the layout.
+                y = tv.convert(NSPoint(x: 0, y: mid), to: nil).y
+            } else { return nil }
+            return (Double(y - middle) * 100).rounded() / 100
+        }
+        var perFrame: [Double] = []
+        var sizes: [String] = []
+        var sawLiveResize = false
+        var slid = false
+        // Screen coordinates: the corner moves with the window as it is dragged.
+        var p = NSPoint(x: w.frame.maxX - 3, y: w.frame.minY + 3)
+        func event(_ type: NSEvent.EventType, _ at: NSPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: w.convertPoint(fromScreen: at), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        let before = w.frame
+        let clip = c.scrollView.contentView
+        var next = 0
+        let feeder = Timer(timeInterval: 0.04, repeats: true) { t in
+            MainActor.assumeIsolated {
+                if w.inLiveResize { sawLiveResize = true }
+                if next > 0, let o = offset() { perFrame.append(o); sizes.append("\(Int(w.frame.width))x\(Int(w.frame.height))") }
+                if c.centring.isSliding { slid = true }
+                if next < steps.count {
+                    p.x += steps[next][0]; p.y -= steps[next][1]
+                    if let e = event(.leftMouseDragged, p) { NSApp.postEvent(e, atStart: false) }
+                    next += 1
+                } else {
+                    if let e = event(.leftMouseUp, p) { NSApp.postEvent(e, atStart: false) }
+                    t.invalidate()
+                }
+            }
+        }
+        RunLoop.main.add(feeder, forMode: .common)
+        RunLoop.main.add(feeder, forMode: .eventTracking)
+        // AppKit's resize loop runs inside this call and returns with the mouse-up.
+        if let down = event(.leftMouseDown, p) { w.sendEvent(down) }
+        feeder.invalidate()
+        let atEnd = offset()
+        let endOrigin = clip.bounds.minY
+        var lateMoves: [Double] = []
+        let moved = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { _ in
+            MainActor.assumeIsolated { lateMoves.append((Double(clip.bounds.minY - endOrigin) * 100).rounded() / 100) }
+        }
+        later(0.8) {
+            NotificationCenter.default.removeObserver(moved)
+            let settled = offset()
+            let target = c.centring.targetOrigin(for: self.textView?.selectedRange() ?? NSRange())
+            let fromTarget = target.map { (Double(clip.bounds.minY - $0) * 100).rounded() / 100 }
+            let worst = (perFrame + [atEnd, settled].compactMap { $0 }).map(abs).max() ?? .infinity
+            let ok = sawLiveResize && w.frame != before && perFrame.count == steps.count && !slid && worst <= maxOffset
+                && lateMoves.isEmpty && abs(fromTarget ?? .infinity) <= 0.5
+            self.record(["liveResize": steps.count, "live": sawLiveResize, "before": NSStringFromRect(before), "after": NSStringFromRect(w.frame),
+                         "offsets_per_frame": perFrame, "sizes": sizes, "slid_during_resize": slid,
+                         "offset_at_end": (atEnd.map { $0 as Any } ?? NSNull()), "offset_settled": (settled.map { $0 as Any } ?? NSNull()),
+                         "late_moves": lateMoves, "origin_minus_keystroke_target": (fromTarget.map { $0 as Any } ?? NSNull()),
+                         "textView_origin_y": Double(self.textView?.frame.minY ?? 0),
+                         "userScrolling": c.centring.userScrolling], ok: ok)
+            done()
+        }
     }
 
     /// Performs an action and watches the editor's clip view while it settles: how many frames the

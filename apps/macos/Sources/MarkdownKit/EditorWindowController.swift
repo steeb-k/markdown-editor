@@ -78,6 +78,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         scroll.automaticallyAdjustsContentInsets = false
         scroll.contentInsets = NSEdgeInsetsZero
         scroll.documentView = textView
+        // Becoming the document view, the text view sizes itself to its text (AppKit's
+        // `_sizeDownIfPossible`) and can move its own origin doing so: a 10 KB text was left at
+        // y = -104 for good (a short one stays at 0), and focus mode's centring, which works in the
+        // clip view's coordinates, put the caret's line 104 points above the middle.
+        textView.setFrameOrigin(.zero)
         scrollView = scroll
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         previewController = PreviewController(session: session)
