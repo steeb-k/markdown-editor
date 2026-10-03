@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<title>Markdown — with hash</title>
+<!-- macOS 11-15 grid: 824x824 body centered on a 1024 canvas, macOS corner radius, drop shadow.
+     Glyphs: Fira Mono Bold (SIL Open Font License), converted to outlines. -->
+<defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+  <feGaussianBlur in="SourceAlpha" stdDeviation="10"/><feOffset dy="10" result="o"/>
+  <feFlood flood-color="#000" flood-opacity="0.3"/><feComposite in2="o" operator="in"/>
+</filter></defs>
+<path d="M115.2 0 H396.8 A115.2 115.2 0 0 1 512 115.2 V396.8 A115.2 115.2 0 0 1 396.8 512 H115.2 A115.2 115.2 0 0 1 0 396.8 V115.2 A115.2 115.2 0 0 1 115.2 0 Z" transform="translate(100 100) scale(1.609375)" fill="#000" filter="url(#shadow)"/>
+<g transform="translate(100 100) scale(1.609375)">
+  <defs>
+  <clipPath id="c"><path d="M115.2 0 H396.8 A115.2 115.2 0 0 1 512 115.2 V396.8 A115.2 115.2 0 0 1 396.8 512 H115.2 A115.2 115.2 0 0 1 0 396.8 V115.2 A115.2 115.2 0 0 1 115.2 0 Z"/></clipPath>
+  <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#140a3a"/><stop offset="0.55" stop-color="#0a0b2a"/><stop offset="1" stop-color="#05061a"/>
+  </linearGradient>
+  <radialGradient id="mag" cx="0.22" cy="0.2" r="0.6">
+    <stop offset="0" stop-color="#ff3cac" stop-opacity="0.85"/><stop offset="0.45" stop-color="#b82aa8" stop-opacity="0.35"/><stop offset="1" stop-color="#b82aa8" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="cyan" cx="0.85" cy="0.88" r="0.6">
+    <stop offset="0" stop-color="#2bd2ff" stop-opacity="0.8"/><stop offset="0.5" stop-color="#2b6bff" stop-opacity="0.3"/><stop offset="1" stop-color="#2b6bff" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="vio" cx="0.55" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.7"/><stop offset="1" stop-color="#5b21b6" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="amber" cx="0.9" cy="0.15" r="0.35">
+    <stop offset="0" stop-color="#ffb86b" stop-opacity="0.45"/><stop offset="1" stop-color="#ff6b9a" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="band" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#c9a8ff" stop-opacity="0.55"/><stop offset="0.4" stop-color="#ff7ad9" stop-opacity="0.28"/>
+    <stop offset="1" stop-color="#7cc8ff" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="blur" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="22"/></filter>
+  <linearGradient id="glyph" gradientUnits="userSpaceOnUse" x1="0" y1="110" x2="0" y2="410">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3dcff"/>
+  </linearGradient>
+  <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="5" result="b"/>
+    <feFlood flood-color="#c084fc" flood-opacity="0.6"/><feComposite in2="b" operator="in" result="g"/>
+    <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<g clip-path="url(#c)">
+  <rect width="512" height="512" fill="url(#base)"/>
+  <rect width="512" height="512" fill="url(#vio)"/>
+  <rect width="512" height="512" fill="url(#mag)"/>
+  <rect width="512" height="512" fill="url(#cyan)"/>
+  <rect width="512" height="512" fill="url(#amber)"/>
+  <ellipse cx="256" cy="256" rx="360" ry="90" fill="url(#band)" transform="rotate(-32 256 256)"/>
+  <ellipse cx="300" cy="230" rx="220" ry="34" fill="url(#band)" opacity="0.7" transform="rotate(-32 256 256)"/>
+  <circle cx="176.4" cy="98.2" r="2.2" fill="#fff" opacity="0.38"/><circle cx="401.2" cy="72.5" r="1.8" fill="#fff" opacity="0.38"/><circle cx="259.4" cy="46.9" r="1.5" fill="#fff" opacity="0.60"/><circle cx="138.8" cy="279.1" r="0.8" fill="#fff" opacity="0.85"/><circle cx="86.0" cy="130.9" r="2.2" fill="#fff" opacity="0.70"/><circle cx="58.0" cy="294.7" r="0.8" fill="#fff" opacity="0.94"/><circle cx="51.1" cy="418.0" r="1.2" fill="#fff" opacity="0.60"/><circle cx="274.4" cy="288.1" r="1.8" fill="#fff" opacity="0.84"/><circle cx="111.7" cy="292.9" r="2.2" fill="#fff" opacity="0.46"/><circle cx="74.0" cy="351.9" r="1.8" fill="#fff" opacity="0.39"/><circle cx="123.1" cy="337.5" r="1.5" fill="#fff" opacity="0.82"/><circle cx="240.5" cy="447.4" r="1.2" fill="#fff" opacity="0.53"/><circle cx="389.1" cy="345.9" r="1" fill="#fff" opacity="0.40"/><circle cx="165.7" cy="253.8" r="1.2" fill="#fff" opacity="0.79"/><circle cx="160.1" cy="473.0" r="0.8" fill="#fff" opacity="0.66"/><circle cx="104.6" cy="184.6" r="1.5" fill="#fff" opacity="0.60"/><circle cx="464.8" cy="65.1" r="1.8" fill="#fff" opacity="0.69"/><circle cx="425.7" cy="171.8" r="2.2" fill="#fff" opacity="0.56"/><circle cx="254.5" cy="390.2" r="0.8" fill="#fff" opacity="0.85"/><circle cx="457.0" cy="244.3" r="2.2" fill="#fff" opacity="0.39"/><circle cx="360.5" cy="169.9" r="1.8" fill="#fff" opacity="0.95"/><circle cx="401.5" cy="158.6" r="1.5" fill="#fff" opacity="0.88"/><circle cx="186.8" cy="455.2" r="1.2" fill="#fff" opacity="0.45"/><circle cx="82.9" cy="56.6" r="1.2" fill="#fff" opacity="0.43"/><circle cx="141.9" cy="206.7" r="1.5" fill="#fff" opacity="0.40"/><circle cx="233.0" cy="278.3" r="1" fill="#fff" opacity="0.84"/><circle cx="420.5" cy="155.8" r="1.5" fill="#fff" opacity="0.94"/><circle cx="338.6" cy="202.0" r="1" fill="#fff" opacity="0.44"/><circle cx="109.7" cy="134.8" r="1" fill="#fff" opacity="0.36"/><circle cx="405.7" cy="112.4" r="1.2" fill="#fff" opacity="0.35"/><circle cx="219.4" cy="196.9" r="1.8" fill="#fff" opacity="0.54"/><circle cx="86.7" cy="418.4" r="1.8" fill="#fff" opacity="0.74"/><circle cx="364.4" cy="236.4" r="2.2" fill="#fff" opacity="0.83"/><circle cx="207.4" cy="210.3" r="0.8" fill="#fff" opacity="0.64"/><circle cx="211.0" cy="116.2" r="1" fill="#fff" opacity="0.61"/><circle cx="79.7" cy="301.5" r="0.8" fill="#fff" opacity="0.35"/><circle cx="98.4" cy="75.9" r="1.2" fill="#fff" opacity="0.72"/><circle cx="61.8" cy="124.0" r="1.5" fill="#fff" opacity="0.44"/><circle cx="144.0" cy="187.0" r="1.2" fill="#fff" opacity="0.63"/><circle cx="82.1" cy="250.6" r="1.5" fill="#fff" opacity="0.64"/><circle cx="171.0" cy="95.1" r="2.2" fill="#fff" opacity="0.56"/><circle cx="149.7" cy="404.6" r="1" fill="#fff" opacity="0.66"/><circle cx="122.8" cy="460.3" r="1.2" fill="#fff" opacity="0.44"/><circle cx="275.5" cy="42.2" r="1.8" fill="#fff" opacity="0.53"/><circle cx="320.6" cy="71.1" r="1.2" fill="#fff" opacity="0.66"/><circle cx="440.5" cy="190.8" r="1" fill="#fff" opacity="0.67"/>
+  <path d="M450 55 Q450 68 463 68 Q450 68 450 81 Q450 68 437 68 Q450 68 450 55Z" fill="#fff" opacity="0.9"/><path d="M92 392 Q92 402 102 402 Q92 402 92 412 Q92 402 82 402 Q92 402 92 392Z" fill="#fff" opacity="0.75"/><path d="M448 293 Q448 300 455 300 Q448 300 448 307 Q448 300 441 300 Q448 300 448 293Z" fill="#fff" opacity="0.7"/><path d="M70 144 Q70 150 76 150 Q70 150 70 156 Q70 150 64 150 Q70 150 70 144Z" fill="#fff" opacity="0.6"/>
+</g>
+  <path d="M208.17 250.89H230V286.94H203.32L196.73 337.2H151.67L158.26 286.94H124.98L118.4 337.2H73.34L79.58 286.94H58.78V250.89H84.43L93.44 182.61H71.6V146.22H98.29L104.53 97H149.94L143.35 146.22H176.63L183.21 97H228.27L221.69 146.22H242.83V182.61H216.83ZM162.76 250.89 171.77 182.61H138.5L129.49 250.89ZM453.22 151.07V287.29H406.43V157.31Q406.43 147.26 404.52 143.45Q402.62 139.63 397.42 139.63Q387.71 139.63 378.35 151.76V287.29H339.53V157.31Q339.53 147.26 337.63 143.45Q335.72 139.63 330.52 139.63Q320.82 139.63 311.46 151.76V287.29V360.08H337.97L287.71 419L237.46 360.08H263.97V287.29V103.24H303.83L307.64 120.92Q316.66 108.44 325.5 102.72Q334.33 97 346.12 97Q356.86 97 364.14 102.37Q371.42 107.74 374.54 118.84Q393.26 97 415.09 97Q434.85 97 444.04 110Q453.22 123 453.22 151.07Z" fill="url(#glyph)" filter="url(#glow)"/>
+</g>
+</svg>

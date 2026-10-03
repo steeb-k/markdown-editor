@@ -33,6 +33,11 @@ plist() { plutil -extract "$1" raw -o - "$APP/Contents/Info.plist" 2>/dev/null |
 VERSION="$(plist CFBundleShortVersionString)"; BUILD="$(plist CFBundleVersion)"
 case "$BUILD" in ''|*[!0-9]*) fail "CFBundleVersion is not a number: '$BUILD'" ;; esac
 [ "$(plist CFBundleIconFile)" = Markdown ] || fail "CFBundleIconFile is not Markdown"
+[ "$(plist CFBundleIconName)" = Markdown ] || fail "CFBundleIconName is not Markdown (the macOS 26 icon in Assets.car)"
+# Documents use the system's plain document icon.
+if plutil -convert xml1 -o - "$APP/Contents/Info.plist" | grep -q -E '<key>(CFBundleTypeIconFile|CFBundleTypeIconFiles|UTTypeIconFile|UTTypeIcons)</key>'; then
+  fail "a document type names an icon of its own"
+fi
 [ "$(plist LSMinimumSystemVersion)" = 14.0 ] || fail "LSMinimumSystemVersion is not 14.0"
 ok "Info.plist lints; version $VERSION, build $BUILD"
 
@@ -44,8 +49,8 @@ trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
   echo "Contents/MacOS/Markdown"
   echo "Contents/PkgInfo"
   echo "Contents/Resources/Acknowledgements.md"
+  echo "Contents/Resources/Assets.car"
   echo "Contents/Resources/Markdown.icns"
-  echo "Contents/Resources/MarkdownDocument.icns"
   echo "Contents/Resources/Welcome.md"
   echo "Contents/Resources/Fonts/OFL-LICENSE.md"
   for fam in Duo Mono Quattro; do
@@ -63,6 +68,20 @@ XATTRS="$(xattr -r "$APP" 2>/dev/null | grep -v 'com.apple.provenance' || true)"
 [ -z "$XATTRS" ] || fail "extended attributes inside the bundle: $(echo "$XATTRS" | head -3)"
 ok "no .DS_Store, no extended attributes (other than the system's provenance mark)"
 [ "$(cat "$APP/Contents/PkgInfo")" = "APPL????" ] || fail "PkgInfo is not APPL????"
+
+# The icon: an .icns with every size (macOS 11 to 15), and a layered icon named Markdown in Assets.car (26).
+ICONSET="$(mktemp -d)/Markdown.iconset"
+iconutil -c iconset -o "$ICONSET" "$APP/Contents/Resources/Markdown.icns" 2>/dev/null || fail "Markdown.icns is not a valid icon file"
+# (The 16 and 32 pt sizes at 1x are optional: the system scales the 2x images down for them.)
+for name in 16x16@2x 32x32@2x 128x128 128x128@2x 256x256 256x256@2x 512x512 512x512@2x; do
+  [ -f "$ICONSET/icon_${name}.png" ] || fail "Markdown.icns lacks the ${name} image"
+done
+rm -rf "$(dirname "$ICONSET")"
+STACKS="$(xcrun assetutil --info "$APP/Contents/Resources/Assets.car" 2>/dev/null | python3 -c '
+import json, sys
+print(sum(1 for e in json.load(sys.stdin) if e.get("AssetType") == "IconImageStack" and e.get("Name") == "Markdown"))' || echo 0)"
+[ "${STACKS:-0}" -ge 1 ] || fail "Assets.car has no layered icon named Markdown"
+ok "icon: Markdown.icns with all its sizes; Assets.car holds the layered icon ($STACKS appearances)"
 
 BIN="$APP/Contents/MacOS/Markdown"
 ARCHS="$(lipo -archs "$BIN")"

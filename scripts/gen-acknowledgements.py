@@ -14,6 +14,8 @@ What is listed comes from the build, not from memory:
 * The syntax definitions `two-face` embeds: its own acknowledgement data, by way of the
   `syntax_licenses` example of markdown-core.
 * The bundled writing fonts: the OFL text shipped beside them (apps/macos/Resources/Fonts/OFL-LICENSE.md).
+* `EXTRAS`: anything else that ships with a notice (the Fira Mono outlines in the app icon), each
+  with its license text in scripts/licenses.
 
 Needs `cargo` (rustup's) and the crates already fetched (`cargo fetch`). The output is deterministic.
 """
@@ -29,6 +31,14 @@ OUT = os.path.join(ROOT, "apps/macos/Resources/Acknowledgements.md")
 TARGETS = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 ROOT_PACKAGE = "markdown-ffi"
 OWN = {"markdown-ffi", "markdown-core"}
+# Other things that ship and carry a notice, listed under "Fonts" after the writing fonts:
+# (heading, what it is and where it is used, the license text kept in this repository).
+EXTRAS = [
+    ("Fira Mono (in the app icon)",
+     "The \"#m\" of the app icon is drawn from Fira Mono Bold (https://github.com/mozilla/Fira), converted to\n"
+     "outlines; the outlines ship inside the icon. Fira Mono is used under the SIL Open Font License, Version 1.1:",
+     "scripts/licenses/Fira-OFL.txt"),
+]
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice|unlicense|copyright)([-_.].*)?$", re.I)
 
 env = dict(os.environ)
@@ -160,6 +170,10 @@ def main():
     w("The writing fonts bundled with the app are Mono S, Duo S and Quattro S\n"
       ", used under the SIL Open Font License, Version 1.1:\n")
     w(fence(read(os.path.join(ROOT, "apps/macos/Resources/Fonts/OFL-LICENSE.md")).strip()) + "\n")
+    for title, intro, path in EXTRAS:
+        w(f"### {title}\n")
+        w(intro + "\n")
+        w(fence(read(os.path.join(ROOT, path)).strip()) + "\n")
 
     w("## Syntax highlighting definitions\n")
     w("Fenced code in the preview and in exported PDFs is highlighted by `syntect` with the syntax\n"

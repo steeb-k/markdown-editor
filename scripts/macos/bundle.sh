@@ -81,11 +81,42 @@ cp "$APP_PKG/Resources/Info.plist" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-# The icons, the guide and the acknowledgements: what Info.plist and the Help menu point at.
-for f in Markdown.icns MarkdownDocument.icns Welcome.md Acknowledgements.md; do
+# The guide and the acknowledgements: what the Help menu points at.
+for f in Welcome.md Acknowledgements.md; do
   [ -f "$APP_PKG/Resources/$f" ] || { echo "bundle: missing $APP_PKG/Resources/$f" >&2; exit 1; }
   cp "$APP_PKG/Resources/$f" "$APP/Contents/Resources/$f"
 done
+# The app icon (documents keep the system's plain one). macOS 11 to 15 read Markdown.icns
+# (CFBundleIconFile); macOS 26 reads the Liquid Glass icon from Assets.car (CFBundleIconName), which
+# actool compiles from the Icon Composer package assets/Markdown.icon whenever it is there.
+ICNS="$ROOT/assets/macOS-11-to-15/AppIcon.icns"
+ICON_PKG="$ROOT/assets/Markdown.icon"
+[ -f "$ICNS" ] || { echo "bundle: missing $ICNS" >&2; exit 1; }
+cp "$ICNS" "$APP/Contents/Resources/Markdown.icns"
+if [ -d "$ICON_PKG" ]; then
+  echo "==> actool $(basename "$ICON_PKG")"
+  ICON_TMP="$(mktemp -d)"
+  # (`xcrun actool` needs Xcode itself, not only the command-line tools.)
+  if ! ACTOOL_LOG="$(xcrun actool "$ICON_PKG" --compile "$ICON_TMP" --app-icon Markdown \
+        --platform macosx --target-device mac --minimum-deployment-target "$MACOSX_DEPLOYMENT_TARGET" \
+        --output-partial-info-plist "$ICON_TMP/partial.plist" \
+        --output-format human-readable-text --notices --warnings --errors 2>&1)"; then
+    echo "$ACTOOL_LOG" >&2
+    echo "bundle: actool failed on $ICON_PKG" >&2
+    exit 1
+  fi
+  # Anything actool or the SVG renderer complains about is a broken icon, not noise.
+  if echo "$ACTOOL_LOG" | grep -E -i 'warning|error|notice:' | grep -v '^/\* com.apple.actool' >&2; then
+    echo "bundle: actool reported problems with $ICON_PKG (above)" >&2
+    exit 1
+  fi
+  [ "$(plutil -extract CFBundleIconName raw -o - "$ICON_TMP/partial.plist")" = Markdown ] \
+    || { echo "bundle: actool did not name the icon Markdown" >&2; exit 1; }
+  cp "$ICON_TMP/Assets.car" "$APP/Contents/Resources/Assets.car"
+  /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string Markdown" "$APP/Contents/Info.plist"
+  plutil -lint "$APP/Contents/Info.plist" >/dev/null
+  rm -rf "$ICON_TMP"
+fi
 # Bundled writing fonts (the reference editor, SIL OFL) and their license; the app falls back to system
 # fonts when they are missing. Info.plist's ATSApplicationFontsPath points at this folder.
 if [ -d "$APP_PKG/Resources/Fonts" ]; then

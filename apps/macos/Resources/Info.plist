@@ -52,8 +52,6 @@
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Markdown Document</string>
-			<key>CFBundleTypeIconFile</key>
-			<string>MarkdownDocument</string>
 			<key>NSDocumentClass</key>
 			<string>MarkdownKit.MarkdownDocument</string>
 			<key>CFBundleTypeRole</key>
@@ -87,8 +85,6 @@
 			<string>net.daringfireball.markdown</string>
 			<key>UTTypeDescription</key>
 			<string>Markdown Document</string>
-			<key>UTTypeIconFile</key>
-			<string>MarkdownDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.plain-text</string>
@@ -122,8 +118,6 @@
 			<string>io.github.steeb-k.markdown.extensions</string>
 			<key>UTTypeDescription</key>
 			<string>Markdown Document</string>
-			<key>UTTypeIconFile</key>
-			<string>MarkdownDocument</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>net.daringfireball.markdown</string>

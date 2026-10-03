@@ -47,8 +47,7 @@ scripts/macos/verify-bundle.sh build/Markdown.app --universal --no-harness
 # The release script's control flow without Apple: dry run, refusals, stubbed notary verdicts (see "Releasing")
 scripts/macos/tests/release-pipeline.sh
 
-# Regenerate the icons (CoreGraphics; Markdown.icns and MarkdownDocument.icns in apps/macos/Resources)
-swift scripts/macos/make-icons.swift build/icons --icns && cp build/icons/*.icns apps/macos/Resources/
+# The app icon is built by bundle.sh from assets/ (see "Icons" below); nothing to regenerate by hand
 # Regenerate Acknowledgements.md from the dependency graph (cargo metadata); --check says whether it is current
 scripts/gen-acknowledgements.py
 
@@ -85,6 +84,40 @@ scripts/macos/ui-script.sh scripts/macos/ui/scroll-limits.json  # the editor's s
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
 
 Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/MarkdownCore/`, `build/`, `target/`.
+
+`UI_BUILD=/some/dir scripts/macos/ui-script.sh ...` (and `ui-big-focus.sh`) builds and runs `/some/dir/Markdown.app`
+instead of `build/Markdown.app`, so a copy someone is using is left alone.
+
+## Icons
+
+The app icon is drawn outside this repository; `assets/` holds what it ships:
+
+- `assets/macOS-11-to-15/AppIcon.icns` (with its iconset, a 1024 px PNG and the SVG it was drawn from) is the
+  icon for macOS 11 to 15. `bundle.sh` copies it into the app as `Contents/Resources/Markdown.icns`
+  (`CFBundleIconFile`).
+- `assets/macOS-26-Icon-Composer-layers/` holds the two layers of the Liquid Glass icon for macOS 26: a full-bleed
+  `background.svg` and a flat white `glyph.svg` (Fira Mono Bold outlines, SIL OFL, credited in Acknowledgements).
+- `assets/Markdown.icon` is the Icon Composer package made from those two layers: `icon.json` (the glyph is
+  glass, with a neutral shadow and translucency; the background is a plain layer under it) and the two SVGs in
+  `Assets/`. Its `background.svg` is the layer's file without two filter definitions the drawing never uses,
+  which the system's SVG renderer cannot read (it logged an error for each).
+
+`bundle.sh` compiles the package whenever it is there, the equivalent of:
+
+```sh
+xcrun actool assets/Markdown.icon --compile OUT --app-icon Markdown --platform macosx --target-device mac \
+  --minimum-deployment-target 14.0 --output-partial-info-plist OUT/partial.plist --notices --warnings --errors
+```
+
+and puts `OUT/Assets.car` into the app beside `Markdown.icns`, with `CFBundleIconName` = `Markdown` added to
+its Info.plist. macOS 26 draws the icon from `Assets.car`; earlier systems ignore `CFBundleIconName` and use the
+`.icns`. Any warning, error or SVG-renderer complaint from actool fails the build. actool needs Xcode 26 (not
+only the command-line tools). Documents have no icon of their own: Finder shows the system's plain document icon
+for them. `verify-bundle.sh` checks both icons are there and complete.
+
+To change the macOS 26 icon, open `assets/Markdown.icon` in Icon Composer (Xcode > Open Developer Tool), edit,
+and save it in place; or replace a layer's SVG in `assets/Markdown.icon/Assets/`. Without the package, a build
+uses the `.icns` alone, and `verify-bundle.sh` (so a release) refuses it.
 
 ## Releasing
 

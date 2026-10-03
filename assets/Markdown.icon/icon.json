@@ -1,0 +1,35 @@
+{
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "glyph.svg",
+          "name" : "glyph"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "background.svg",
+          "name" : "background"
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
