@@ -114,6 +114,13 @@ public final class EditorTextView: NSTextView {
         updateColumnGeometry()
     }
 
+    /// AppKit scrolls to what it kept in view as a live resize ends; focus mode's centring puts the
+    /// caret's line back in the middle before the window draws again.
+    public override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        centring?.liveResizeEnded()
+    }
+
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         session?.refreshAppearance()
