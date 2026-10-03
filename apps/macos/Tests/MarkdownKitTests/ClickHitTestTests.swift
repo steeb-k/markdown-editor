@@ -148,4 +148,62 @@ final class ClickHitTestTests: XCTestCase {
             XCTAssertTrue(try hit(wc, fade) === wc.textView)
         }
     }
+
+    /// Under a UI script every window ignores the real mouse and opens at the screen's top-left corner, and a
+    /// mouse-down and -up posted to the app's queue (as the harness's click steps post them) still place the caret:
+    /// `ignoresMouseEvents` only changes the window server's routing, never `NSApplication.sendEvent`.
+    func testHarnessWindowsIgnoreTheRealMouseYetTakePostedClicks() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let window = try XCTUnwrap(wc.window)
+        XCTAssertFalse(window.ignoresMouseEvents, "outside a script nothing changes")
+        UIScriptRunner.adopt(window, requested: false)
+        XCTAssertFalse(window.ignoresMouseEvents)
+
+        UIScriptRunner.adopt(window, requested: true)
+        XCTAssertTrue(window.ignoresMouseEvents)
+        let visible = try XCTUnwrap(window.screen ?? NSScreen.main).visibleFrame
+        XCTAssertEqual(window.frame.minX, visible.minX, accuracy: 1)
+        XCTAssertEqual(window.frame.maxY, visible.maxY, accuracy: 1)
+        // Placed once: a window the script then moves is not pulled back.
+        window.setFrameOrigin(NSPoint(x: visible.minX + 40, y: window.frame.minY - 40))
+        UIScriptRunner.adopt(window, requested: true)
+        XCTAssertEqual(window.frame.minX, visible.minX + 40, accuracy: 1)
+        // A menu's window is left alone.
+        let menuLevel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 20, height: 20), styleMask: [.borderless], backing: .buffered, defer: true)
+        menuLevel.level = .popUpMenu
+        UIScriptRunner.adopt(menuLevel, requested: true)
+        XCTAssertFalse(menuLevel.ignoresMouseEvents)
+
+        // Posted mouse events reach a window that ignores the real mouse. (A view that takes the first mouse: the test
+        // runner is not the active app, so its windows are never key; `clicks.json` checks the text view itself.)
+        let probe = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 200, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        probe.isReleasedWhenClosed = false
+        let recorder = MouseRecorder(frame: NSRect(x: 0, y: 0, width: 200, height: 120))
+        probe.contentView = recorder
+        probe.orderFront(nil)
+        defer { probe.orderOut(nil) }
+        probe.ignoresMouseEvents = true
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let e = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: 100, y: 60), modifierFlags: [],
+                                                     timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: probe.windowNumber,
+                                                     context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1))
+            NSApp.postEvent(e, atStart: false)
+        }
+        let deadline = Date(timeIntervalSinceNow: 2)
+        while Date() < deadline, recorder.seen.count < 2 {
+            if let e = NSApp.nextEvent(matching: .any, until: Date(timeIntervalSinceNow: 0.05), inMode: .default, dequeue: true) { NSApp.sendEvent(e) }
+        }
+        XCTAssertEqual(recorder.seen, ["down", "up"], "posted events arrive with ignoresMouseEvents on")
+        XCTAssertTrue(probe.ignoresMouseEvents)
+        XCTAssertTrue(window.ignoresMouseEvents)
+    }
+}
+
+/// Records the mouse events a view is given.
+private final class MouseRecorder: NSView {
+    var seen: [String] = []
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { seen.append("down") }
+    override func mouseUp(with event: NSEvent) { seen.append("up") }
 }

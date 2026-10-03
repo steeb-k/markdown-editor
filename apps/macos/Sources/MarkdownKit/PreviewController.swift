@@ -447,6 +447,12 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         // than one): recognised by where they leave the editor, not by when they come, so a
         // scroll the user makes straight after is never taken for one.
         if let last = lastEditorOffset, abs(clip.bounds.minY - last) < 1 { return }
+        // Nor a move made while the editor is being aimed: scrolling it lays out the new screenful, which corrects the
+        // estimated heights above it, and AppKit moves the clip view again (inside the same call) to keep the drawn
+        // text in place: in preview.json by 538 pt, once the text view's origin stopped being -104. That move is not the
+        // reader's; pushed to the page, it sent the page back 18 lines, the page reported that, and the editor followed
+        // it there. The second aim (`scrollEditor`) puts the editor right.
+        if aiming { return }
         lastEditorOffset = nil
         pushEditorScroll()
     }
@@ -566,6 +572,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     private var pendingEditorPosition: Double?
+    /// The editor is being scrolled to where the page is (see `editorScrolled`).
+    private var aiming = false
 
     private func scrollEditorOnce(toPosition position: Double, atEnd: Bool) {
         guard syncs, let session, let tv = session.textView, let sv = scrollView ?? tv.enclosingScrollView,
@@ -612,6 +620,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         lastEditorScrollTrace = "position \(position) target \(target) was \(clip.bounds.minY) y \(y)"
         guard abs(clip.bounds.minY - CGFloat(target)) >= 1 else { return }
         lastEditorOffset = CGFloat(target)
+        aiming = true
+        defer { aiming = false }
         clip.scroll(to: NSPoint(x: clip.bounds.minX, y: CGFloat(target)))
         sv.reflectScrolledClipView(clip)
     }

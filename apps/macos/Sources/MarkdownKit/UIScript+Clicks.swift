@@ -34,6 +34,21 @@ extension UIScriptRunner {
             // The left quarter of the character: the caret goes before it.
             let p = NSPoint(x: rect.minX + max(1, rect.width * 0.25), y: rect.midY)
             return (tv.convert(p, to: nil), loc, "\(needle)+\(c["offset"] as? Int ?? 0)")
+        case "badge":
+            // A point by the language badge of the block holding `needle`: `side` `left` or `right` (`gap` points beside the
+            // pill, on its line), `below` (under it), `centre` (on it: a click there opens the menu, so `probe` it).
+            let tv = wc.textView
+            guard let needle = c["needle"] as? String, let b = badge(of: needle, ignoringCaret: c["ignoringCaret"] as? Bool ?? false) else { return nil }
+            let f = tv.viewFrame(of: b)
+            let gap = (c["gap"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 6
+            let side = c["side"] as? String ?? "left"
+            let v: NSPoint = switch side {
+            case "right": NSPoint(x: f.maxX + gap, y: f.midY)
+            case "below": NSPoint(x: f.midX, y: f.maxY + gap)
+            case "centre": NSPoint(x: f.midX, y: f.midY)
+            default: NSPoint(x: f.minX - gap, y: f.midY)
+            }
+            return (tv.convert(v, to: nil), tv.characterIndexForInsertion(at: v), "badge \(side) of \(needle)")
         case "toolbar":
             return (inside(wc.toolbar), nil, "toolbar")
         case "preview":
@@ -168,6 +183,12 @@ extension UIScriptRunner {
             // Only where the click would land (a click on the formatting bar would format the text).
             record(["probe": detail, "hit": hit, "hitIn": place, "at": NSStringFromPoint(p)],
                    ok: (c["expectHitIn"] as? String).map { $0 == place } ?? true)
+            done()
+            return
+        }
+        if let tv = clickController?.textView, tv.codeBadge(at: tv.convert(p, from: nil)) != nil {
+            // A click there pops the language menu up, which tracks until it is closed: `codeBadge` with `real` does that.
+            record(["click": detail, "error": "the point is on a language badge that is showing (use codeBadge real)"], ok: false)
             done()
             return
         }

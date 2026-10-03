@@ -452,6 +452,157 @@ fn crlf_blocks_are_highlighted_like_lf_ones() {
     assert!(!texts(lf).is_empty());
 }
 
+/// The role of every UTF-16 unit of `d` (`None`: plain).
+fn roles_per_unit(d: &Document) -> Vec<Option<CodeRole>> {
+    let mut out = vec![None; d.len() as usize];
+    for h in d.code_highlights(None) {
+        for u in h.range.start..h.range.end {
+            out[u as usize] = Some(h.role);
+        }
+    }
+    out
+}
+
+#[test]
+fn fences_in_containers_unclosed_with_attributes_and_tildes() {
+    let cases: [(&str, &str, CodeRole); 8] = [
+        ("- item\n\n  ```rust\n  let in_list = 1; // c\n  ```\n", "// c", CodeRole::Comment),
+        ("1. one\n   - two\n\n     ```python\n     x = 'deep'\n     ```\n", "'deep'", CodeRole::String),
+        ("> ```js\n> var q = 'quoted';\n> ```\n", "'quoted'", CodeRole::String),
+        ("> - a\n>\n>   ```rust\n>   let n = 7;\n>   ```\n", "7", CodeRole::Number),
+        ("```rust\nfn never_closed() {}\n// still code\n", "// still code", CodeRole::Comment),
+        ("```rust {.numberLines startFrom=\"3\"}\nlet a = \"attr\";\n```\n", "\"attr\"", CodeRole::String),
+        ("~~~python\n# tilde comment\n~~~\n", "# tilde comment", CodeRole::Comment),
+        ("```` rust\nlet s = \"four ticks\";\n````\n", "\"four ticks\"", CodeRole::String),
+    ];
+    for (text, needle, role) in cases {
+        for t in [text.to_owned(), text.replace('\n', "\r\n")] {
+            let d = doc(&t);
+            check_highlights(&d);
+            let at = t.find(needle).unwrap() as u32;
+            let hs = d.code_highlights(None);
+            let h = hs.iter().find(|h| h.range.start <= at && at < h.range.end).unwrap_or_else(|| panic!("{t:?}: {needle} is plain: {hs:?}"));
+            assert_eq!(h.role, role, "{t:?}");
+            // The container's prefix (blanks and `>` at a line's start) is never coloured.
+            let mut line_start = 0;
+            for line in t.split_inclusive('\n') {
+                let prefix = line.len() - line.trim_start_matches([' ', '>']).len();
+                for i in line_start..line_start + prefix {
+                    assert!(!hs.iter().any(|h| h.range.start <= i as u32 && (i as u32) < h.range.end), "{t:?}: prefix at {i}");
+                }
+                line_start += line.len();
+            }
+            assert_eq!(d.code_languages(None).len(), 1, "{t:?}");
+        }
+    }
+    // The line over the limit: the whole block is plain, the block beside it is not.
+    let long = format!("```rust\nlet a = 1;\nlet s = \"{}\";\n```\n\n```rust\nlet b = 2;\n```\n", "y".repeat(1_001));
+    let d = doc(&long);
+    let hs = d.code_highlights(None);
+    let second = long.rfind("let b").unwrap() as u32;
+    assert!(!hs.is_empty() && hs.iter().all(|h| h.range.start >= second), "{hs:?}");
+    // A language the highlighter does not know: no badge, no runs.
+    let d = doc("```klingon\nqapla'\n```\n");
+    assert!(d.code_highlights(None).is_empty() && d.code_languages(None).is_empty());
+}
+
+#[test]
+fn opening_a_block_comment_recolours_the_rest_of_the_block_within_the_extent() {
+    let text = "intro\n\n```rust\nlet a = 1;\nlet b = \"s\";\nfn c() {}\n```\n\nafter\n";
+    let mut d = doc(text);
+    let at = text.find("let a").unwrap() as u32;
+    // `//` first: only that line changes.
+    let up = d.replace(TextRange::new(at, at), "//").unwrap();
+    let ext = d.code_extent(up.dirty);
+    let block = d.blocks().into_iter().find(|b| b.kind == BlockKind::CodeBlock).unwrap().range;
+    assert!(ext.start <= block.start && ext.end >= block.end, "{ext:?} {block:?}");
+    // Then `/*`: every line after it is a comment now, far outside the line the edit touched.
+    let up = d.replace(TextRange::new(at + 1, at + 2), "*").unwrap();
+    assert!(up.dirty.end < block.end, "the dirty range names the edited line only: {:?}", up.dirty);
+    let ext = d.code_extent(up.dirty);
+    assert!(ext.start <= block.start && ext.end >= block.end - 3, "{ext:?}");
+    let new_text = d.text().to_owned();
+    let fn_at = new_text.find("fn c").unwrap() as u32;
+    let hs = d.code_highlights(Some(ext));
+    let fn_role = hs.iter().find(|h| h.range.start <= fn_at && fn_at < h.range.end).map(|h| h.role);
+    assert_eq!(fn_role, Some(CodeRole::Comment), "{hs:?}");
+    // And back.
+    let up = d.replace(TextRange::new(at, at + 2), "").unwrap();
+    let ext = d.code_extent(up.dirty);
+    let fn_at = d.text().find("fn c").unwrap() as u32;
+    let hs = d.code_highlights(Some(ext));
+    assert_eq!(hs.iter().find(|h| h.range.start <= fn_at && fn_at < h.range.end).map(|h| h.role), Some(CodeRole::Keyword));
+}
+
+/// What the shell does after every edit: restyle `code_extent(dirty)` (it also widens to paragraphs,
+/// which only adds). Outside that extent every unit's role must be what it was before the edit (so the
+/// stored colours there are still right), and inside it what a fresh document says.
+#[test]
+fn restyling_the_code_extent_of_every_edit_leaves_nothing_stale() {
+    let pieces = [
+        "```rust\nlet a = 1; // c\nfn f() {}\n```\n",
+        "~~~python\nx = 'a' # c\n~~~\n",
+        "> ```js\n> var a = 'q';\n> ```\n",
+        "- item\n\n  ```sh\n  echo \"$HOME\" # c\n  ```\n",
+        "```rust\n/* open\nlet b = 2;\n",
+        "plain *prose* line\n",
+        "\n",
+        "```c {.attr}\nint main() { return 0; }\n```\n",
+        "    indented code\n",
+        "```\nno language\n```\n",
+    ];
+    let inserts = ["/*", "*/", "//", "```", "~~~", "\n", "\"", "'", "`", "rust", "> ", "- ", "x", "", "  ", "#"];
+    let mut seed: u64 = 0x2545_F491_4F6C_DD1D;
+    let mut next = |n: usize| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % n as u64) as usize
+    };
+    for case in 0..1500 {
+        let count = 2 + next(6);
+        let text: String = (0..count).map(|_| pieces[next(pieces.len())]).collect::<Vec<_>>().join("\n");
+        for crlf in [false, true] {
+            let text = if crlf { text.replace('\n', "\r\n") } else { text.clone() };
+            let mut d = doc(&text);
+            let before = roles_per_unit(&d);
+            let len = d.len() as usize;
+            let mut start = next(len + 1);
+            // Never between a CR and its LF.
+            if crlf && start > 0 && start < len && text.as_bytes()[start - 1] == b'\r' {
+                start -= 1;
+            }
+            let mut end = (start + next(4)).min(len);
+            if crlf && end > 0 && end < len && text.as_bytes()[end - 1] == b'\r' {
+                end -= 1;
+            }
+            let ins = inserts[next(inserts.len())];
+            let up = d.replace(TextRange::new(start as u32, end as u32), ins).unwrap();
+            let ext = d.code_extent(up.dirty);
+            let fresh = doc(d.text());
+            assert_eq!(d.code_highlights(None), fresh.code_highlights(None), "case {case}: incremental differs from fresh for {:?}", d.text());
+            let after = roles_per_unit(&fresh);
+            let delta = ins.len() as isize - (end - start) as isize;
+            for (u, role) in after.iter().enumerate() {
+                if (u as u32) >= ext.start && (u as u32) < ext.end {
+                    continue;
+                }
+                let old = if u < start { u } else { (u as isize - delta) as usize };
+                assert!(
+                    u < start || u >= start + ins.len(),
+                    "case {case}: the inserted text at {u} is outside the extent {ext:?} (dirty {:?})",
+                    up.dirty
+                );
+                assert_eq!(
+                    *role, before[old],
+                    "case {case}: unit {u} changed role outside the extent {ext:?} (dirty {:?}) after {:?} at {start}..{end} in {text:?}",
+                    up.dirty, ins
+                );
+            }
+        }
+    }
+}
+
 // ----- themes -----------------------------------------------------------------------------------
 
 #[test]

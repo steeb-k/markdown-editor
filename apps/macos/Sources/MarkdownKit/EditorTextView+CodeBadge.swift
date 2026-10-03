@@ -164,8 +164,28 @@ extension EditorTextView {
     public override func accessibilityChildren() -> [Any]? {
         let badges = visibleCodeBadges(ignoringCaret: true)
         guard !badges.isEmpty else { return super.accessibilityChildren() }
-        let elements: [Any] = badges.map { CodeBadgeElement(textView: self, block: $0.block, display: $0.text) }
+        let elements: [Any] = badges.map { badgeElement(for: $0) }
         return (super.accessibilityChildren() ?? []) + elements
+    }
+
+    /// Over a badge, the badge's button (VoiceOver names what is under the pointer), otherwise the text.
+    public override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        if let window, let badge = codeBadge(at: convert(window.convertPoint(fromScreen: point), from: nil)) {
+            return badgeElement(for: badge)
+        }
+        return super.accessibilityHitTest(point)
+    }
+
+    /// The element for a badge, the same object for as long as its block starts at the same place with the same
+    /// language: assistive technology tells elements apart by identity, and a new one at every question would lose
+    /// VoiceOver's place on the button each time the children are asked for again.
+    func badgeElement(for badge: CodeBadge) -> CodeBadgeElement {
+        let key = "\(badge.block.location) \(badge.text)"
+        if let e = badgeElements[key] { return e }
+        if badgeElements.count > 64 { badgeElements.removeAll() }
+        let e = CodeBadgeElement(textView: self, block: badge.block, display: badge.text)
+        badgeElements[key] = e
+        return e
     }
 }
 

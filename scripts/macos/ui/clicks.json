@@ -945,5 +945,481 @@
    "expectResponder": "text",
    "expectHitIn": "text"
   }
+ },
+ {
+  "log": "--- The language badge (M8c), with real clicks: a click on it pops the menu up (closed through its own API), a choice rewrites the info string and undoes, the menu's keys, clicks beside and under it place the caret, it steps aside for the caret, in Live mode and in Split after divider drags"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "load": "# Code\n\nProse before the block.\n\n```rust,ignore,edition2021,no_run,should_panic,a_deliberately_long_info_string_that_runs_under_the_badge\nlet second = \"line\";\nfn third() { let x = 1; }\n```\n\nProse between.\n\n```python\nx = 1  # c\n```\n\nThe end.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ],
+    "badgeAtTopRightOf": "let second"
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "let second",
+   "real": true
+  }
+ },
+ {
+  "assert": {
+   "selection": [
+    0,
+    0
+   ],
+   "code": {
+    "codeMenu": {
+     "first": "Rust",
+     "checked": "Rust",
+     "commonCount": 31,
+     "last": "All"
+    }
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "let second",
+   "real": true,
+   "choose": "Python"
+  }
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "```python,ignore,edition2021",
+   "coreMatchesText": true,
+   "code": {
+    "badges": [
+     "Python",
+     "Python"
+    ],
+    "codeColours": [
+     {
+      "needle": "let second",
+      "role": "code"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "```rust,ignore,edition2021",
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ],
+    "codeColours": [
+     {
+      "needle": "let second",
+      "role": "keyword"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "log": "--- the menu's keyboard: Down highlights the first item, Return chooses it; Escape closes it"
+ },
+ {
+  "codeBadge": {
+   "click": "x = 1  # c",
+   "real": true,
+   "keys": [
+    "down",
+    "down",
+    "up",
+    "return"
+   ],
+   "expectHighlighted": [
+    "Rust",
+    "Python",
+    "Rust"
+   ]
+  }
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "```rust\nx = 1",
+   "code": {
+    "badges": [
+     "Rust",
+     "Rust"
+    ]
+   }
+  }
+ },
+ {
+  "undoUntilContains": "```python\nx = 1"
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "codeBadge": {
+   "click": "x = 1  # c",
+   "real": true,
+   "keys": [
+    "escape"
+   ]
+  }
+ },
+ {
+  "assert": {
+   "textContains": "```python\nx = 1"
+  }
+ },
+ {
+  "log": "--- clicks beside and under the badge are the text's"
+ },
+ {
+  "click": {
+   "at": "badge",
+   "needle": "x = 1  # c",
+   "side": "left",
+   "gap": 12,
+   "expectCaret": true,
+   "expectHitIn": "text",
+   "expectResponder": "text"
+  }
+ },
+ {
+  "assert": {
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ]
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "badge",
+   "needle": "x = 1  # c",
+   "side": "below",
+   "expectCaret": true,
+   "expectHitIn": "text",
+   "gap": 16
+  }
+ },
+ {
+  "type": "Z"
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "x = 1  # cZ\n",
+   "coreMatchesText": true,
+   "code": {
+    "codeColours": [
+     {
+      "needle": "# cZ",
+      "role": "comment"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "log": "--- the caret at the end of the fence's first line, which runs under the pill: the badge steps aside, and a click where the pill was is the text's"
+ },
+ {
+  "selectText": "```rust,ignore",
+  "offset": 3
+ },
+ {
+  "command": "moveToEndOfLine:"
+ },
+ {
+  "assert": {
+   "code": {
+    "badgeHiddenByCaret": "let second",
+    "caretClearOfBadge": true
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "badge",
+   "needle": "let second",
+   "side": "centre",
+   "ignoringCaret": true,
+   "expectCaret": true,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "assert": {
+   "code": {
+    "badgeHiddenByCaret": "let second",
+    "caretClearOfBadge": true
+   }
+  }
+ },
+ {
+  "click": {
+   "needle": "Prose between",
+   "offset": 2,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "assert": {
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ]
+   }
+  }
+ },
+ {
+  "log": "--- Live mode: the fences concealed, then revealed by a click in the block"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "click": {
+   "needle": "Prose before",
+   "offset": 2,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ],
+    "badgeAtTopRightOf": "let second",
+    "fenceHidden": [
+     "```rust,ignore",
+     "```python"
+    ]
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "let second",
+   "real": true
+  }
+ },
+ {
+  "click": {
+   "needle": "fn third",
+   "offset": 3,
+   "expectHitIn": "text",
+   "expectResponder": "text"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "code": {
+    "badges": [
+     "Rust",
+     "Python"
+    ],
+    "badgeAtTopRightOf": "let second",
+    "caretClearOfBadge": true
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "let second",
+   "real": true,
+   "choose": "Go"
+  }
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "```go,ignore,edition2021",
+   "code": {
+    "badges": [
+     "Go",
+     "Python"
+    ]
+   }
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "click": {
+   "needle": "fn third",
+   "offset": 3,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Q"
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "fn Qthird()",
+   "coreMatchesText": true,
+   "code": {
+    "codeColours": [
+     {
+      "needle": "fn Qthird",
+      "role": "keyword"
+     },
+     {
+      "needle": "Qthird",
+      "role": "function"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "log": "--- Split: the badge follows divider drags"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "click": {
+   "needle": "Prose before",
+   "offset": 2,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 15
+ },
+ {
+  "dividerDrag": 0.65
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "code": {
+    "badgeAtTopRightOf": "x = 1  # c",
+    "badges": [
+     "Rust",
+     "Python"
+    ]
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "x = 1  # c",
+   "real": true
+  }
+ },
+ {
+  "dividerDrag": 0.4
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "code": {
+    "badgeAtTopRightOf": "x = 1  # c"
+   }
+  }
+ },
+ {
+  "assert": {
+   "code": {
+    "badgeAtTopRightOf": "let second"
+   }
+  }
+ },
+ {
+  "codeBadge": {
+   "click": "x = 1  # c",
+   "real": true,
+   "choose": "Rust"
+  }
+ },
+ {
+  "waitStyled": 30
+ },
+ {
+  "assert": {
+   "textContains": "```rust\nx = 1"
+  }
+ },
+ {
+  "undo": true
+ },
+ {
+  "layout": "editor"
  }
 ]

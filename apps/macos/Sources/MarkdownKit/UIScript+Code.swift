@@ -23,7 +23,7 @@ extension UIScriptRunner {
     }
 
     /// The badge of the block holding `needle`, wherever the caret is.
-    private func badge(of needle: String, ignoringCaret: Bool = false) -> CodeBadge? {
+    func badge(of needle: String, ignoringCaret: Bool = false) -> CodeBadge? {
         guard let tv = textView, let lm = tv.layoutManager as? EditorLayoutManager, let storage = session?.storage else { return nil }
         let r = (storage.string as NSString).range(of: needle)
         guard r.location != NSNotFound else { return nil }
@@ -66,6 +66,128 @@ extension UIScriptRunner {
             }
         }
         record(entry, ok: ok)
+    }
+
+    /// `{"codeBadge": {"click": "needle", "real": true, "choose": "Python", "keys": ["down", "return"]}}`: a real click on
+    /// the badge (mouse events posted to the app's queue, through the window's hit-testing and the text view's `mouseDown`),
+    /// so the menu really pops up and tracks; once it is open it is dismissed through its own API (`cancelTracking`) and
+    /// `choose` is then taken through the item's action, or `keys` are posted to the open menu as key events (arrows,
+    /// `return`, `escape`: the menu's own keyboard navigation). Logs where the menu opened against the badge, whether the
+    /// caret stayed and what the text became.
+    func codeBadgeRealStep(_ c: [String: Any], then done: @escaping () -> Void) {
+        guard let tv = textView, let w = tv.window, let needle = c["click"] as? String else {
+            record(["codeBadge": c, "error": "no text view or no `click`"], ok: false)
+            done()
+            return
+        }
+        tv.codeMenuPresenter = nil
+        Self.lastCodeMenu = nil
+        guard let b = badge(of: needle) else {
+            record(["codeBadge": needle, "real": true, "error": "no badge there (none for the block, or the caret hides it)"], ok: false)
+            done()
+            return
+        }
+        let frame = tv.viewFrame(of: b)
+        let selBefore = tv.selectedRange()
+        makeKey(w) { [self] in
+            let p = tv.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+            let place = hitPlace(w, p)
+            var opened: NSMenu?
+            var closed = false
+            let nc = NotificationCenter.default
+            let begin = nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil) { n in
+                MainActor.assumeIsolated {
+                    if opened == nil, let m = n.object as? NSMenu, m.title == "Language" { opened = m }
+                }
+            }
+            let end = nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: nil) { n in
+                MainActor.assumeIsolated { if let m = n.object as? NSMenu, m === opened { closed = true } }
+            }
+            func post(_ type: NSEvent.EventType) {
+                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                                              pressure: type == .leftMouseUp ? 0 : 1) { NSApp.postEvent(e, atStart: false) }
+            }
+            post(.leftMouseDown)
+            post(.leftMouseUp)
+            let keys = c["keys"] as? [String] ?? []
+            waitFor(3, { opened != nil }) { [self] isOpen in
+                guard isOpen, let menu = opened else {
+                    nc.removeObserver(begin); nc.removeObserver(end)
+                    record(["codeBadge": needle, "real": true, "hitIn": place, "active": NSApp.isActive, "key": w.isKeyWindow,
+                            "error": "no menu opened"], ok: false)
+                    done()
+                    return
+                }
+                Self.lastCodeMenu = (menu, NSPoint(x: frame.minX, y: frame.maxY + 2))
+                let checked = menu.items.filter { $0.state == .on }.map(\.title)
+                // Give the menu a moment on screen, then close it: by keys, or through its own API.
+                var highlights: [String] = []
+                // Keys one at a time, the highlighted item noted after each (the menu answers each in its own turn).
+                func press(_ rest: ArraySlice<String>, then next: @escaping () -> Void) {
+                    guard let k = rest.first else { next(); return }
+                    let (chars, code, mods): (String, UInt16, NSEvent.ModifierFlags) = switch k {
+                    case "down": ("\u{F701}", 125, [.function, .numericPad])
+                    case "up": ("\u{F700}", 126, [.function, .numericPad])
+                    case "right": ("\u{F703}", 124, [.function, .numericPad])
+                    case "left": ("\u{F702}", 123, [.function, .numericPad])
+                    case "escape": ("\u{1B}", 53, [])
+                    default: ("\r", 36, [])
+                    }
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: w.windowNumber, context: nil, characters: chars,
+                                                    charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) {
+                            NSApp.postEvent(e, atStart: false)
+                        }
+                    }
+                    later(0.15) {
+                        highlights.append(menu.highlightedItem?.title ?? "-")
+                        press(rest.dropFirst(), then: next)
+                    }
+                }
+                // Give the menu a moment on screen, then close it: by keys, or through its own API.
+                later(0.3) { [self] in
+                    if keys.isEmpty { menu.cancelTracking() }
+                    press(keys[...]) { [self] in
+                    waitFor(3, { closed }) { [self] didClose in
+                        nc.removeObserver(begin); nc.removeObserver(end)
+                        if !didClose { menu.cancelTrackingWithoutAnimation() }
+                        var entry: [String: Any] = ["codeBadge": needle, "real": true, "hitIn": place, "menuOpened": true, "menuClosed": didClose,
+                                                    "checked": checked, "active": NSApp.isActive, "key": w.isKeyWindow, "highlighted": highlights]
+                        var ok = didClose && place == "text"
+                        if let want = c["expectHighlighted"] as? [String] { ok = ok && Array(highlights.prefix(want.count)) == want }
+                        if let choose = c["choose"] as? String, keys.isEmpty {
+                            func find(_ m: NSMenu) -> NSMenuItem? {
+                                for i in m.items {
+                                    if i.action != nil, i.title == choose || (i.representedObject as? String) == choose { return i }
+                                    if let s = i.submenu, let f = find(s) { return f }
+                                }
+                                return nil
+                            }
+                            if let item = find(menu), let owner = item.menu {
+                                asEvent { owner.performActionForItem(at: owner.index(of: item)) }
+                                entry["chose"] = item.title
+                            } else {
+                                entry["error"] = "no menu item \(choose)"
+                                ok = false
+                            }
+                        }
+                        later(0.3) { [self] in
+                            let sel = tv.selectedRange()
+                            entry["selection"] = [sel.location, sel.length]
+                            if c["choose"] == nil, keys.isEmpty {
+                                // Nothing chosen: the click went no further than the badge (the caret stayed).
+                                ok = ok && sel == selBefore
+                            }
+                            record(entry, ok: ok)
+                            done()
+                        }
+                    }
+                    }
+                }
+            }
+        }
     }
 
     func codeAssertions(_ a: [String: Any]) {

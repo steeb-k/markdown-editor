@@ -20,9 +20,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         // NSDocumentController opens the untitled document (or the files we were launched with).
-        NSApp.activate(ignoringOtherApps: true)
         #if DEBUG || UI_SCRIPT
+        // A UI script takes activation (and the person's keyboard) only if it has steps that need it: real mouse events.
+        if !UIScriptRunner.isRequested || UIScriptRunner.scriptNeedsActivation { NSApp.activate(ignoringOtherApps: true) }
         UIScriptRunner.startIfRequested()
+        #else
+        NSApp.activate(ignoringOtherApps: true)
         #endif
     }
 

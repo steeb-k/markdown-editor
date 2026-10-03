@@ -37,6 +37,14 @@
   }
  },
  {
+  "log": "--- the harness's windows ignore a person's mouse and sit at the screen's top-left corner"
+ },
+ {
+  "assert": {
+   "harnessWindows": true
+  }
+ },
+ {
   "snapshot": "01-open"
  },
  {
@@ -324,6 +332,11 @@
  {
   "snapshot": "06-insert-table-sheet",
   "window": "sheet"
+ },
+ {
+  "assert": {
+   "harnessWindows": true
+  }
  },
  {
   "sheet": "end"
@@ -620,6 +633,25 @@
   ]
  },
  {
+  "log": "--- a posted click still reaches the window that ignores the real mouse, and the window still ignores it after"
+ },
+ {
+  "scroll": "top"
+ },
+ {
+  "click": {
+   "needle": "The quiet page",
+   "offset": 4,
+   "expectHitIn": "text",
+   "expectResponder": "text"
+  }
+ },
+ {
+  "assert": {
+   "harnessWindows": true
+  }
+ },
+ {
   "log": "--- settings and tabs"
  },
  {
@@ -631,6 +663,11 @@
  {
   "snapshot": "20-settings",
   "window": "settings"
+ },
+ {
+  "assert": {
+   "harnessWindows": true
+  }
  },
  {
   "settingsWindow": "hide"

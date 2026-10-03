@@ -32,6 +32,8 @@ public final class EditorTextView: NSTextView {
     var codeMenuBlock: NSRange?
     /// Takes the language menu instead of popping it up (tests and the UI scripts: a menu that tracks the mouse never returns).
     var codeMenuPresenter: ((NSMenu, NSPoint) -> Void)?
+    /// The badges' accessibility elements, kept so that each badge is one object (see `badgeElement(for:)`).
+    var badgeElements: [String: CodeBadgeElement] = [:]
     /// Focus mode's centring; while it is on, what asks the view to scroll something into view
     /// asks it to centre that instead (one slide, not a jump and a slide).
     weak var centring: FocusCentring?

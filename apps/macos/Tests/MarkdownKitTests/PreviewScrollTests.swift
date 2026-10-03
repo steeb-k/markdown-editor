@@ -144,6 +144,34 @@ final class PreviewScrollTests: XCTestCase {
         doc.close()
     }
 
+    /// The preview scrolled: the editor is aimed at its line, and aimed again once the new screenful is laid out. A move
+    /// of the editor in between is AppKit keeping the drawn text in place as the heights above it are corrected, not the
+    /// reader's: it must not be pushed back to the page (preview.json: the page went back 18 lines and stayed there).
+    func testAMoveOfTheEditorBeforeTheSecondAimIsNotPushedToThePage() throws {
+        // preview.json's document and steps: the editor halfway, then the page scrolled to nine tenths.
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../../scripts/macos/ui/fixtures")
+        let text = try String(contentsOf: root.appendingPathComponent("preview-tour.md"), encoding: .utf8)
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("images").path)) ?? [] {
+            try? FileManager.default.createDirectory(at: tmp.appendingPathComponent("images"), withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: root.appendingPathComponent("images").appendingPathComponent(name), to: tmp.appendingPathComponent("images").appendingPathComponent(name))
+        }
+        let (doc, wc) = try open(text)
+        wc.window?.setContentSize(NSSize(width: 1300, height: 820))
+        let p = wc.previewController
+        settle(p)
+        editorScroll(wc, 0.5)
+        settle(p)
+        let before = p.receivedScrolls.count
+        previewScroll(p, 0.9)
+        XCTAssertTrue(spin(timeout: 3) { p.receivedScrolls.count > before }, "the page reported its scroll")
+        let line = try XCTUnwrap(p.receivedScrolls.last)
+        settle(p)
+        let (e, v) = positions(p)
+        XCTAssertEqual(v, line, accuracy: 1.0, "the page stays where the reader put it")
+        XCTAssertEqual(e, v, accuracy: 1.0, "and the editor follows it; \(p.lastEditorScrollTrace)")
+        doc.close()
+    }
+
     func testAlternatingScrollsSettleAndDoNotOscillate() throws {
         let (doc, wc) = try open(try longDocument())
         let p = wc.previewController

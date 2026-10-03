@@ -31,7 +31,10 @@ func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
     // which is when a document's edited state reaches its windows and their tabs).
     let t = Timer(timeInterval: max(0, delay), repeats: false) { _ in
         autoreleasepool { body() }
-        MainActor.assumeIsolated { NSApp.updateWindows() }
+        MainActor.assumeIsolated {
+            NSApp.updateWindows()
+            UIScriptRunner.adoptWindows()
+        }
     }
     RunLoop.main.add(t, forMode: .common)
 }
@@ -185,8 +188,55 @@ final class UIScriptRunner {
             finish()
             return
         }
-        NSApp.activate(ignoringOtherApps: true)
         next()
+    }
+
+    /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
+    /// forward) and full screen. A script without any never takes activation from the person at the machine.
+    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "dividerDrag", "liveResize", "tabClick", "tabClose",
+                                                      "tabDrag", "tabChevron", "doubleClickTitlebar", "fullscreen", "codeBadge"]
+
+    /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
+    /// been launched, and not later from the background (`activate` is then refused, and `makeKey` waits in vain), so
+    /// a script that needs it takes it at launch, and one that does not leaves the person's app in front.
+    nonisolated static var scriptNeedsActivation: Bool {
+        guard let path = scriptPath, let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let steps = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return false }
+        return steps.contains { !Set($0.keys).isDisjoint(with: stepsNeedingActivation) }
+    }
+
+    // MARK: windows a person cannot click into
+
+    /// Windows already moved to the corner (each is moved once, when first seen).
+    private static let placed = NSHashTable<NSWindow>.weakObjects()
+
+    /// Under a script every window of the app ignores the real mouse (`ignoresMouseEvents`): a person's
+    /// click in a window the script was driving mixed with the script's own events (a scripted click and
+    /// theirs became a double-click that zoomed the window; a drag step looked like stuck highlighting).
+    /// The steps' own mouse events still arrive: they are posted to the app's queue or sent to the window
+    /// (`NSApp.postEvent`, `NSWindow.sendEvent`) and never pass the window server's hit-testing, which is
+    /// the only thing the flag changes; `clicks.json`, `tabs.json`, `titlebar.json`, `focus-resize.json`
+    /// and `code.json` pass with it on. Document and Settings windows also open at the top-left corner of
+    /// the screen, so a harness window is recognisable. `requested` is for tests.
+    static func adopt(_ w: NSWindow, requested: Bool = UIScriptRunner.isRequested) {
+        guard requested else { return }
+        // Menus, the menu bar, tooltips and the like keep their own handling.
+        guard w.level.rawValue < NSWindow.Level.mainMenu.rawValue else { return }
+        if !w.ignoresMouseEvents { w.ignoresMouseEvents = true }
+        guard !placed.contains(w), w.sheetParent == nil, !w.styleMask.contains(.fullScreen),
+              w.windowController is EditorWindowController || w.windowController is SettingsWindowController,
+              let screen = w.screen ?? NSScreen.main else { return }
+        placed.add(w)
+        w.setFrameTopLeftPoint(harnessTopLeft(screen.visibleFrame))
+    }
+
+    /// Where a harness window's top-left corner goes: the corner of the screen's visible area.
+    static func harnessTopLeft(_ visible: NSRect) -> NSPoint { NSPoint(x: visible.minX, y: visible.maxY) }
+
+    /// `adopt` for every window the app has (after every step, for windows AppKit made: sheets, alerts).
+    static func adoptWindows() {
+        guard isRequested else { return }
+        for w in NSApp.windows { adopt(w) }
     }
 
     private func next() {
@@ -377,6 +427,8 @@ final class UIScriptRunner {
             let ok = session?.pos.waitUntilSettled(timeout: num("waitSyntax") ?? 30) ?? false
             record(["waitSyntax": ok, "tagged units": session?.pos.taggerInvocations ?? 0], ok: ok)
             done()
+        } else if let c = step["codeBadge"] as? [String: Any], c["real"] as? Bool == true {
+            codeBadgeRealStep(c, then: done)
         } else if let c = step["codeBadge"] as? [String: Any] {
             codeBadgeStep(c)
             done()
@@ -2214,6 +2266,21 @@ final class UIScriptRunner {
             check("file equals made/\(v)", made != nil && made == disk, "\(made?.count ?? -1) vs \(disk?.count ?? -1) bytes")
         }
         if let v = a["textLength"] as? Int { check("textLength \(v)", (text as NSString).length == v, "\((text as NSString).length)") }
+        if a["harnessWindows"] as? Bool == true {
+            // Every visible window of the app ignores the real mouse; the script's window sits at the screen's top-left
+            // (`"atCorner": false` skips that, after a step that moves the window).
+            let visible = NSApp.windows.filter { $0.isVisible && $0.level.rawValue < NSWindow.Level.mainMenu.rawValue }
+            let listening = visible.filter { !$0.ignoresMouseEvents }.map { "\(Swift.type(of: $0)) \($0.title)" }
+            var detail = "listening: \(listening)"
+            var ok = listening.isEmpty && !visible.isEmpty
+            if a["atCorner"] as? Bool != false, let w = window, let screen = w.screen {
+                let want = UIScriptRunner.harnessTopLeft(screen.visibleFrame)
+                let got = NSPoint(x: w.frame.minX, y: w.frame.maxY)
+                detail += " top-left \(NSStringFromPoint(got)) want \(NSStringFromPoint(want))"
+                ok = ok && abs(got.x - want.x) < 1 && abs(got.y - want.y) < 1
+            }
+            check("harnessWindows", ok, detail + " active \(NSApp.isActive)")
+        }
         if let v = a["selection"] as? [Int], let tv = textView {
             let r = tv.selectedRange()
             check("selection \(v)", r.location == v[0] && r.length == v[1], "\(r)")

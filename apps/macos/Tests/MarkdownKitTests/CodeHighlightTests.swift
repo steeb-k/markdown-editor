@@ -110,6 +110,47 @@ final class CodeHighlightTests: XCTestCase {
         XCTAssertEqual(e.signature(), Editor(text: e.string).signature())
     }
 
+    /// A block longer than the analysis queue fetches inline (`maxInlineSpanRange`): an edit in it widens to the whole
+    /// block, too long to fetch with the edit, so the colours come through the styling debt in pieces. Opening a block
+    /// comment on its first line must still recolour its last line, and closing it again restore it, as a fresh document
+    /// styles them (the colours and the language attribute alike), also with results arriving late.
+    func testABlockLongerThanTheInlineRangeIsRestyledWholeThroughTheDebt() {
+        // Comments, which the highlighter takes quickly even in a debug build (a block that misses the query's time
+        // budget is plain: see PLAN, "From the test pass" of M8c).
+        let lines = (0..<420).map { "# line \($0): a comment long enough that the block outgrows the inline range" }.joined(separator: "\n")
+        let text = "Intro.\n\n```python\nfirst = 1\n\(lines)\nlast = 'end'\n```\n\nAfter.\n"
+        XCTAssertGreaterThan((text as NSString).length, AnalysisCoordinator.maxInlineSpanRange)
+        let e = Editor(text: text)
+        XCTAssertTrue(e.session.waitUntilStyled(timeout: 60))
+        func languages(_ e: Editor) -> [String] {
+            var out: [String] = []
+            e.session.storage.enumerateAttribute(.markdownCodeLanguage, in: NSRange(location: 0, length: e.session.storage.length)) { v, r, _ in
+                out.append("\(r) \(v as? String ?? "-")")
+            }
+            return out
+        }
+        XCTAssertEqual(colour(e, "'end'"), syntax(e).string.hexString)
+        XCTAssertEqual(colour(e, "# line 300"), syntax(e).comment.hexString)
+        // Opening a string on the first line: every line after it is the string's, the last one included.
+        let at = (e.string as NSString).range(of: "first = 1").location + 8
+        e.session.coordinator.artificialDelay = 0.02
+        for (i, ch) in "\"\"\"".enumerated() { e.edit(range: NSRange(location: at + i, length: 0), with: String(ch)) }
+        e.session.coordinator.artificialDelay = 0
+        XCTAssertTrue(e.session.waitUntilStyled(timeout: 60))
+        XCTAssertEqual(colour(e, "# line 300"), syntax(e).string.hexString, "the rest of the block is a string now")
+        XCTAssertEqual(colour(e, "last = "), syntax(e).string.hexString)
+        let fresh = Editor(text: e.string)
+        XCTAssertTrue(fresh.session.waitUntilStyled(timeout: 60))
+        XCTAssertEqual(e.signature(), fresh.signature())
+        XCTAssertEqual(languages(e), languages(fresh))
+        // And closed again.
+        e.edit(range: NSRange(location: at, length: 3), with: "")
+        XCTAssertTrue(e.session.waitUntilStyled(timeout: 60))
+        XCTAssertEqual(colour(e, "# line 300"), syntax(e).comment.hexString)
+        XCTAssertEqual(colour(e, "'end'"), syntax(e).string.hexString)
+        XCTAssertEqual(e.signature(), Editor(text: text).signature())
+    }
+
     func testAThemeSwitchRecolours() {
         let e = Editor(text: doc)
         let light = colour(e, "fn main")
@@ -375,6 +416,46 @@ final class CodeHighlightTests: XCTestCase {
         XCTAssertTrue(element.accessibilityPerformPress())
         XCTAssertEqual(presented, 1)
         XCTAssertEqual(children.compactMap { ($0 as? NSAccessibilityElement)?.accessibilityLabel() }.filter { $0.hasPrefix("Language:") }.count, 1)
+    }
+
+    /// VoiceOver tells elements apart by identity: asking for the children again (it does, after every change it is told
+    /// of) must give the same button, or its place on the badge is lost. And the pointer over the badge names the button.
+    func testTheBadgesButtonIsOneObjectAndThePointerOverTheBadgeFindsIt() throws {
+        let e = laidOut(doc, caret: 3)
+        func button() -> NSAccessibilityElement? {
+            (e.tv.accessibilityChildren() ?? []).compactMap { $0 as? NSAccessibilityElement }.first { $0.accessibilityLabel() == "Language: Rust" }
+        }
+        let first = try XCTUnwrap(button())
+        XCTAssertTrue(first === button(), "the same element when asked again")
+        e.select(40)
+        e.settle()
+        XCTAssertTrue(first === button(), "and after the caret moved")
+        // A language change is another button.
+        let block = try XCTUnwrap(first as? CodeBadgeElement).block
+        e.grouped { e.tv.setCodeLanguage("python", inBlock: block) }
+        e.settle()
+        let python = (e.tv.accessibilityChildren() ?? []).compactMap { $0 as? NSAccessibilityElement }.first { $0.accessibilityLabel() == "Language: Python" }
+        XCTAssertNotNil(python)
+        e.um.undo()
+        e.settle()
+
+        // In a window: the screen point over the pill is the button's, a point beside it the text's.
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 820, height: 620), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 820, height: 620))
+        scroll.documentView = e.tv
+        window.contentView = scroll
+        defer { scroll.documentView = nil; window.orderOut(nil) }
+        e.settle()
+        let b = try XCTUnwrap(badges(e).first)
+        let view = e.tv.viewFrame(of: b)
+        let onPill = window.convertPoint(toScreen: e.tv.convert(NSPoint(x: view.midX, y: view.midY), to: nil))
+        let hit = e.tv.accessibilityHitTest(onPill) as? NSAccessibilityElement
+        XCTAssertEqual(hit?.accessibilityLabel(), "Language: Rust")
+        XCTAssertTrue(hit === button(), "the pointer finds the same button the children list")
+        let beside = window.convertPoint(toScreen: e.tv.convert(NSPoint(x: view.minX - 60, y: view.midY + 40), to: nil))
+        XCTAssertFalse(e.tv.accessibilityHitTest(beside) is CodeBadgeElement)
+        XCTAssertEqual(hit?.accessibilityFrame().size, view.size, "its frame is the pill's")
     }
 
     // MARK: focus mode

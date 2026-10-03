@@ -138,6 +138,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             let from = NSPoint(x: front.frame.minX, y: front.frame.maxY)
             window.setFrameTopLeftPoint(window.cascadeTopLeft(from: from))
         }
+        #if DEBUG || UI_SCRIPT
+        // Under a UI script: at the screen's top-left corner, deaf to the real mouse.
+        UIScriptRunner.adopt(window)
+        #endif
 
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome,
                                   reappearsAfterPause: settings.chromeReturnsAfterPause)
