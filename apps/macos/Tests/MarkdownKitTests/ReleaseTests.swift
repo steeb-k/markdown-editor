@@ -184,7 +184,19 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(plist["LSMinimumSystemVersion"] as? String, "14.0")
         XCTAssertEqual(plist["CFBundleIconFile"] as? String, "Markdown")
         XCTAssertEqual(plist["CFBundleIdentifier"] as? String, "io.github.steeb-k.Markdown")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: resources.appendingPathComponent("Markdown.icns").path))
+        // The icon is the owner's: an .icns for macOS 11 to 15 and an Icon Composer package for 26
+        // (bundle.sh copies the one and compiles the other into Assets.car).
+        let assets = Fixtures.root.appendingPathComponent("assets")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: assets.appendingPathComponent("macOS-11-to-15/AppIcon.icns").path))
+        let iconJSON = try Data(contentsOf: assets.appendingPathComponent("Markdown.icon/icon.json"))
+        let icon = try XCTUnwrap(try JSONSerialization.jsonObject(with: iconJSON) as? [String: Any])
+        let layers = (icon["groups"] as? [[String: Any]] ?? []).flatMap { $0["layers"] as? [[String: Any]] ?? [] }
+        XCTAssertEqual(layers.compactMap { $0["image-name"] as? String }, ["glyph.svg", "background.svg"])
+        for layer in layers {
+            let name = try XCTUnwrap(layer["image-name"] as? String)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: assets.appendingPathComponent("Markdown.icon/Assets/\(name)").path), name)
+        }
+        XCTAssertNil(plist["CFBundleIconName"], "added by bundle.sh with the Assets.car it compiles")
         let types = try XCTUnwrap(plist["CFBundleDocumentTypes"] as? [[String: Any]])
         XCTAssertEqual(types.compactMap { $0["CFBundleTypeRole"] as? String }, ["Editor", "Editor"])
         XCTAssertEqual(types.first?["LSItemContentTypes"] as? [String], ["net.daringfireball.markdown"])
@@ -197,13 +209,14 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(own["public.filename-extension"] as? [String], ["mdown", "mkd", "mkdn", "mdwn"])
         XCTAssertEqual(types.first?["LSHandlerRank"] as? String, "Default")
         XCTAssertEqual(types.last?["LSItemContentTypes"] as? [String], ["public.plain-text"])
-        let icon = try XCTUnwrap(types.first?["CFBundleTypeIconFile"] as? String)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: resources.appendingPathComponent(icon + ".icns").path))
+        // Documents show the system's plain document icon: no type names an icon of its own.
+        XCTAssertTrue(types.allSatisfy { $0["CFBundleTypeIconFile"] == nil && $0["CFBundleTypeIconFiles"] == nil })
         let imported = try XCTUnwrap(plist["UTImportedTypeDeclarations"] as? [[String: Any]])
         XCTAssertEqual(imported.first?["UTTypeIdentifier"] as? String, "net.daringfireball.markdown")
         XCTAssertEqual(imported.first?["UTTypeConformsTo"] as? [String], ["public.plain-text"])
         let tags = try XCTUnwrap(imported.first?["UTTypeTagSpecification"] as? [String: Any])
         XCTAssertEqual(tags["public.filename-extension"] as? [String], ["md", "markdown"])
+        XCTAssertTrue((imported + exported).allSatisfy { $0["UTTypeIconFile"] == nil && $0["UTTypeIcons"] == nil })
         // The document class every type names exists.
         XCTAssertNotNil(NSClassFromString(try XCTUnwrap(types.first?["NSDocumentClass"] as? String)))
     }
@@ -216,7 +229,7 @@ final class ReleaseTests: XCTestCase {
 
     func testAcknowledgementsNameEveryKindOfComponent() throws {
         let text = try String(contentsOf: resources.appendingPathComponent("Acknowledgements.md"), encoding: .utf8)
-        for needle in ["SIL OPEN FONT LICENSE", "Reserved Font Name", "pulldown-cmark", "syntect", "two-face", "unicode-segmentation", "unicode-width",
+        for needle in ["SIL OPEN FONT LICENSE", "Reserved Font Name", "Fira Mono", "Reserved Font Name < Fira >", "pulldown-cmark", "syntect", "two-face", "unicode-segmentation", "unicode-width",
                        "sha2", "toml ", "serde ", "uniffi ", "Mozilla Public License", "Apache License", "MIT License"] {
             XCTAssertTrue(text.contains(needle), "Acknowledgements.md does not mention \(needle)")
         }

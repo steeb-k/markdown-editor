@@ -94,6 +94,10 @@ public final class AnalysisCoordinator {
     /// True when every edit submitted so far has been processed.
     public var isIdle: Bool { lock.lock(); defer { lock.unlock() }; return outstanding == 0 }
 
+    /// A result is waiting in the inbox for the main thread (`deliverPending`). Idle and nothing
+    /// waiting: every edit's result has been handed over.
+    public var hasUndelivered: Bool { lock.lock(); defer { lock.unlock() }; return !inbox.isEmpty }
+
     /// Forwards one character edit (range in the old text, replacement). Returns its number.
     @discardableResult
     public func submit(range: NSRange, replacement: String) -> Int {

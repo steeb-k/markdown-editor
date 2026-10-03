@@ -521,7 +521,9 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         let lm = session.layoutManager
         let table = currentLineTable()
         let origin = tv.textContainerOrigin
-        let y = sv.contentView.bounds.minY + sv.contentInsets.top - origin.y
+        // The top of what the reader sees: under the title bar, not under the room focus mode adds
+        // above the text for centring (that would pair the preview's top with the editor's middle).
+        let y = sv.contentView.bounds.minY + sv.editorBaseInsetTop - origin.y
         if y <= 0 || session.storage.length == 0 { return 0 }
         lm.ensureLayout(forBoundingRect: NSRect(x: 0, y: y, width: tc.size.width, height: 40), in: tc)
         let glyph = lm.glyphIndex(for: NSPoint(x: tc.size.width / 2, y: y), in: tc, fractionOfDistanceThroughGlyph: nil)
@@ -598,9 +600,9 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
             _ = tc
         }
         let clip = sv.contentView
-        let insets = sv.contentInsets
-        // As far as the clip view allows (it knows what the content insets do to the range).
-        let wanted = y + tv.textContainerOrigin.y - insets.top
+        // As far as the clip view allows (it knows what the content insets do to the range). The
+        // position goes to the top of what the reader sees (see `editorReadingPosition`).
+        let wanted = y + tv.textContainerOrigin.y - sv.editorBaseInsetTop
         let target = Double(clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: wanted, width: clip.bounds.width, height: clip.bounds.height)).minY)
         lastEditorScrollTrace = "position \(position) target \(target) was \(clip.bounds.minY) y \(y)"
         guard abs(clip.bounds.minY - CGFloat(target)) >= 1 else { return }

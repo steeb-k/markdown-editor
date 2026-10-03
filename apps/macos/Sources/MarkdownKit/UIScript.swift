@@ -20,9 +20,30 @@ import WebKit
 /// Runs `body` on the main run loop after `delay`. Not through the main dispatch queue: a step
 /// that spins the run loop (waiting for styling) from inside a main-queue block would starve
 /// every other main-queue block, the analysis results included.
+///
+/// Each step runs in an autorelease pool of its own. AppKit drains the main thread's pool once per
+/// event, and a script sends few: what a step autoreleased (a closed document's session, from the
+/// reopen before it) otherwise outlived the close by however long the next event took, which made
+/// `close`'s check that everything was freed fail at random. A person's next keystroke or pointer
+/// move drains it at once.
 private func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
-    let t = Timer(timeInterval: max(0, delay), repeats: false) { _ in body() }
+    // And it ends the way the handling of an event ends: windows are updated (`NSWindow.update`,
+    // which is when a document's edited state reaches its windows and their tabs).
+    let t = Timer(timeInterval: max(0, delay), repeats: false) { _ in
+        autoreleasepool { body() }
+        MainActor.assumeIsolated { NSApp.updateWindows() }
+    }
     RunLoop.main.add(t, forMode: .common)
+}
+
+/// What a person's next event does to the main thread's autorelease pool (AppKit drains it once per
+/// event): an application-defined event, which nothing handles.
+@MainActor
+private func drainEventPool() {
+    if let e = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0,
+                                  windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+        NSApp.postEvent(e, atStart: false)
+    }
 }
 
 /// Every editor object the script has seen, weakly: what is still alive after documents close.
@@ -536,6 +557,13 @@ final class UIScriptRunner {
             lines.append("accessories: " + (window?.titlebarAccessoryViewControllers.map { "\(Swift.type(of: $0)) \(NSStringFromRect($0.view.frame)) hidden=\($0.isHidden)" }.joined(separator: "; ") ?? ""))
             lines.append("tabGroup visible: \(String(describing: window?.tabGroup?.isTabBarVisible)) overview \(String(describing: window?.tabGroup?.isOverviewVisible))")
             record(["dumpTitlebar": lines], ok: true)
+            done()
+        } else if let name = str("dumpMenu") {
+            // A main-menu menu's items as they stand (AppKit adds some of its own, the tab items among them).
+            let menu = NSApp.mainMenu?.items.first { $0.title == name }?.submenu
+            menu?.update()
+            let items = menu?.items.map { $0.isSeparatorItem ? "-" : "\($0.title) [\($0.action.map { NSStringFromSelector($0) } ?? "")]" } ?? []
+            record(["dumpMenu": name, "items": items], ok: menu != nil)
             done()
         } else if let name = str("remember") {
             remember(name)
@@ -1169,6 +1197,7 @@ final class UIScriptRunner {
         else {
             if let tv = textView { validators.append(tv) }
             if let wc = controller { validators.append(wc) }
+            if let w = window { validators.append(w) }   // the window's own actions (tabs), with no key window
             if let delegate = NSApp.delegate { validators.append(delegate as AnyObject) }
         }
         for v in validators where v.responds(to: action) {
@@ -1375,8 +1404,16 @@ final class UIScriptRunner {
                 let core = s.coordinator.sync { doc in
                     doc.focusRange(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), scope: scope).map(\.nsRange)
                 }
-                func clip(_ rs: [NSRange]) -> [NSRange] { rs.map { NSIntersectionRange($0, w) }.filter { $0.length > 0 } }
-                if clip(o.layers.focus ?? []) != clip(core) {
+                // Where the layer must match: the query window, but for a selection only the part the
+                // focus was last asked about (the units a selection touches are worked out inside the
+                // window asked for; text scrolled into view is asked about again before it is within
+                // 2,000 characters of being shown, see `visibleRangeChanged`). Focus mode's centring
+                // moves the view after the question was asked, so the window now and the window asked
+                // for differ more often than they did. What is on screen must always match.
+                let region = sel.length > 0 && s.focusWindow.length > 0 ? NSIntersectionRange(w, s.focusWindow) : w
+                func clip(_ rs: [NSRange], _ r: NSRange = region) -> [NSRange] { rs.map { NSIntersectionRange($0, r) }.filter { $0.length > 0 } }
+                let visible = s.visibleRange()
+                if clip(o.layers.focus ?? []) != clip(core) || clip(o.layers.focus ?? [], visible) != clip(core, visible) {
                     let u = Utf16Range(start: UInt32(w.location), end: UInt32(NSMaxRange(w)))
                     let windowed = s.coordinator.sync { doc in
                         doc.selectionState(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), within: u, conceal: false, focus: scope).focus?.map(\.nsRange)
@@ -1989,6 +2026,7 @@ final class UIScriptRunner {
         // the spell checker hold on to the last first responder for a moment).
         let started = Date()
         func poll() {
+            drainEventPool()
             let ours = d == nil && wc == nil && s == nil && c == nil && pc == nil && images == nil
             let all = ours && win == nil && tv == nil && web == nil
             if !all && Date().timeIntervalSince(started) < 10 { later(0.25, poll); return }
@@ -2004,6 +2042,18 @@ final class UIScriptRunner {
             // NSWindow (see `controlLeakProbe`); reported, not judged.
             self.record(["closed window freed": win == nil, "closed text view freed": tv == nil, "after": secs], ok: true)
             self.document = NSDocumentController.shared.documents.last as? MarkdownDocument
+            // UI_SCRIPT_LEAK_PAUSE=<seconds>: what outlived its document is logged with its address and
+            // the script waits, so that `leaks --traceTree=<address> <pid>` can say what holds it.
+            if !ours, let pause = ProcessInfo.processInfo.environment["UI_SCRIPT_LEAK_PAUSE"].flatMap(Double.init) {
+                var alive: [String: String] = ["pid": "\(getpid())"]
+                for (name, o) in [("session", s as AnyObject?), ("coordinator", c), ("images", images), ("document", d), ("controller", wc)] {
+                    if let o { alive[name] = "\(Unmanaged.passUnretained(o).toOpaque())" }
+                }
+                self.record(["leakPause": pause, "alive": alive], ok: true)
+                FileHandle.standardError.write("[ui-script] leak pause \(alive)\n".data(using: .utf8)!)
+                later(pause, done)
+                return
+            }
             done()
         }
         later(0.25, poll)
@@ -2100,6 +2150,12 @@ final class UIScriptRunner {
                 for s in v.subviews where !(s is TabStripView) && !s.isHidden && s.frame.height > 0 { walk(s) }
             }
             for bar in c.titlebarControls where !(bar is TabStripView) { walk(bar) }
+            // With the tabs in the row the title is hidden, and its document icon and versions menu with it.
+            if c.tabs.isShown {
+                for kind in [NSWindow.ButtonType.documentIconButton, .documentVersionsButton] {
+                    if let b = w.standardWindowButton(kind), !b.isHiddenOrHasHiddenAncestor { strays.append("\(Swift.type(of: b)) beside the tabs") }
+                }
+            }
             let accessories = w.titlebarAccessoryViewControllers.filter { !$0.isHidden }
             let others = accessories.filter { !($0.view is TabStripView) }.count
             check("title bar has no custom controls", strays.isEmpty && others == 0,
@@ -2116,6 +2172,12 @@ final class UIScriptRunner {
             if let marks = t["editedMarks"] as? [String: Bool] {
                 let wrong = marks.filter { (key, want) in Int(key).map { $0 < entries.count && entries[$0].edited != want } ?? true }
                 check("tab edited marks \(marks)", wrong.isEmpty, "\(entries.map(\.edited))")
+                // And what the strip draws (it is told, not asked, so it can lag behind the documents).
+                if c.tabs.isShown {
+                    let drawn = c.tabs.strip.entries
+                    let off = marks.filter { (key, want) in Int(key).map { $0 < drawn.count && drawn[$0].edited != want } ?? true }
+                    check("tab strip draws edited marks \(marks)", off.isEmpty, "\(drawn.map(\.edited))")
+                }
             }
             if let edited = t["edited"] as? [Bool] { check("tab edited marks", entries.map(\.edited) == edited, "\(entries.map(\.edited)) this window \(w.isDocumentEdited) document \(String(describing: document?.isDocumentEdited))") }
             if let h = t["stripHeightAtMost"] as? NSNumber {
@@ -2128,6 +2190,17 @@ final class UIScriptRunner {
                 let got = menuItemState(path)
                 var ok = got.found
                 var detail = "enabled \(got.enabled) state \(got.state == .on ? "on" : "off") title \(got.title)"
+                if let w = want as? [String: Any], w["absent"] as? Bool == true {
+                    // No such item at all (whatever its action).
+                    var menu = NSApp.mainMenu
+                    var item: NSMenuItem?
+                    for part in path.components(separatedBy: " > ") {
+                        item = menu?.items.first { $0.title == part }
+                        menu = item?.submenu
+                    }
+                    check("menu \(path) absent", item == nil, item.map { "found, action \($0.action.map { NSStringFromSelector($0) } ?? "none")" } ?? "")
+                    continue
+                }
                 if let w = want as? [String: Any] {
                     if let st = w["state"] as? String { ok = ok && (got.state == .on) == (st == "on") }
                     if let en = w["enabled"] as? Bool { ok = ok && got.enabled == en }

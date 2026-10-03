@@ -22,7 +22,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 STUB_SRC="$ROOT/scripts/macos/tests/stubs"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/release pipeline test.XXXXXX")"
+# (Normalised: TMPDIR usually ends in a slash, and release.sh names its paths as `pwd` does, so a
+# "T//release" here never matched the "T/release" it records.)
+WORK="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/release pipeline test.XXXXXX")" && pwd)"
 COPY="$WORK/markdown editor (copy)"
 STUBS="$WORK/stub bin"
 LOGS="$WORK/logs"
@@ -72,7 +74,9 @@ run_release() { # <name> [VAR=value...] [release.sh options...]
 show_tail() { tail -n "${2:-15}" "$LOGS/$1.log" | sed 's/^/        | /'; }
 
 echo "==> copying the working tree to $COPY"
-(cd "$ROOT" && git ls-files -z -co --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "$COPY"
+# (Files deleted in the working tree but not yet in a commit are still listed by git: left out.)
+(cd "$ROOT" && git ls-files -z -co --exclude-standard | while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done \
+  | tar --null -T - -cf -) | tar -xf - -C "$COPY"
 # The build products are cloned (copy-on-write, no space used) so that cargo's dependencies need not be
 # compiled again; the copy's own crates and the Swift package are rebuilt because their paths differ.
 if [ -d "$ROOT/target" ]; then cp -cR "$ROOT/target" "$COPY/target" 2>/dev/null || true; fi

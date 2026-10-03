@@ -224,14 +224,16 @@ final class InlineImageLayoutTests: XCTestCase {
         let text = "![alt](pic.png)\n\n" + filler
         let e = Editor(text: text)
         e.session.documentURL = { self.dir.appendingPathComponent("note.md") }
+        // Hold the loader back until the reader has scrolled below the picture. (Before Live mode
+        // and the selection, which start loading it: held back only after them, a fast load could
+        // land during the settling below, and the arrival this test watches never came.)
+        e.session.imageController.documentURL = { nil }
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 800, height: 300))
         scroll.documentView = e.tv
         e.tv.setFrameSize(NSSize(width: 800, height: 300))
         e.session.setViewMode(.live)
         let ns = text as NSString
         e.select(ns.range(of: "Line 20").location) // the reader's place: on screen after the scroll below
-        // Hold the loader back until the reader has scrolled below the picture.
-        e.session.imageController.documentURL = { nil }
         e.settle()
         e.tv.scrollRangeToVisible(NSRange(location: ns.range(of: "Line 20").location, length: 0))
         scroll.reflectScrolledClipView(scroll.contentView)

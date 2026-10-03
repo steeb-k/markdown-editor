@@ -328,7 +328,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     }
 
     /// True when no styling is owed or in flight.
-    public var isStyled: Bool { debt.isEmpty && !debtInFlight && coordinator.isIdle }
+    /// (A result that arrived after the last delivery is still owed: the queue turns idle the
+    /// moment it posts its last result, which `waitUntilStyled` could see between delivering and
+    /// asking, and so return with that edit unstyled; a full test run caught it about one time in six.)
+    public var isStyled: Bool { debt.isEmpty && !debtInFlight && coordinator.isIdle && !coordinator.hasUndelivered }
     public var owedStyling: [NSRange] { debt.ranges }
 
     /// Spins the run loop until styling has caught up (tests, and the launch screenshot).

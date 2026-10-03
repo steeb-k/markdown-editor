@@ -149,8 +149,42 @@ final class TitlebarTests: XCTestCase {
         wc.chromeController.send(.pointerMoved)
         pump(ChromeController.fadeDuration + 0.3)
         XCTAssertTrue(wc.chromeVisible)
+        XCTAssertEqual(bar.alphaValue, 1, accuracy: 0.01)
         XCTAssertTrue(wc.chromeController.windowButtons.allSatisfy { ($0 as? NSControl)?.isEnabled ?? false })
         doc.close()
+    }
+
+    /// A window on screen fades over a quarter of a second; the fade ends (faded, buttons off; and
+    /// back) whether or not AppKit's animation runs, which it does not while the display sleeps.
+    func testTheFadeEndsOnAWindowOnScreen() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.showWindow(nil)
+        let window = try XCTUnwrap(wc.window)
+        let bar = try XCTUnwrap(window.standardWindowButton(.closeButton)?.superview)
+        func waitFor(_ condition: () -> Bool) {
+            let deadline = Date(timeIntervalSinceNow: 3)
+            while !condition(), Date() < deadline { pump(0.02) }
+        }
+        let buttons = wc.chromeController.windowButtons
+        // (Whether it animates depends on the window being seen: occlusion, the display.)
+        wc.chromeController.send(.typingStarted)
+        waitFor { bar.alphaValue < 0.01 && !buttons.contains { ($0 as? NSControl)?.isEnabled ?? true } }
+        XCTAssertEqual(bar.alphaValue, 0, accuracy: 0.01)
+        XCTAssertEqual(wc.toolbar.alphaValue, 0, accuracy: 0.01)
+        XCTAssertTrue(wc.titlebarButtonsIgnoreClicksWhenHidden)
+        // Shown again: the buttons take clicks at once, before the fade-in has finished.
+        wc.chromeController.send(.pointerMoved)
+        XCTAssertTrue(buttons.allSatisfy { ($0 as? NSControl)?.isEnabled ?? false })
+        waitFor { bar.alphaValue > 0.99 }
+        XCTAssertEqual(bar.alphaValue, 1, accuracy: 0.01)
+        XCTAssertEqual(wc.toolbar.alphaValue, 1, accuracy: 0.01)
+        // A fade-out cut short by a fade-in never disables the buttons afterwards.
+        wc.chromeController.send(.typingStarted)
+        wc.chromeController.send(.pointerMoved)
+        pump(ChromeController.fadeDuration + 0.3)
+        XCTAssertTrue(buttons.allSatisfy { ($0 as? NSControl)?.isEnabled ?? false })
+        XCTAssertEqual(bar.alphaValue, 1, accuracy: 0.01)
     }
 
     func testTheChromeComesBackByItselfAfterAPause() throws {
@@ -170,6 +204,28 @@ final class TitlebarTests: XCTestCase {
         XCTAssertTrue(controller.state.isVisible)
         XCTAssertEqual(controller.pauseReappearances, 1)
         doc.close()
+    }
+
+    /// A zoom and an unzoom bring the window back to the frame it had. (It came back 40 points wider:
+    /// the formatting bar's wish to sit under the editor, stronger than the window's size, held the
+    /// window at the old centre while the panes were still laid out for the zoomed width.)
+    func testUnzoomRestoresTheFrameExactly() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.showWindow(nil)
+        let window = try XCTUnwrap(wc.window)
+        let screen = try XCTUnwrap(window.screen?.visibleFrame)
+        let frame = NSRect(x: screen.minX + 40, y: screen.minY + 40, width: min(900, screen.width - 200), height: min(700, screen.height - 100))
+        window.setFrame(frame, display: true)
+        pump(0.2)
+        window.zoom(nil)
+        pump(0.5)
+        guard window.frame.width > frame.width + 50 else { throw XCTSkip("the screen is too small to zoom wider") }
+        window.zoom(nil)
+        pump(0.5)
+        XCTAssertEqual(window.frame.width, frame.width, accuracy: 0.5)
+        XCTAssertEqual(window.frame.height, frame.height, accuracy: 0.5)
+        XCTAssertEqual(window.frame.minX, frame.minX, accuracy: 0.5)
     }
 
     func testTheDoubleClickActionFollowsTheSystemSetting() {
@@ -343,6 +399,19 @@ final class TabStripTests: XCTestCase {
         XCTAssertEqual(entries.map(\.edited), [false, false, false])
         docs[1].updateChangeCount(.changeDone)
         XCTAssertEqual(TabStripModel.entries(of: first).map(\.edited), [false, true, false])
+        // What every strip draws follows when the document tells its windows, which AppKit does at
+        // the end of the next event (`updateWindows`), not only for the window in front.
+        NSApp.updateWindows()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        for wc in controllers {
+            XCTAssertEqual(wc.tabs.strip.entries.map(\.edited), [false, true, false], "the strip of \(wc.window?.title ?? "")")
+        }
+        docs[1].updateChangeCount(.changeCleared)
+        NSApp.updateWindows()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        for wc in controllers { XCTAssertEqual(wc.tabs.strip.entries.map(\.edited), [false, false, false]) }
+        docs[1].updateChangeCount(.changeDone)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
         // The strip shows the tabs, the title is the strip's job, and the height of the bar does not grow.
         let selected = try XCTUnwrap(first.tabGroup?.selectedWindow)
         let wc = try XCTUnwrap(selected.windowController as? EditorWindowController)
@@ -361,6 +430,54 @@ final class TabStripTests: XCTestCase {
         XCTAssertTrue(first.tabGroup?.windows.first === target, "dragging a tab to the front moves it in the group")
     }
 
+    /// The crash of 2026-10-02 (17:55): putting AppKit's bar away from inside the tab group's
+    /// observation made AppKit fire the observation again, until the stack overflowed. Tabs are
+    /// added, merged, moved out to their own window and back, selected and closed with every strip
+    /// observing: no observation ever arrives inside another, and the native bar never shows.
+    func testTabChangesNeverReenterTheStripsObservations() throws {
+        _ = NSApplication.shared
+        var docs: [MarkdownDocument] = []
+        var controllers: [EditorWindowController] = []
+        for i in 0..<4 {
+            let doc = MarkdownDocument(settings: isolatedSettings())
+            try doc.read(from: Data("text \(i)\n".utf8), ofType: "net.daringfireball.markdown")
+            doc.makeWindowControllers()
+            let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+            wc.showWindow(nil)
+            docs.append(doc)
+            controllers.append(wc)
+        }
+        defer { docs.filter { !$0.windowControllers.isEmpty }.forEach { $0.close() } }
+        func pump() { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15)) }
+        func check(_ when: String) {
+            for wc in controllers {
+                XCTAssertEqual(wc.tabs.reentries, 0, "re-entered \(when)")
+                XCTAssertFalse(wc.tabs.nativeBarShowing, "native bar \(when)")
+            }
+        }
+        let windows = controllers.compactMap(\.window)
+        windows[0].addTabbedWindow(windows[1], ordered: .above)
+        pump()
+        guard windows[0].tabGroup?.windows.count == 2 else { throw XCTSkip("this environment does not form tab groups") }
+        check("after the second tab")
+        windows[1].addTabbedWindow(windows[2], ordered: .above)
+        pump(); check("after the third")
+        windows[3].mergeAllWindows(nil)
+        pump(); check("after merging")
+        XCTAssertEqual(windows[0].tabGroup?.windows.count, 4)
+        windows[2].moveTabToNewWindow(nil)
+        pump(); check("after moving a tab out")
+        XCTAssertEqual(windows[2].tabGroup?.windows.count ?? 1, 1)
+        windows[0].addTabbedWindow(windows[2], ordered: .below)
+        pump(); check("after bringing it back")
+        windows[0].tabGroup?.selectedWindow = windows[3]
+        windows[0].selectNextTab(nil)
+        pump(); check("after selecting")
+        docs[1].close()
+        pump(); check("after closing a tab")
+        XCTAssertEqual(windows[0].tabGroup?.windows.count, 3)
+    }
+
     func testTabViewsAreAccessibleAsTabsWithTheirTitles() {
         let strip = TabStripView(frame: NSRect(x: 0, y: 0, width: 500, height: 28))
         strip.setEntries([TabEntry(windowNumber: 1, title: "One", edited: false, selected: true),
@@ -374,6 +491,9 @@ final class TabStripTests: XCTestCase {
         strip.onSelect = { pressed.append($0) }
         XCTAssertTrue(strip.tabViews[1].accessibilityPerformPress())
         XCTAssertEqual(pressed, [2])
+        // A tab of a window in the background takes the first click (it does not only activate the window).
+        XCTAssertTrue(strip.acceptsFirstMouse(for: nil))
+        XCTAssertTrue(strip.tabViews.allSatisfy { $0.acceptsFirstMouse(for: nil) })
         // A faded strip is title bar: its tabs take no hover and no clicks.
         strip.isFaded = true
         strip.tabViews[0].updateHover(true)
@@ -522,39 +642,86 @@ final class FocusCentringTests: XCTestCase {
         XCTAssertEqual(try offsets(wc).line, mid, accuracy: 1, "nothing jumped")
     }
 
+    /// The slide is driven frame by frame on a clock the test holds: no display link, no wall
+    /// clock. (A display link sends no frames while the display sleeps, which is what made the
+    /// first version of this test fail in a session whose screen had gone dark; the harness's
+    /// `focus-centre.json` measures real frames, with the display held awake.)
     func testTheSlideIsAnimatedSmoothAndEndsInTheMiddle() throws {
         let (doc, wc) = try open()
         defer { doc.close() }
-        guard wc.window?.isVisible == true else { throw XCTSkip("no visible window here") }
+        let c = wc.centring
+        var clock: TimeInterval = 100
+        c.now = { clock }
+        c.deliversFrames = false
+        c.reduceMotion = { false }
+        c.editorShown = { true }
+        c.enterDuration = 0.3
         let tv = wc.textView
         tv.setSelectedRange(NSRange(location: location(of: 40), length: 0))
         tv.scrollRangeToVisible(tv.selectedRange())
         pump(0.1)
-        // Move the caret a few lines off the middle, then turn focus on.
+        // The caret's line is near the bottom edge (where scrolling it into view left it); focus on.
         let clip = wc.scrollView.contentView
-        var samples: [CGFloat] = []
-        let token = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { _ in samples.append(clip.bounds.minY) }
-        defer { NotificationCenter.default.removeObserver(token) }
-        wc.centring.reduceMotion = { false }
-        wc.centring.enterDuration = 0.3
         let start = clip.bounds.minY
         doc.session.setFocusEnabled(true)
-        let t0 = Date()
-        var steps = 0
-        while wc.centring.isSliding, steps < 200 { pump(0.01); steps += 1 }
-        let took = Date().timeIntervalSince(t0)
-        XCTAssertFalse(wc.centring.isSliding)
+        XCTAssertEqual(clip.bounds.minY, start, "the room appears without moving the text")
+        XCTAssertTrue(c.isSliding)
+        XCTAssertEqual(c.slides, 1)
+        XCTAssertEqual(c.jumps, 0, "a slide, not a jump")
+        let target = try XCTUnwrap(c.targetOrigin(for: tv.selectedRange()))
+        let travel = target - start
+        XCTAssertGreaterThan(abs(travel), 20, "the line starts well off the middle")
+        var samples: [CGFloat] = []
+        let frames = 30
+        for i in 1...frames {
+            clock = 100 + 0.3 * Double(i) / Double(frames)
+            c.tick()
+            samples.append(clip.bounds.minY)
+        }
+        clock = 100.31
+        c.tick()
+        XCTAssertFalse(c.isSliding, "over after its duration")
+        XCTAssertEqual(clip.bounds.minY, target, accuracy: 0.5)
         let o = try offsets(wc)
         XCTAssertEqual(o.line, o.middle, accuracy: 2)
-        let travel = clip.bounds.minY - start
-        if abs(travel) > 5 {
-            XCTAssertGreaterThan(wc.centring.slides, 0)
-            XCTAssertGreaterThan(samples.count, 3, "a slide, not a jump")
-            XCTAssertGreaterThan(took, 0.2)
-            XCTAssertLessThan(took, 0.6)
-            let deltas = zip(samples, samples.dropFirst()).map { $1 - $0 }
-            XCTAssertTrue(deltas.allSatisfy { travel > 0 ? $0 >= -0.01 : $0 <= 0.01 }, "one direction only")
-        }
+        // Ease in, ease out: slow at first, half way at half time, slow at the end; one way only.
+        func share(at i: Int) -> CGFloat { (samples[i - 1] - start) / travel }
+        XCTAssertLessThan(share(at: frames / 4), 0.25)
+        XCTAssertEqual(share(at: frames / 2), 0.5, accuracy: 0.02)
+        XCTAssertGreaterThan(share(at: frames * 3 / 4), 0.75)
+        let deltas = zip([start] + samples, samples).map { $1 - $0 }
+        XCTAssertTrue(deltas.allSatisfy { travel > 0 ? $0 >= -0.01 : $0 <= 0.01 }, "one direction only")
+        XCTAssertGreaterThan(Set(samples.map { Int($0) }).count, frames / 2, "many distinct frames")
+    }
+
+    /// With no frames at all (the display asleep, the window covered), a slide still ends where it
+    /// was going, on time: the deadline finishes it.
+    func testASlideEndsWithoutAnyFrames() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.deliversFrames = false
+        c.reduceMotion = { false }
+        c.editorShown = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 40), length: 0))
+        tv.scrollRangeToVisible(tv.selectedRange())
+        pump(0.1)
+        doc.session.setFocusEnabled(true)
+        XCTAssertTrue(c.isSliding)
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while c.isSliding, Date() < deadline { pump(0.02) }
+        XCTAssertFalse(c.isSliding)
+        let o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        // Focus off the same way: the slide that removes the room ends too, and the room goes.
+        tv.setSelectedRange(NSRange(location: location(of: 115), length: 0))
+        pump(0.05)
+        doc.session.setFocusEnabled(false)
+        let deadline2 = Date(timeIntervalSinceNow: 5)
+        while c.isSliding || c.holdsRoom, Date() < deadline2 { pump(0.02) }
+        XCTAssertFalse(c.holdsRoom)
+        XCTAssertEqual(wc.editorScrollView.focusInset, 0)
     }
 
     func testReduceMotionJumps() throws {
@@ -650,9 +817,104 @@ final class FocusCentringTests: XCTestCase {
         tv.setSelectedRange(NSRange(location: location(of: 56), length: 0))
         pump(0.1)
         XCTAssertEqual(clip.bounds.minY, before, accuracy: 0.5, "a click or a drag selection leaves the text where it is")
+        // The click's focus range (or Live mode's concealment) arrives later, out of the mouse event,
+        // when the analysis queue was busy: it does not slide the clicked line either.
         wc.centring.currentEventIsMouse = { false }
+        wc.centring.layoutChanged()
+        pump(0.1)
+        XCTAssertEqual(clip.bounds.minY, before, accuracy: 0.5, "a late layout change after a click leaves the text where it is")
+        XCTAssertTrue(wc.centring.caretPlacedByMouse)
         tv.setSelectedRange(NSRange(location: location(of: 57), length: 0))
         pump(0.1)
+        let o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+    }
+
+    /// The caret moves again before the checks of its last move have run (key repeat, fast typing):
+    /// those checks must not bring the line it left back to the middle. (They did: a jump back to
+    /// the first line after the caret had gone to the last, found by the test above.)
+    func testAnOlderMovesChecksNeverBringItsLineBack() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.reduceMotion = { true }
+        c.editorShown = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 60), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.3)
+        let clip = wc.scrollView.contentView
+        var lastFirst: CGFloat?
+        for _ in 0..<5 {
+            tv.setSelectedRange(NSRange(location: location(of: 10), length: 0))
+            pump(0.005)   // its jump, not its checks (the first is 30 ms later)
+            let first = clip.bounds.minY
+            lastFirst = first
+            var samples: [CGFloat] = []
+            let token = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { _ in samples.append(clip.bounds.minY) }
+            tv.setSelectedRange(NSRange(location: location(of: 110), length: 0))
+            pump(0.3)
+            NotificationCenter.default.removeObserver(token)
+            XCTAssertFalse(samples.dropFirst().contains { abs($0 - first) < 0.5 }, "went back to the line the caret left: \(samples)")
+            let o = try offsets(wc)
+            XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        }
+        _ = lastFirst
+    }
+
+    /// A resize (and leaving or entering full screen, which is one) keeps the line in the new middle,
+    /// with the room above and below resized to half the new height.
+    func testAResizeKeepsTheLineInTheNewMiddle() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.centring.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 70), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.2)
+        for size in [NSSize(width: 700, height: 900), NSSize(width: 1000, height: 420), NSSize(width: 800, height: 600)] {
+            wc.window?.setContentSize(size)
+            pump(0.2)
+            let o = try offsets(wc)
+            XCTAssertEqual(o.line, o.middle, accuracy: 2, "at \(size)")
+            let scroll = wc.editorScrollView
+            let visible = scroll.contentView.bounds.height - scroll.baseInsetTop - scroll.baseInsetBottom
+            XCTAssertEqual(scroll.focusInset, FocusCentringMath.extraInset(visibleHeight: visible), accuracy: 1)
+        }
+        doc.session.setFocusEnabled(false)
+        pump(0.1)
+        XCTAssertEqual(wc.editorScrollView.focusInset, 0, "no room left behind")
+    }
+
+    /// AppKit calls `scrollRangeToVisible` with the text on screen when the text view changes size.
+    /// That is not the caret moving: it does not end the user's own scroll, and a range away from
+    /// the caret is not centred.
+    func testAppKitsOwnScrollRequestsAreNotTheCaretMoving() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 30), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.2)
+        XCTAssertTrue(EditorTextView.touches(NSRange(location: 5, length: 0), NSRange(location: 0, length: 5)))
+        XCTAssertFalse(EditorTextView.touches(NSRange(location: 6, length: 2), NSRange(location: 0, length: 5)))
+        // The user scrolls far away; AppKit keeps what is now on screen in view.
+        wc.editorScrollView.onUserScroll?()
+        let clip = wc.scrollView.contentView
+        clip.scroll(to: NSPoint(x: 0, y: clip.bounds.minY + 2000))
+        wc.scrollView.reflectScrolledClipView(clip)
+        tv.scrollRangeToVisible(NSRange(location: location(of: 90), length: 300))
+        pump(0.2)
+        XCTAssertTrue(c.userScrolling, "still the user's scroll")
+        let caretTarget = try XCTUnwrap(c.targetOrigin(for: tv.selectedRange()))
+        XCTAssertGreaterThan(abs(clip.bounds.minY - caretTarget), 100, "the caret's line was not brought back for it")
+        // Text around the caret (the caret's own line among it): the caret's line, not the range's start.
+        tv.setSelectedRange(NSRange(location: location(of: 60), length: 0))
+        pump(0.2)
+        tv.scrollRangeToVisible(NSRange(location: location(of: 55), length: location(of: 66) - location(of: 55)))
+        pump(0.2)
         let o = try offsets(wc)
         XCTAssertEqual(o.line, o.middle, accuracy: 2)
     }
@@ -660,23 +922,39 @@ final class FocusCentringTests: XCTestCase {
     func testRequestsInOneTurnMakeOneSlide() throws {
         let (doc, wc) = try open()
         defer { doc.close() }
-        guard wc.window?.isVisible == true else { throw XCTSkip("no visible window here") }
+        let c = wc.centring
+        var clock: TimeInterval = 100
+        c.now = { clock }
+        c.deliversFrames = false
+        c.editorShown = { true }
+        // Centred at line 50 at once, then slides from there.
+        c.reduceMotion = { true }
         let tv = wc.textView
         tv.setSelectedRange(NSRange(location: location(of: 50), length: 0))
         doc.session.setFocusEnabled(true)
-        pump(0.5)
-        wc.centring.reduceMotion = { false }
-        let slides = wc.centring.slides, jumps = wc.centring.jumps
+        pump(0.1)
+        XCTAssertFalse(c.isSliding)
+        var o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        c.reduceMotion = { false }
+        let slides = c.slides, jumps = c.jumps
         let range = NSRange(location: location(of: 55), length: 0)
         // The selection and `scrollRangeToVisible` (the text view's own call, or the find bar's) in one turn.
         tv.setSelectedRange(range)
         tv.scrollRangeToVisible(range)
         tv.scrollRangeToVisible(range)
-        pump(0.5)
-        XCTAssertEqual(wc.centring.slides - slides, 1, "one slide, not one per caller")
-        XCTAssertEqual(wc.centring.jumps, jumps, "and no jump before it")
-        let o = try offsets(wc)
+        XCTAssertEqual(c.slides, slides, "nothing moves until the turn is over")
+        pump(0.05)
+        XCTAssertEqual(c.slides - slides, 1, "one slide, not one per caller")
+        XCTAssertEqual(c.jumps, jumps, "and no jump before it")
+        XCTAssertTrue(c.isSliding)
+        clock += c.followDuration + 0.01
+        c.tick()
+        XCTAssertFalse(c.isSliding)
+        o = try offsets(wc)
         XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        pump(0.3)
+        XCTAssertEqual(c.slides - slides, 1, "and nothing after it (the checks found the line in place)")
     }
 
     func testTheSettingTurnsCentringOffAndOnWhileFocusIsOn() throws {
@@ -705,5 +983,109 @@ final class FocusCentringTests: XCTestCase {
         doc.session.setFocusEnabled(true)
         XCTAssertEqual(wc.scrollView.editorBaseInsetTop, base, "scroll sync reads the title bar's inset, not the room focus mode makes")
         XCTAssertGreaterThan(wc.scrollView.contentInsets.top, base)
+    }
+
+    /// Split with focus mode: the preview's top is the text at the top of the editor, not the
+    /// centred line in its middle (the sync once read the whole inset, room for centring included).
+    /// (The way back uses the same inset; `focus-centre.json` checks both ways in Split.)
+    func testScrollSyncPairsTheTopsWithFocusModeOn() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.centring.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 60), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.1)
+        let o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        let pc = wc.previewController
+        let top = try XCTUnwrap(pc.editorReadingPosition())
+        // The source line at the top of what the reader sees, worked out here from the layout.
+        let scroll = wc.editorScrollView
+        let y = scroll.contentView.bounds.minY + scroll.baseInsetTop - tv.textContainerOrigin.y
+        let lm = doc.session.layoutManager
+        let glyph = lm.glyphIndex(for: NSPoint(x: 10, y: y), in: try XCTUnwrap(tv.textContainer))
+        let char = lm.characterIndexForGlyph(at: glyph)
+        let line = Double((Self.text as NSString).substring(to: char).components(separatedBy: "\n").count - 1)
+        XCTAssertEqual(top, line, accuracy: 1.5, "the preview's top follows the editor's top")
+        let caretLine = Double((Self.text as NSString).substring(to: location(of: 60)).components(separatedBy: "\n").count - 1)
+        XCTAssertLessThan(top, caretLine - 5, "not the centred line")
+    }
+}
+
+// MARK: Insert Table through its sheet, as a person does it
+
+/// The harness once hit "must begin a group before registering undo" answering this sheet. That was
+/// the harness's own doing: its `asEvent` turns the undo manager's grouping by event off for good.
+/// The app never does, so a person's click on Insert is grouped like any other edit. Here the sheet's
+/// button is clicked from a later turn of the run loop (no event being handled at all, the harder case).
+@MainActor
+final class InsertTableSheetTests: XCTestCase {
+    private func pump(_ s: TimeInterval = 0.05) { RunLoop.current.run(until: Date(timeIntervalSinceNow: s)) }
+
+    func testInsertingATableThroughTheSheetIsOneUndoStep() throws {
+        _ = NSApplication.shared
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        try doc.read(from: Data("Before.\n".utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        wc.showWindow(nil)
+        defer { doc.close() }
+        let window = try XCTUnwrap(wc.window)
+        let um = try XCTUnwrap(doc.undoManager)
+        XCTAssertTrue(um.groupsByEvent, "the app leaves grouping by event on")
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        tv.insertText("x", replacementRange: tv.selectedRange())   // typing first: coalescing is in play
+        pump()
+        tv.insertTable(NSMenuItem())
+        let deadline = Date(timeIntervalSinceNow: 3)
+        while window.attachedSheet == nil, Date() < deadline { pump() }
+        let sheet = try XCTUnwrap(window.attachedSheet, "the Insert Table sheet")
+        func buttons(in view: NSView) -> [NSButton] { view.subviews.flatMap { ($0 as? NSButton).map { [$0] } ?? [] + buttons(in: $0) } }
+        let insert = try XCTUnwrap(buttons(in: try XCTUnwrap(sheet.contentView)).first { $0.title == "Insert" })
+        insert.performClick(nil)
+        let deadline2 = Date(timeIntervalSinceNow: 3)
+        while window.attachedSheet != nil || !tv.string.contains("|"), Date() < deadline2 { pump() }
+        XCTAssertTrue(tv.string.contains("| --- |") || tv.string.contains("|---"), tv.string)
+        pump()   // the group the undo manager opened by itself closes at the end of the run-loop turn
+        XCTAssertEqual(um.groupingLevel, 0, "no group left open")
+        XCTAssertEqual(um.undoActionName, "Insert Table")
+        um.undo()
+        XCTAssertEqual(tv.string, "Before.\nx", "one undo removes the whole table and nothing else")
+        um.undo()
+        XCTAssertEqual(tv.string, "Before.\n")
+    }
+}
+
+// MARK: a new document is not edited
+
+/// A new document carried the dot of an edited one on its tab from the start: setting its page
+/// margins went through NSDocument's print-info setter, which registers "Change Print Settings"
+/// for undo and so marks the document edited. Closing such an untouched window asked to save it.
+@MainActor
+final class NewDocumentStateTests: XCTestCase {
+    func testANewDocumentIsNotEditedAndHasNothingToUndo() throws {
+        _ = NSApplication.shared
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        doc.makeWindowControllers()
+        defer { doc.close() }
+        XCTAssertFalse(doc.isDocumentEdited)
+        XCTAssertFalse(doc.hasUnautosavedChanges)
+        XCTAssertFalse(doc.undoManager?.canUndo ?? false, "nothing to undo: \(doc.undoManager?.undoActionName ?? "")")
+        XCTAssertEqual(doc.printInfo.leftMargin, MarkdownDocument.defaultPageMargin, "the margins are still set")
+        XCTAssertEqual(doc.printInfo.topMargin, MarkdownDocument.defaultPageMargin)
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        XCTAssertEqual(TabStripModel.entries(of: try XCTUnwrap(wc.window)).map(\.edited), [false])
+        // The same for one read from a file, and the first keystroke still marks it edited.
+        let other = MarkdownDocument(settings: isolatedSettings())
+        try other.read(from: Data("text\n".utf8), ofType: "net.daringfireball.markdown")
+        other.makeWindowControllers()
+        defer { other.close() }
+        XCTAssertFalse(other.isDocumentEdited)
+        let tv = try XCTUnwrap((other.windowControllers.first as? EditorWindowController)?.textView)
+        tv.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertTrue(other.isDocumentEdited)
     }
 }

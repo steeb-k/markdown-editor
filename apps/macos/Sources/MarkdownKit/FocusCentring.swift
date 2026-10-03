@@ -117,6 +117,8 @@ final class FocusCentring {
     private var wanted: NSRange?
     /// The request came from the mouse: it is not centred.
     private var fromMouse = false
+    /// The caret was last put where it is by the mouse (until the next keystroke or caret move).
+    private(set) var caretPlacedByMouse = false
     /// Lines are laid out lazily, so where the caret's line is can change once the text above it is
     /// laid out (it was an estimate): a request is checked again a few times after it has settled.
     private var verifications = 0
@@ -164,6 +166,7 @@ final class FocusCentring {
         guard let scroll = scrollView else { return }
         isActive = true
         userScrolling = false
+        caretPlacedByMouse = false
         holdsRoom = true
         let origin = scroll.contentView.bounds.minY
         applyInsets()
@@ -210,8 +213,12 @@ final class FocusCentring {
     /// ends a user scroll's hold), or something asked for `range` to be shown.
     func request(_ range: NSRange? = nil, user: Bool = true) {
         guard isActive else { return }
-        if user { userScrolling = false }
-        if currentEventIsMouse() { fromMouse = true }
+        let mouse = currentEventIsMouse()
+        if user {
+            userScrolling = false
+            caretPlacedByMouse = mouse
+        }
+        if mouse { fromMouse = true }
         wanted = range ?? wanted ?? caretRange()
         verifications = Self.verificationsPerRequest
         guard !requestPending else { return }
@@ -221,9 +228,12 @@ final class FocusCentring {
         }
     }
 
-    /// The text re-laid out (concealment changed, a picture arrived): keep the middle, unless the user is scrolling.
+    /// The text re-laid out (concealment changed, a picture arrived): keep the middle, unless the user
+    /// is scrolling or put the caret where it is with the mouse. (The focus range and Live mode's
+    /// concealment for a click arrive after the click when the analysis queue is busy, out of any
+    /// mouse event: they must not slide the clicked line away.)
     func layoutChanged() {
-        guard isActive, !userScrolling else { return }
+        guard isActive, !userScrolling, !caretPlacedByMouse else { return }
         request(nil, user: false)
     }
 
@@ -235,10 +245,15 @@ final class FocusCentring {
         fromMouse = false
         guard isActive, !userScrolling, let range else { return }
         // A drag selection or a click is the user's: the line stays where it was clicked.
+        // A newer request makes the checks of the older ones moot (they would bring back a line
+        // the caret has left: during key repeat, a slide back and forth).
+        requestGeneration += 1
         if mouse { verifications = 0; return }
         centre(on: range, duration: reduceMotion() || !editorShown() ? 0 : followDuration)
         verifySoon(range)
     }
+
+    private var requestGeneration = 0
 
     /// Once the slide (or jump) is over and the text has been laid out and drawn, is the line still in the middle?
     private func verifySoon(_ range: NSRange) {
@@ -246,8 +261,13 @@ final class FocusCentring {
         verifications -= 1
         let delay = (slide.map { max(0, $0.start + $0.duration - now()) } ?? 0) + 0.03
         verifyTimers += 1
+        let generation = requestGeneration
         let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.verifyTimers -= 1; self?.verify(range) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.verifyTimers -= 1
+                if generation == self.requestGeneration { self.verify(range) }
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
     }
@@ -297,14 +317,17 @@ final class FocusCentring {
             guard let m = extraLineMid() else { return nil }
             mid = m
         } else if location >= length {
-            lm.ensureLayout(forCharacterRange: NSRange(location: length - 1, length: 1))
+            // From the start: with non-contiguous layout the lines above are estimates until laid
+            // out, and the middle of an estimate is not the middle of the line (the restore of the
+            // editor's top does the same). Once laid out, this costs nothing more.
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: length))
             if let m = extraLineMid() {
                 mid = m
             } else {
                 mid = lm.lineFragmentUsedRect(forGlyphAt: max(0, lm.numberOfGlyphs - 1), effectiveRange: nil).midY
             }
         } else {
-            lm.ensureLayout(forCharacterRange: NSRange(location: location, length: 1))
+            lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: location + 1))
             let glyph = lm.glyphIndexForCharacter(at: location)
             mid = lm.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil).midY
         }
@@ -350,31 +373,51 @@ final class FocusCentring {
 
     // MARK: sliding
 
+    /// Frames are delivered (tests switch them off to show that a slide still ends without any).
+    var deliversFrames = true
+
     private func start(_ new: Slide) {
         cancelSlide()
         slide = new
-        if let clip = scrollView?.contentView, clip.window?.isVisible == true {
-            let l = clip.displayLink(target: self, selector: #selector(displayTick(_:)))
-            l.add(to: .main, forMode: .common)
-            link = l
-        } else {
-            let t = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tick() }
+        if deliversFrames {
+            if let clip = scrollView?.contentView, let window = clip.window, window.isVisible, window.occlusionState.contains(.visible) {
+                let l = clip.displayLink(target: self, selector: #selector(displayTick(_:)))
+                l.add(to: .main, forMode: .common)
+                link = l
+            } else {
+                let t = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.tick() }
+                }
+                RunLoop.main.add(t, forMode: .common)
+                timer = t
             }
-            RunLoop.main.add(t, forMode: .common)
-            timer = t
         }
+        // A display link sends no frames while the display sleeps (and may send none for a window
+        // that is covered): the slide still ends where it was going, on time, so the line and the
+        // room it needs are never left half way.
+        let deadline = Timer(timeInterval: new.duration + 0.05, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.deadlineTimer = nil
+                self?.tick()
+            }
+        }
+        RunLoop.main.add(deadline, forMode: .common)
+        deadlineTimer = deadline
     }
+
+    private var deadlineTimer: Timer?
 
     private func cancelSlide() {
         link?.invalidate(); link = nil
         timer?.invalidate(); timer = nil
+        deadlineTimer?.invalidate(); deadlineTimer = nil
         slide = nil
     }
 
     @objc private func displayTick(_ link: CADisplayLink) { tick() }
 
-    private func tick() {
+    /// One frame of the slide at the time `now()` says (the display link's, the timer's, or a test's).
+    func tick() {
         guard let s = slide else { return }
         let t0 = CFAbsoluteTimeGetCurrent()
         let progress = (now() - s.start) / s.duration

@@ -30,12 +30,27 @@ public final class EditorTextView: NSTextView {
     /// asks it to centre that instead (one slide, not a jump and a slide).
     weak var centring: FocusCentring?
 
+    ///
+    /// Only for the selection, though (the caret, a found match, a revealed element). AppKit itself
+    /// calls this with whatever is on screen when the text view changes size (the layout manager
+    /// keeps that text in view while the window resizes or concealment changes line heights): that
+    /// is not a line to centre, and taking it for the user's caret move centred the wrong text.
     public override func scrollRangeToVisible(_ range: NSRange) {
-        if let centring, centring.isActive {
+        let selection = selectedRange()
+        if let centring, centring.isActive, range == selection {
             centring.request(range)
+        } else if let centring, centring.isActive, Self.touches(range, selection) {
+            // Text around the caret (the visible text AppKit keeps in view): the caret's line stays
+            // in the middle; a scroll of the user's own is not undone for it.
+            centring.request(selection, user: false)
         } else {
             super.scrollRangeToVisible(range)
         }
+    }
+
+    /// The two ranges overlap or meet (a caret at either end of a range touches it).
+    static func touches(_ a: NSRange, _ b: NSRange) -> Bool {
+        a.location <= NSMaxRange(b) && b.location <= NSMaxRange(a)
     }
 
     public override var undoManager: UndoManager? { documentUndoManager ?? super.undoManager }

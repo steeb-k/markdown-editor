@@ -10,8 +10,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
+UI_BUILD="${UI_BUILD:-$ROOT/build}"
+export UI_BUILD
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
-  "$ROOT/scripts/macos/bundle.sh" --release --ui-script >"$ROOT/build/ui-script-build.log" 2>&1
+  mkdir -p "$UI_BUILD"
+  "$ROOT/scripts/macos/bundle.sh" --release --ui-script --out "$UI_BUILD" >"$UI_BUILD/ui-script-build.log" 2>&1
 fi
 for mode in source live; do
   for config in off focus-flat focus syntax focus+syntax all; do

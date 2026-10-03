@@ -207,7 +207,14 @@ extension MarkdownDocument {
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
+        // Set without NSDocument's setter's side effects: it registers "Change Print Settings" for
+        // undo and so marks the document edited, which made every new document "Edited" from its
+        // first moment (an Undo item before any typing, a dot on its tab, a question on closing it).
+        undoManager?.disableUndoRegistration()
         printInfo = info
+        undoManager?.enableUndoRegistration()
+        if hasUndoManager { undoManager?.removeAllActions() }
+        updateChangeCount(.changeCleared)
     }
 
     /// The standalone HTML of the document as it is now, from the core (never from the file's

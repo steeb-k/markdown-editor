@@ -47,6 +47,7 @@ final class ChromeController {
     deinit {
         observers.forEach(NotificationCenter.default.removeObserver)
         reappearTimer?.invalidate()
+        settleTimer?.invalidate()
     }
 
     func send(_ event: ChromeState.Event) {
@@ -95,6 +96,10 @@ final class ChromeController {
     /// click where they were does not close or zoom the window.
     var windowButtonsAreHidden: Bool { windowButtons.allSatisfy { !(($0 as? NSControl)?.isEnabled ?? false) } }
 
+    /// How long a fade takes (0: at once; tests use it).
+    var fadeDuration: TimeInterval = ChromeController.fadeDuration
+    private var settleTimer: Timer?
+
     private func animate(visible: Bool) {
         generation += 1
         let token = generation
@@ -103,17 +108,34 @@ final class ChromeController {
         let buttons = windowButtons
         if visible { for v in buttons { (v as? NSControl)?.isEnabled = true } }
         onFaded?(!visible)
+        if !visible { NSCursor.setHiddenUntilMouseMoves(true) }
+        // The end state, whether or not the animation ran: invisible buttons must not take clicks
+        // (the toolbar refuses them in hitTest); the title bar around them stays hit-testable.
+        let settle = { [weak self] in
+            guard let self, token == generation else { return }
+            settleTimer?.invalidate()
+            settleTimer = nil
+            toolbar?.alphaValue = alpha
+            for v in views { v.alphaValue = alpha }
+            if !visible, !state.isVisible { for v in buttons { (v as? NSControl)?.isEnabled = false } }
+        }
+        settleTimer?.invalidate()
+        settleTimer = nil
+        // Nothing to animate for a window nobody can see (ordered out, covered, the display asleep).
+        guard fadeDuration > 0, let window, window.isVisible, window.occlusionState.contains(.visible) else {
+            settle()
+            return
+        }
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Self.fadeDuration
+            ctx.duration = fadeDuration
             toolbar?.animator().alphaValue = alpha
             for v in views { v.animator().alphaValue = alpha }
-        }, completionHandler: { [weak self] in
-            // Invisible buttons must not take clicks (the toolbar refuses them in hitTest); the
-            // title bar around them stays hit-testable.
-            guard let self, token == generation, !visible, !state.isVisible else { return }
-            for v in buttons { (v as? NSControl)?.isEnabled = false }
-        })
-        if !visible { NSCursor.setHiddenUntilMouseMoves(true) }
+        }, completionHandler: settle)
+        // AppKit's view animations are paced by the display: with the display asleep they neither
+        // progress nor complete. The fade still ends, on time.
+        let timer = Timer(timeInterval: fadeDuration + 0.1, repeats: false) { _ in settle() }
+        RunLoop.main.add(timer, forMode: .common)
+        settleTimer = timer
     }
 }
 

@@ -109,6 +109,10 @@ final class TabStripView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// A click on a tab of a window in the background selects it at once, as a title bar's
+    /// own controls do (and a drag on the strip moves the window).
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     var tabWidth: CGFloat { TabStripModel.tabWidth(count: entries.count, available: bounds.width) }
 
     func setEntries(_ new: [TabEntry]) {
@@ -212,6 +216,8 @@ final class TabView: NSView {
 
     override var isFlipped: Bool { true }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     private var closeRect: NSRect { NSRect(x: 6, y: (bounds.height - 16) / 2, width: 16, height: 16) }
 
     func updateHover(_ on: Bool) {
@@ -253,7 +259,9 @@ final class TabView: NSView {
             NSBezierPath(ovalIn: NSRect(x: marker.midX - 3, y: marker.midY - 3, width: 6, height: 6)).fill()
         }
         let style = NSMutableParagraphStyle()
-        style.lineBreakMode = .byTruncatingTail
+        // In the middle, as Finder shortens file names: narrow tabs of "Untitled 2" to "Untitled 12"
+        // all read "Untitle…" cut at the end.
+        style.lineBreakMode = .byTruncatingMiddle
         style.alignment = .center
         let font = NSFont.systemFont(ofSize: 12, weight: entry.selected ? .medium : .regular)
         let attributes: [NSAttributedString.Key: Any] = [
@@ -350,6 +358,14 @@ final class TabStripController: NSObject {
         windowObservations.append(window.observe(\.tabGroup, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.groupChanged() }
         })
+        // A tab's edited dot and title: its window's, which every strip of the group draws. They
+        // change with no event to follow (a save finishing off the main thread, a script's edit).
+        windowObservations.append(window.observe(\.isDocumentEdited, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshGroup() }
+        })
+        windowObservations.append(window.observe(\.title, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.refreshGroup() }
+        })
         groupChanged()
     }
 
@@ -376,13 +392,27 @@ final class TabStripController: NSObject {
     /// controller like ours) each time a window joins a group. The user asked for the tabs to live
     /// in the title bar, so it is hidden whenever it shows: `toggleTabBar(_:)` does not stay
     /// (AppKit puts the bar back at once), hiding the accessory does.
+    ///
+    /// Never re-entered: an earlier version toggled the bar from inside the tab group's observation,
+    /// AppKit's answer fired the observation again, and the recursion overflowed the stack (a crash
+    /// on 2026-10-02). Hiding an accessory does not touch the group, but a call that arrives while one
+    /// is in progress is counted and dropped all the same.
     private func putNativeBarAway() {
         guard let window else { return }
+        guard hidingDepth == 0 else { reentries += 1; return }
+        hidingDepth += 1
+        defer { hidingDepth -= 1 }
         for vc in window.titlebarAccessoryViewControllers where vc !== accessory && !vc.isHidden && Self.isNativeTabBar(vc.view) {
             vc.isHidden = true
             nativeBarHidden += 1
         }
     }
+
+    private var hidingDepth = 0
+    private var refreshDepth = 0
+    /// Instrumentation: calls that arrived while the strip was already hiding the bar or refreshing
+    /// (an observation fired by our own change). Zero in every test.
+    private(set) var reentries = 0
 
     /// AppKit's own tab bar is on screen under the title bar.
     var nativeBarShowing: Bool {
@@ -397,6 +427,9 @@ final class TabStripController: NSObject {
 
     func refresh() {
         guard let window else { return }
+        guard refreshDepth == 0 else { reentries += 1; return }
+        refreshDepth += 1
+        defer { refreshDepth -= 1 }
         putNativeBarAway()
         let entries = TabStripModel.entries(of: window)
         let shown = entries.count >= 2
@@ -406,12 +439,25 @@ final class TabStripController: NSObject {
             strip.isHidden = !shown
             window.titleVisibility = shown ? .hidden : .visible
         }
+        // The title's document icon and its versions menu stay behind when the title is hidden
+        // (AppKit put them at the far right of the row, beside the strip): they go with the title.
+        for kind in [NSWindow.ButtonType.documentIconButton, .documentVersionsButton] {
+            if let b = window.standardWindowButton(kind), b.isHidden != shown { b.isHidden = shown }
+        }
         // The strip fills the row between the window buttons and the trailing edge.
         let width = max(0, window.frame.width - Self.leadingClearance - Self.trailingClearance)
         if abs(strip.frame.width - width) >= 0.5 {
             strip.setFrameSize(NSSize(width: width, height: strip.frame.height))
         }
         strip.setEntries(entries)
+    }
+
+    /// Every strip of the group (each window has its own; only the selected one is seen).
+    func refreshGroup() {
+        guard let window else { return }
+        for w in window.tabGroup?.windows ?? [window] {
+            if w === window { refresh() } else { (w.windowController as? EditorWindowController)?.tabs?.refresh() }
+        }
     }
 
     private func tabWindow(_ number: Int) -> NSWindow? {

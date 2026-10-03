@@ -273,5 +273,123 @@
  {
   "snapshot": "08-chrome-back",
   "bitmap": true
+ },
+ {
+  "log": "--- AppKit's own tab items: the Window menu is standard, nothing offers AppKit's tab bar"
+ },
+ {
+  "dumpMenu": "Window"
+ },
+ {
+  "dumpMenu": "View"
+ },
+ {
+  "assert": {
+   "menu": {
+    "Window > Show Previous Tab": {},
+    "Window > Show Next Tab": {},
+    "Window > Move Tab to New Window": {
+     "enabled": true
+    },
+    "Window > Merge All Windows": {},
+    "Window > Show All Tabs": {},
+    "View > Show Tab Bar": {
+     "absent": true
+    },
+    "Window > Show Tab Bar": {
+     "absent": true
+    },
+    "View > Hide Tab Bar": {
+     "absent": true
+    },
+    "Window > Hide Tab Bar": {
+     "absent": true
+    }
+   }
+  }
+ },
+ {
+  "log": "--- a tab out to its own window and back, and full screen: the native bar never shows"
+ },
+ {
+  "action": "moveTabToNewWindow:",
+  "edits": false
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 1,
+    "stripShown": false,
+    "nativeBarVisible": false
+   },
+   "titlebarHeightSameAs": "single-tab",
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "09-moved-to-its-own-window",
+  "bitmap": true
+ },
+ {
+  "action": "mergeAllWindows:",
+  "edits": false
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "stripShown": true,
+    "nativeBarVisible": false,
+    "documents": 3
+   },
+   "titlebarHeightSameAs": "single-tab",
+   "titlebarClean": true
+  }
+ },
+ {
+  "fullscreen": true
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "stripShown": true,
+    "nativeBarVisible": false
+   }
+  }
+ },
+ {
+  "dumpTitlebar": true
+ },
+ {
+  "snapshot": "10-full-screen-with-tabs",
+  "bitmap": true
+ },
+ {
+  "fullscreen": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "stripShown": true,
+    "nativeBarVisible": false
+   },
+   "titlebarHeightSameAs": "single-tab",
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "11-after-full-screen",
+  "bitmap": true
  }
 ]

@@ -81,7 +81,12 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         titlebarFade.translatesAutoresizingMaskIntoConstraints = false
         fadeHeight = titlebarFade.heightAnchor.constraint(equalToConstant: 52)
         let toolbarCentre = toolbar.centerXAnchor.constraint(equalTo: scroll.centerXAnchor)
-        toolbarCentre.priority = .defaultHigh
+        // Below the window's own size (`windowSizeStayPut`, 500). The panes are laid out by frames,
+        // a pass after the window's constraints are solved: while a window shrinks in one step (an
+        // unzoom, leaving full screen) the editor's centre is still where the larger window had it,
+        // and a stronger wish to sit under it, plus the bar's 8-point margins, made AppKit stop the
+        // window wider than asked (900 came back as 940 after a zoom).
+        toolbarCentre.priority = NSLayoutConstraint.Priority(NSLayoutConstraint.Priority.windowSizeStayPut.rawValue - 1)
         NSLayoutConstraint.activate([
             web.leadingAnchor.constraint(equalTo: previewPane.leadingAnchor),
             web.trailingAnchor.constraint(equalTo: previewPane.trailingAnchor),
@@ -121,7 +126,12 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         splitView.onRatioChange = { [weak self] ratio in self?.session.settings.splitRatio = Double(ratio) }
         // When the editor's pane changes width (the divider, the window), its top character stays.
         splitView.captureTop = { [weak self] in self?.scrollView.isHidden == false ? self?.keptTopAnchor() : nil }
-        splitView.restoreTop = { [weak self] anchor in self?.restoreEditorTop(anchor) }
+        // With focus mode centring the caret's line, the line it keeps in the middle is what stays
+        // put, not the top character (the two disagree as soon as the text rewraps).
+        splitView.restoreTop = { [weak self] anchor in
+            guard let self else { return }
+            if centring.isActive && !centring.userScrolling { centring.update() } else { restoreEditorTop(anchor) }
+        }
         previewController.observeEditor(scroll)
         installTitlebar(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
@@ -439,9 +449,17 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     static let toolbarBottomMargin: CGFloat = 16
 
-    public func windowDidResize(_ notification: Notification) { updateFadeGeometry(); centring.update() }
-    public func windowDidEnterFullScreen(_ notification: Notification) { updateFadeGeometry(); centring.update() }
-    public func windowDidExitFullScreen(_ notification: Notification) { updateFadeGeometry(); centring.update() }
+    public func windowDidResize(_ notification: Notification) { geometryChanged() }
+    public func windowDidEnterFullScreen(_ notification: Notification) { geometryChanged() }
+    public func windowDidExitFullScreen(_ notification: Notification) { geometryChanged() }
+
+    /// The window's size changed: the insets follow, and the centred line is placed in the new
+    /// middle once the panes have their new frames (they are laid out a pass after the window).
+    private func geometryChanged() {
+        updateFadeGeometry()
+        if centring.isActive { window?.contentView?.layoutSubtreeIfNeeded() }
+        centring.update()
+    }
 
     public override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
@@ -455,6 +473,20 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
               let newWindow = doc.windowControllers.last?.window, let window else { return }
         window.addTabbedWindow(newWindow, ordered: .above)
         newWindow.makeKeyAndOrderFront(nil)
+    }
+
+    /// The document's edited state or name changed: every strip in the tab group shows it at once
+    /// (a save finishes off the main thread, with no event after it to refresh them). The strips
+    /// also watch their window's edited flag and title; this covers a document that tells its
+    /// controller without changing the window.
+    public override func setDocumentEdited(_ dirtyFlag: Bool) {
+        super.setDocumentEdited(dirtyFlag)
+        tabs?.refreshGroup()
+    }
+
+    public override func synchronizeWindowTitleWithDocumentName() {
+        super.synchronizeWindowTitleWithDocumentName()
+        tabs?.refreshGroup()
     }
 
     public func windowWillClose(_ notification: Notification) {
