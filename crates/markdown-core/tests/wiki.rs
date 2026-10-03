@@ -118,6 +118,17 @@ fn tag_rules() {
 }
 
 #[test]
+fn a_combining_mark_belongs_to_the_tag_and_to_the_letter_before_a_hash() {
+    // Decomposed text (e + U+0301): the whole word is the tag, as with the precomposed letter.
+    assert_eq!(tags("#cafe\u{301} x"), ["#cafe\u{301}"]);
+    assert_eq!(tags("#e\u{301}te\u{301}"), ["#e\u{301}te\u{301}"]);
+    // After a decomposed letter a `#` is inside a word, as after `\u{e9}`.
+    assert!(tags("cafe\u{301}#b").is_empty());
+    assert!(tags("caf\u{e9}#b").is_empty());
+    check_everything(&Document::new("#cafe\u{301} [[e\u{301}|x\u{301}]]", OffsetEncoding::Utf16)).unwrap();
+}
+
+#[test]
 fn spans_nest_and_markup_is_owned_by_the_wikilink() {
     for t in [
         "[[a]]",
@@ -314,6 +325,24 @@ fn a_target_that_looks_like_a_url_scheme_stays_a_relative_link() {
 }
 
 #[test]
+fn a_target_is_a_file_name_in_the_href() {
+    // `%` and `?` are characters of the name, not an escape or a query.
+    assert_eq!(html("[[50%]]"), "<p><a href=\"50%25.md\">50%</a></p>\n");
+    assert_eq!(html("[[a%20b]]"), "<p><a href=\"a%2520b.md\">a%20b</a></p>\n");
+    assert_eq!(html("[[Why?|w]]"), "<p><a href=\"Why%3F.md\">w</a></p>\n");
+    assert_eq!(html("[[Why?#Now]]"), "<p><a href=\"Why%3F.md#now\">Why?</a></p>\n");
+    // A leading slash neither leaves for another host nor for the root of the file system.
+    assert_eq!(html("[[//evil.example/x]]"), "<p><a href=\".//evil.example/x.md\">//evil.example/x</a></p>\n");
+    assert_eq!(html("[[/abs]]"), "<p><a href=\"./abs.md\">/abs</a></p>\n");
+    // Quotes, `..`, unicode: escaped, kept relative.
+    assert_eq!(html("[[a\"b]]"), "<p><a href=\"a%22b.md\">a\"b</a></p>\n");
+    assert_eq!(html("[[../up]]"), "<p><a href=\"../up.md\">../up</a></p>\n");
+    for t in ["[[50%]]", "[[//evil.example/x]]", "[[Why?]]"] {
+        assert_eq!(html_sanitized(t), html(t), "{t}");
+    }
+}
+
+#[test]
 fn tags_render_as_muted_spans() {
     assert_eq!(html("a #tag b"), "<p>a <span class=\"tag\">#tag</span> b</p>\n");
     assert_eq!(html("#a/b."), "<p><span class=\"tag\">#a/b</span>.</p>\n");
@@ -353,7 +382,7 @@ fn the_preview_stylesheet_styles_tags() {
 fn soup(max: usize) -> impl Strategy<Value = String> {
     const TOKENS: &[&str] = &[
         "[[", "]]", "[[a]]", "[[a|b]]", "[[a#h]]", "[[#h]]", "|", "#", "#tag", "#a/b", " ", "\n", "\n\n", "# ", "## ", "> ", "- ", "`", "```\n", "*", "**",
-        "[", "](", ")", "![", "<b>", "</b>", "http://a.b/#c ", "\\", "&#x41;", "word", "\u{e9}", "\u{1F389}", "---\n", "| a | b |\n|---|---|\n", "[r]: /u\n",
+        "[", "](", ")", "![", "<b>", "</b>", "http://a.b/#c ", "\\", "&#x41;", "word", "\u{e9}", "\u{301}", "\u{1F389}", "%?", "---\n", "| a | b |\n|---|---|\n", "[r]: /u\n",
     ];
     prop::collection::vec(prop::sample::select(TOKENS), 0..max).prop_map(|v| v.concat())
 }
@@ -398,7 +427,8 @@ proptest! {
         let doc = Document::new(&text, OffsetEncoding::Utf16);
         for sanitize in [false, true] {
             let h = doc.render_html(&RenderOptions { sanitize, highlight: false, ..Default::default() });
-            prop_assert!(h.matches("<a ").count() >= h.matches("</a>").count());
+            // The sanitizer writes a link with an unsafe destination as a bare `<a>`.
+            prop_assert!(h.matches("<a ").count() + h.matches("<a>").count() >= h.matches("</a>").count(), "{}", h);
         }
     }
 }

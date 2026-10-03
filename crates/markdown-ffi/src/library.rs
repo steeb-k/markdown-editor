@@ -346,6 +346,11 @@ impl Library {
     pub fn rename_targets(&self, old_title: String, new_title: String) -> Vec<LibraryEdit> {
         self.with(|l| l.rename_targets(&old_title, &new_title).into_iter().map(Into::into).collect())
     }
+
+    /// The link edits for moving `old` to `new`; ask before `rename`.
+    pub fn rename_edits(&self, old: NoteRef, new: NoteRef) -> Vec<LibraryEdit> {
+        self.with(|l| l.rename_edits(&old.into(), &new.into()).into_iter().map(Into::into).collect())
+    }
 }
 
 impl Default for Library {
@@ -380,5 +385,36 @@ mod tests {
         assert_eq!(lib.upsert(NoteRef { root: "zz".into(), path: "x.md".into() }, String::new(), 0), Err(LibraryError::UnknownRoot));
         let t = expand_template("a{{cursor}}\u{1F389}{{x}}".into(), [("x".to_owned(), "!".to_owned())].into());
         assert_eq!((t.text.as_str(), t.cursor), ("a\u{1F389}!", 1));
+    }
+
+    /// Every range the FFI hands out is in UTF-16 units, past emoji (two units) and CJK (one).
+    #[test]
+    fn ranges_are_utf16_past_emoji_and_cjk() {
+        fn slice(s: &str, r: &Utf16Range) -> String {
+            let u: Vec<u16> = s.encode_utf16().collect();
+            String::from_utf16(&u[r.start as usize..r.end as usize]).unwrap()
+        }
+        let lib = Library::new();
+        lib.add_root("a".into(), "/a".into());
+        let n = |p: &str| NoteRef { root: "a".into(), path: p.into() };
+        let src = "# \u{65E5}\u{672C} \u{1F389}\n\n\u{1F389}\u{1F389} \u{691C}\u{7D22} [[\u{30CE}\u{30FC}\u{30C8}|\u{1F389}]] needle";
+        let target = "# \u{1F389} \u{30CE}\u{30FC}\u{30C8}";
+        lib.upsert(n("src.md"), src.into(), 1).unwrap();
+        lib.upsert(n("\u{30CE}\u{30FC}\u{30C8}.md"), target.into(), 2).unwrap();
+        let meta = lib.note(n("src.md")).unwrap();
+        assert_eq!(slice(src, &meta.headings[0].range), "# \u{65E5}\u{672C} \u{1F389}");
+        assert_eq!(slice(src, &meta.links[0].range), "[[\u{30CE}\u{30FC}\u{30C8}|\u{1F389}]]");
+        let b = lib.backlinks(n("\u{30CE}\u{30FC}\u{30C8}.md"));
+        assert_eq!(slice(src, &b[0].range), "[[\u{30CE}\u{30FC}\u{30C8}|\u{1F389}]]");
+        let hit = &lib.search("needle".into(), 5)[0];
+        assert_eq!(slice(&hit.snippet, &hit.highlights[0]), "needle");
+        let hit = &lib.search("\u{7D22}".into(), 5)[0];
+        assert_eq!(slice(&hit.snippet, &hit.highlights[0]), "\u{7D22}");
+        let m = &lib.quick_open("\u{30FC}\u{30C8}".into(), 5)[0];
+        assert_eq!(slice(&m.title, &m.title_ranges[0]), "\u{30FC}\u{30C8}");
+        let e = lib.rename_edits(n("\u{30CE}\u{30FC}\u{30C8}.md"), n("\u{1F389}.md"));
+        assert_eq!((slice(src, &e[0].range).as_str(), e[0].replacement.as_str()), ("\u{30CE}\u{30FC}\u{30C8}", "\u{1F389}"));
+        let e = lib.rename_targets("\u{30CE}\u{30FC}\u{30C8}".into(), "x".into());
+        assert_eq!(slice(src, &e[0].range), "\u{30CE}\u{30FC}\u{30C8}");
     }
 }

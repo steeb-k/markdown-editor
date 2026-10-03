@@ -11,7 +11,8 @@
 //!   an empty label does not make a link.
 //! * A tag is a `#` that is not preceded by a letter, digit, `#`, `&` (an entity such as
 //!   `&#x41;`) or an odd run of backslashes, followed by a letter, then letters, digits, `_`,
-//!   `-` and `/` (`#a/b` nests); trailing `-` and `/` are not part of it. A tag never starts
+//!   `-` and `/` (`#a/b` nests); trailing `-` and `/` are not part of it. A combining mark counts
+//!   as part of the letter before it. A tag never starts
 //!   inside a wikilink or one of the `exclude` ranges (bare URLs), and callers do not ask for
 //!   tags on a heading line.
 
@@ -167,7 +168,7 @@ fn escaped(b: &[u8], i: usize) -> bool {
 fn tag_end(text: &str, i: usize, to: usize) -> Option<usize> {
     let b = text.as_bytes();
     if let Some(p) = text[..i].chars().next_back()
-        && (p.is_alphanumeric() || matches!(p, '#' | '&'))
+        && (p.is_alphanumeric() || is_combining(p) || matches!(p, '#' | '&'))
     {
         return None;
     }
@@ -182,11 +183,17 @@ fn tag_end(text: &str, i: usize, to: usize) -> Option<usize> {
     // `keep` is the end after the last letter, digit or `_`: a trailing `-` or `/` is left out.
     let mut keep = i + 1 + first.len_utf8();
     for (k, c) in chars {
-        if c.is_alphanumeric() || c == '_' {
+        if c.is_alphanumeric() || c == '_' || is_combining(c) {
             keep = i + 1 + k + c.len_utf8();
         } else if !matches!(c, '-' | '/') {
             break;
         }
     }
     Some(keep)
+}
+
+/// Combining marks, which belong to the letter before them: `#cafe\u{301}` is one tag, `e\u{301}#b`
+/// none (a decomposed `\u{e9}`, as file names on macOS and some pasted text have it).
+pub(crate) fn is_combining(c: char) -> bool {
+    matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
 }

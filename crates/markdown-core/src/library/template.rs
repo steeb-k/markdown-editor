@@ -38,8 +38,9 @@ pub fn expand_template(text: &str, vars: &HashMap<String, String>, encoding: Off
                 rest = &after[close + 2..];
             }
             _ => {
-                out.push_str("{{");
-                rest = after;
+                // One brace is text; the next may open a placeholder (`{{{date}}}`).
+                out.push('{');
+                rest = &rest[open + 1..];
             }
         }
     }

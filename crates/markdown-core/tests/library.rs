@@ -149,6 +149,27 @@ fn tags_in_front_matter_in_each_form_and_inline() {
 }
 
 #[test]
+fn odd_front_matter_tags() {
+    let mut lib = Library::new(ENC);
+    lib.add_root("a", "/a");
+    let front = |lib: &mut Library, yaml: &str| {
+        lib.upsert(&r("a", "n.md"), &format!("---\n{yaml}\n---\nbody"), 0).unwrap();
+        lib.note(&r("a", "n.md")).unwrap().front_tags
+    };
+    assert_eq!(front(&mut lib, "tags: \"a, b\""), ["a", "b"]);
+    assert_eq!(front(&mut lib, "tags: [a,\n  b, \"c d\"]"), ["a", "b", "c d"]);
+    assert_eq!(front(&mut lib, "tags:\n  - one\n  - 'two'\n  -three"), ["one", "two"]);
+    assert_eq!(front(&mut lib, "tag: single"), ["single"]);
+    assert_eq!(front(&mut lib, "Tags: X"), ["x"]);
+    assert_eq!(front(&mut lib, "tags: [\"#a\", '#B/c']"), ["a", "b/c"]);
+    // Empty, YAML's nulls, a comment, a block scalar: no tags (not a tag called `~` or `>`).
+    for yaml in ["tags:", "tags: []", "tags: ~", "tags: null", "tags: Null", "tags: #a", "tags: >\n  a b", "tags: |\n  a", "tags: [~]"] {
+        assert!(front(&mut lib, yaml).is_empty(), "{yaml:?}: {:?}", front(&mut lib, yaml));
+    }
+    assert!(lib.tags().is_empty());
+}
+
+#[test]
 fn inline_tag_rules() {
     let lib = fixture_library();
     // Not after a letter, a digit, `&` or a backslash; a letter must follow; trailing `-` is not
@@ -505,6 +526,78 @@ fn rename_targets_edit_every_link_that_names_the_old_title() {
     assert_eq!(lib.resolve_wikilink(&r("main", "Inbox.md"), "Alpha"), Some(r("work", "Projects/Alpha.md")));
 }
 
+/// Applies `edits` (any order) to the fixture texts and upserts the notes they touch.
+fn apply(lib: &mut Library, edits: &[Edit]) {
+    let mut by_note: BTreeMap<NoteRef, Vec<&Edit>> = BTreeMap::new();
+    for e in edits {
+        by_note.entry(e.note.clone()).or_default().push(e);
+    }
+    for (note, mut es) in by_note {
+        let mut text = text_of(&note);
+        es.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+        for e in es {
+            let (s, t) = (utf16_to_byte(&text, e.range.start), utf16_to_byte(&text, e.range.end));
+            text.replace_range(s..t, &e.replacement);
+        }
+        lib.upsert(&note, &text, 7000).unwrap();
+    }
+}
+
+#[test]
+fn rename_edits_follow_the_links_that_resolve_to_the_note() {
+    let mut lib = fixture_library();
+    let (old, new) = (r("main", "Projects/Alpha.md"), r("main", "Projects/Alpha Prime.md"));
+    let edits = lib.rename_edits(&old, &new);
+    let view: Vec<(String, String, String)> = edits
+        .iter()
+        .map(|e| (format!("{}:{}", e.note.root, e.note.path), slice_units(&text_of(&e.note), ENC, e.range), e.replacement.clone()))
+        .collect();
+    let v = |n: &str, from: &str, to: &str| (n.to_owned(), from.to_owned(), to.to_owned());
+    assert_eq!(
+        view,
+        [
+            v("main:Archive/Old Plan.md", "Alpha", "Alpha Prime"),
+            v("main:Home.md", "Projects/Alpha", "Projects/Alpha Prime"), // the folder as written
+            v("main:Inbox.md", "Alpha", "Alpha Prime"),
+            v("main:Inbox.md", "Alpha", "Alpha Prime"),
+            v("main:Journal/2026-10-01.md", "Alpha", "Alpha Prime"),
+            v("main:Projects/Alpha.md", "Alpha", "Alpha Prime"), // its own [[Alpha#Goals]]
+            v("main:Projects/Beta.md", "Alpha", "Alpha Prime"),
+            v("main:Projects/Notes.md", "Alpha", "Alpha Prime"),
+            v("main:Snippets.md", "Alpha", "Alpha Prime"),
+        ]
+    );
+    // work's Standup links to work's Alpha and is left alone (rename_targets would change it).
+    assert!(lib.rename_targets("Alpha", "Alpha Prime").iter().any(|e| e.note.root == "work"));
+    let before: Vec<NoteRef> = lib.backlinks(&old).into_iter().map(|b| b.from).collect();
+    apply(&mut lib, &edits);
+    lib.rename(&old, &new).unwrap();
+    let after: Vec<NoteRef> = lib.backlinks(&new).into_iter().map(|b| b.from).collect();
+    assert_eq!(after, before, "every link still reaches it, Home's path-style one too");
+    assert_eq!(lib.resolve_wikilink(&r("work", "Standup.md"), "Alpha"), Some(r("work", "Projects/Alpha.md")));
+    assert_eq!(meta(&lib, "main", "Projects/Alpha Prime.md").links.iter().find(|l| l.heading.as_deref() == Some("Goals")).unwrap().resolved, Some(new.clone()), "the self link");
+
+    // Duplicate stems: only the links to this `Notes` change, not those to the others.
+    let lib = fixture_library();
+    let edits = lib.rename_edits(&r("main", "Projects/Notes.md"), &r("main", "Projects/Plans.md"));
+    let notes: Vec<&str> = edits.iter().map(|e| e.note.path.as_str()).collect();
+    assert_eq!(notes, ["Projects/Alpha.md", "Projects/Beta.md"]);
+    assert!(edits.iter().all(|e| e.replacement == "Plans"));
+    assert!(lib.rename_targets("Notes", "Plans").len() > edits.len());
+    // A move to another folder: path-style links name the new path, the stem links stay.
+    let edits = lib.rename_edits(&r("main", "Projects/Alpha.md"), &r("main", "Archive/Alpha.md"));
+    assert_eq!(edits.len(), 1);
+    assert_eq!((edits[0].note.path.as_str(), edits[0].replacement.as_str()), ("Home.md", "Archive/Alpha"));
+    // A link by the H1 title stays, the title does not change; nothing for a note not there.
+    let mut lib = fixture_library();
+    lib.upsert(&r("main", "T.md"), "[[Alpha Project]] and [[alpha|x]]", 0).unwrap();
+    let edits = lib.rename_edits(&r("main", "Projects/Alpha.md"), &r("main", "Projects/A2.md"));
+    let in_t: Vec<&Edit> = edits.iter().filter(|e| e.note.path == "T.md").collect();
+    assert_eq!(in_t.len(), 1);
+    assert_eq!((in_t[0].range, in_t[0].replacement.as_str()), (TextRange::new(24, 29), "A2"));
+    assert!(lib.rename_edits(&r("main", "nope.md"), &r("main", "x.md")).is_empty());
+}
+
 fn utf16_to_byte(text: &str, unit: u32) -> usize {
     let mut u = 0;
     for (i, c) in text.char_indices() {
@@ -544,6 +637,13 @@ fn templates_fill_placeholders_and_place_the_caret() {
     let t = expand_template("a {{ DATE }} {{ {{b}} {{", &vars, ENC);
     assert_eq!(t.text, "a 2026-10-03 {{ {{b}} {{");
     assert_eq!(t.cursor, t.text.encode_utf16().count() as u32);
+    // A brace before a placeholder is text (`{{{date}}}` in a template for a templating language).
+    assert_eq!(expand_template("{{{date}}} {{{{time}}}}", &vars, ENC).text, "{2026-10-03} {{09:30}}");
+    // Values are not expanded again; a placeholder in code is still one (templates are text).
+    let v: std::collections::HashMap<String, String> = [("x".to_owned(), "{{date}}".to_owned())].into();
+    assert_eq!(expand_template("{{x}} `{{x}}`", &v, ENC).text, "{{date}} `{{date}}`");
+    let c = expand_template("{{cursor}}a{{cursor}}b", &v, ENC);
+    assert_eq!((c.text.as_str(), c.cursor), ("ab", 0));
     assert_eq!(expand_template("", &vars, ENC), Template { text: String::new(), cursor: 0 });
     // The Meeting template as shipped.
     let t = expand_template(&text_of(&r("main", "Templates/Meeting.md")), &vars, ENC);
@@ -608,6 +708,73 @@ fn incremental_updates_patch_the_graph() {
     assert_eq!(lib.upsert(&r("work", "x.md"), "x", 0), Err(LibraryError::UnknownRoot));
 }
 
+#[test]
+fn a_link_ending_in_a_slash_never_holds_on_to_a_removed_note() {
+    // `[[/]]` and `[[x/]]` used to resolve by path to a note with an empty stem (`/`, `x/`), under
+    // a name the graph did not index the link by: removing that note left the link pointing at
+    // a freed slot, and the next question about it panicked.
+    for (path, link) in [("/", "[[/]]"), ("x/", "[[x/]]")] {
+        let mut lib = Library::new(ENC);
+        lib.add_root("r", "/");
+        lib.upsert(&r("r", path), "", 0).unwrap();
+        lib.upsert(&r("r", "from.md"), link, 0).unwrap();
+        lib.rename(&r("r", path), &r("r", "a.md")).unwrap();
+        assert_eq!(meta(&lib, "r", "from.md").links[0].resolved, None, "{link}");
+        assert!(lib.backlinks(&r("r", "a.md")).is_empty());
+        lib.remove(&r("r", "a.md"));
+        lib.upsert(&r("r", "b.md"), "x", 0).unwrap();
+        assert_eq!(meta(&lib, "r", "from.md").links[0].resolved, None, "{link}");
+    }
+}
+
+#[test]
+fn a_library_behind_a_mutex_serves_several_threads() {
+    use std::sync::{Arc, Mutex};
+    let shared = Arc::new(Mutex::new((fixture_library(), BTreeMap::<NoteRef, (String, i64)>::new())));
+    {
+        let mut g = shared.lock().unwrap();
+        let notes: Vec<(NoteRef, String)> = fixture_notes();
+        for (i, (n, t)) in notes.into_iter().enumerate() {
+            g.1.insert(n, (t, 1000 + i as i64));
+        }
+    }
+    let threads: Vec<_> = (0..6u64)
+        .map(|k| {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                let mut x = k + 1;
+                for step in 0..200i64 {
+                    x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    let mut g = shared.lock().unwrap();
+                    let (lib, model) = &mut *g;
+                    let note = r(if x % 3 == 0 { "work" } else { "main" }, &format!("t{}/n{}.md", (x >> 8) % 3, (x >> 16) % 5));
+                    match (x >> 24) % 4 {
+                        0 => {
+                            lib.remove(&note);
+                            model.remove(&note);
+                        }
+                        1 => {
+                            let _ = lib.search("alpha n1", 10);
+                            let _ = lib.backlinks(&r("main", "Projects/Alpha.md"));
+                            let _ = lib.quick_open("n1", 5);
+                        }
+                        _ => {
+                            let text = format!("# N{step}\n[[Alpha]] [[n{}]] #t{k}", (x >> 32) % 5);
+                            lib.upsert(&note, &text, step).unwrap();
+                            model.insert(note, (text, step));
+                        }
+                    }
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    let g = shared.lock().unwrap();
+    assert_eq!(snapshot(&g.0), snapshot(&rebuilt(&g.1, &["main", "work"], true)));
+}
+
 // ----- incremental equals rebuilt -----------------------------------------------------------------
 
 /// Everything the public API says, as one comparable string.
@@ -650,7 +817,8 @@ enum Op {
     Rename(usize, usize),
 }
 
-const PATHS: [&str; 8] = ["a.md", "b.md", "x/a.md", "x/c.md", "x/y/b.md", "x/y/z/Sub.md", "c.txt", "d.md"];
+// `x/` and `/` have an empty stem; `[[x/]]` and `[[/]]` must not resolve to them through it.
+const PATHS: [&str; 10] = ["a.md", "b.md", "x/a.md", "x/c.md", "x/y/b.md", "x/y/z/Sub.md", "c.txt", "d.md", "x/", "/"];
 const ROOTS: [&str; 2] = ["r1", "r2"];
 
 fn note_of(i: usize) -> NoteRef {
@@ -659,7 +827,7 @@ fn note_of(i: usize) -> NoteRef {
 
 fn note_text() -> impl Strategy<Value = String> {
     const TOKENS: &[&str] = &[
-        "[[a]] ", "[[b|x]] ", "[[sub/c]] ", "[[x/a]] ", "[[#h]] ", "[[A#h]] ", "[[Title]] ", "[[zeta]] ", "#t1 ", "#t/u ", "# Title\n",
+        "[[a]] ", "[[b|x]] ", "[[x/]] ", "[[/]] ", "[[y/b]] ", "[[sub/c]] ", "[[x/a]] ", "[[#h]] ", "[[A#h]] ", "[[Title]] ", "[[zeta]] ", "#t1 ", "#t/u ", "# Title\n",
         "# a\n", "## h\n", "word ", "zeta ", "alpha ", "beta ", "\n", "\n\n", "---\ntags: [x, t1]\n---\n", "`[[a]]` ", "[l](u) ", "\u{e9}t\u{e9} ",
         "\u{65E5}\u{672C} ", "#", "[[", "]]", "| ",
     ];
@@ -668,9 +836,9 @@ fn note_text() -> impl Strategy<Value = String> {
 
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
-        4 => (0usize..16, note_text()).prop_map(|(i, t)| Op::Upsert(i, t)),
-        2 => (0usize..16).prop_map(Op::Remove),
-        2 => (0usize..16, 0usize..16).prop_map(|(a, b)| Op::Rename(a, b)),
+        4 => (0usize..20, note_text()).prop_map(|(i, t)| Op::Upsert(i, t)),
+        2 => (0usize..20).prop_map(Op::Remove),
+        2 => (0usize..20, 0usize..20).prop_map(|(a, b)| Op::Rename(a, b)),
     ]
 }
 
@@ -717,6 +885,58 @@ proptest! {
         let live = snapshot(&lib);
         prop_assert_eq!(&live, &snapshot(&rebuilt(&model, &ROOTS, true)));
         prop_assert_eq!(&live, &snapshot(&rebuilt(&model, &ROOTS, false)));
+    }
+}
+
+fn any_text() -> impl Strategy<Value = String> {
+    const T: &[&str] = &[
+        "[[", "]]", "|", "#", "#a", "a", "/", ".", " ", "\n", "\r\n", "---\n", "tags: ", "- ", "[", "]", "\u{301}", "\u{1F389}", "\u{65E5}", "`",
+        "\\", "&", "{{", "}}", "cursor", "\t", "> ", "# ", "|---|\n", "<b>", "\u{130}", "\u{df}", "\0",
+    ];
+    prop_oneof![prop::collection::vec(prop::sample::select(T), 0..40).prop_map(|v| v.concat()), any::<String>()]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(
+        std::env::var("PROPTEST_CASES").ok().and_then(|s| s.parse().ok()).map_or(300, |n: u32| n / 2 + 1)
+    ))]
+
+    /// Odd paths, odd text, odd queries: no question or change ever panics. (A panic in the
+    /// middle of a change would leave the index half-patched behind the FFI's lock.)
+    #[test]
+    fn nothing_panics_on_any_input(
+        notes in prop::collection::vec((prop::sample::select(vec!["", ".md", "/", "a", "A.MD", "x//a.md", "/a.md", "x/", "..", "\u{65E5}/\u{130}.md", "\u{1F389}.txt"]), any_text()), 1..8),
+        q in any_text(), q2 in any_text(),
+        ops in prop::collection::vec((0usize..8, 0usize..8, 0u8..3), 0..8),
+    ) {
+        for enc in [OffsetEncoding::Utf8, OffsetEncoding::Utf16, OffsetEncoding::Utf32] {
+            let mut lib = Library::new(enc);
+            lib.add_root("r", "/");
+            lib.add_root("s", "/");
+            let refs: Vec<NoteRef> = notes.iter().enumerate().map(|(i, (p, _))| r(["r", "s"][i % 2], p)).collect();
+            for (n, (_, t)) in refs.iter().zip(&notes) {
+                lib.upsert(n, t, 0).unwrap();
+            }
+            for &(a, b, k) in &ops {
+                let (a, b) = (&refs[a % refs.len()], &refs[b % refs.len()]);
+                match k {
+                    0 => { let _ = lib.rename(a, b); }
+                    1 => { lib.remove(a); }
+                    _ => { let _ = lib.upsert(a, &q2, 1); }
+                }
+            }
+            let _ = (lib.search(&q, 10), lib.quick_open(&q, 10), lib.tags(), lib.rename_targets(&q, &q2));
+            let _ = lib.notes(&Filter { root: None, folder: Some(q2.clone()), tags: vec![q.clone()], text: Some(q.clone()) }, Sort::NameAscending);
+            for n in &refs {
+                let _ = (lib.backlinks(n), lib.note(n), lib.resolve_wikilink(n, &q), lib.rename_edits(n, &refs[0]));
+            }
+            let _ = expand_template(&q, &[(q2.clone(), q.clone())].into(), enc);
+            let doc = Document::new(&q, enc);
+            for o in 0..=(q.len() as u32).min(64) {
+                let _ = doc.wikilink_at(o);
+            }
+        }
+        let _ = wiki::find_in(&q, 0, q.len(), &[], true);
     }
 }
 
@@ -776,6 +996,16 @@ fn five_thousand_notes_fifty_megabytes() {
     let rebuild = t.elapsed().as_secs_f64() * 1e3;
     println!("rebuild: {rebuild:.0} ms");
     assert_eq!(lib.len(), n);
+    // On one core (a small Linux machine): the same notes upserted one by one, each patching the
+    // graph as it comes. Not asserted.
+    let mut one = Library::new(OffsetEncoding::Utf16);
+    one.add_root("main", "/notes");
+    let t = std::time::Instant::now();
+    for i in &items {
+        one.upsert(&i.note, &i.text, i.modified).unwrap();
+    }
+    println!("rebuild on one thread, one upsert at a time: {:.0} ms", t.elapsed().as_secs_f64() * 1e3);
+    drop(one);
 
     let mut times = Vec::new();
     for k in 0..30 {

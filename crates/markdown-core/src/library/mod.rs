@@ -677,8 +677,12 @@ impl Library {
             return self.by_ref.get(from).copied();
         }
         let mut candidates: Vec<u32> = self.names.get(key).cloned().unwrap_or_default();
-        if let Some(slash) = key.rfind('/') {
-            // `folder/Note`: by the last part, the rest must end the path.
+        if let Some(slash) = key.rfind('/')
+            && slash + 1 < key.len()
+        {
+            // `folder/Note`: by the last part, the rest must end the path. Only names
+            // `link_names_of` registers count: a link that `refresh_referrers` cannot find would
+            // keep pointing at a note that is gone.
             for &s in self.names.get(&key[slash + 1..]).into_iter().flatten() {
                 let Some(n) = self.notes[s as usize].as_ref() else { continue };
                 let path = without_extension(&n.r.path).to_lowercase();
@@ -942,6 +946,48 @@ impl Library {
         for n in notes {
             for l in n.links.iter().filter(|l| l.key == old) {
                 out.push(Edit { note: n.r.clone(), range: self.range(n, l.target_start, l.target_end), replacement: new_title.to_owned() });
+            }
+        }
+        out
+    }
+
+    /// The edits that keep the links to `old` pointing at it once the shell moves its file to
+    /// `new`; asked before [`Library::rename`]. Only links that resolve to `old` now and name it
+    /// by its file stem change: `[[Stem]]` becomes `[[New Stem]]`, `[[folder/Stem]]` keeps its
+    /// folder while the note stays in its folder and names the new path otherwise; a label and
+    /// a heading stay. A link naming the note's H1 title stays (the title does not change), and
+    /// unlike [`Library::rename_targets`] a link to another note of the same name is left alone.
+    /// Sorted by note, then position.
+    pub fn rename_edits(&self, old: &NoteRef, new: &NoteRef) -> Vec<Edit> {
+        let Some(&slot) = self.by_ref.get(old) else { return Vec::new() };
+        let note = self.slot(slot);
+        let stem = note.stem.to_lowercase();
+        let new_stem = stem_of(&new.path);
+        let same_folder = folder_of(&old.path) == folder_of(&new.path);
+        let mut from: Vec<u32> = self.incoming.get(&slot).map(|s| s.iter().copied().collect()).unwrap_or_default();
+        from.push(slot); // its own links to itself
+        from.sort_by_key(|&s| (self.root_rank(&self.slot(s).r.root), self.slot(s).r.path.clone()));
+        from.dedup();
+        let mut out = Vec::new();
+        for s in from {
+            let n = self.slot(s);
+            for (l, _) in n.links.iter().zip(&n.resolved).filter(|(_, r)| **r == Some(slot)) {
+                let replacement = match l.key.rfind('/') {
+                    None if l.key == stem => new_stem.to_owned(),
+                    Some(at) if l.key[at + 1..] == stem => {
+                        if same_folder {
+                            // The folder as written, the new stem.
+                            let written = l.target.rfind('/').map_or("", |i| &l.target[..=i]);
+                            format!("{written}{new_stem}")
+                        } else {
+                            without_extension(&new.path).to_owned()
+                        }
+                    }
+                    _ => continue,
+                };
+                if replacement != l.target {
+                    out.push(Edit { note: n.r.clone(), range: self.range(n, l.target_start, l.target_end), replacement });
+                }
             }
         }
         out

@@ -834,7 +834,15 @@ impl<'a, 'o> Renderer<'a, 'o> {
         let target = &src[w.target.0..w.target.1];
         let mut href = String::new();
         if !target.is_empty() {
-            href.push_str(target);
+            // The target is a file name, not a URL: a `%` or `?` in it is a character of the
+            // name (`50%.md`), not an escape or the start of a query.
+            for c in target.chars() {
+                match c {
+                    '%' => href.push_str("%25"),
+                    '?' => href.push_str("%3F"),
+                    c => href.push(c),
+                }
+            }
             // A name that already has a note extension is not given another.
             let lower = target.to_ascii_lowercase();
             if !["md", "markdown", "mdown", "txt"].iter().any(|e| lower.ends_with(&format!(".{e}"))) {
@@ -845,10 +853,13 @@ impl<'a, 'o> Renderer<'a, 'o> {
             href.push('#');
             href.push_str(&slug(&src[h.0..h.1]));
         }
-        // `Note: Title.md` must not read as a URL with the scheme `Note`.
+        // `Note: Title.md` must not read as a URL with the scheme `Note`, nor `//host/x` as one
+        // on another host, nor `/x` as the root of the file system: the link stays relative.
         let first = href.split('/').next().unwrap_or("");
         if first.contains(':') {
             href.insert_str(0, "./");
+        } else if href.starts_with('/') {
+            href.insert(0, '.');
         }
         self.write("<a href=\"");
         self.href(&href);

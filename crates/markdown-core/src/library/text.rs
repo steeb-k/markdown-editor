@@ -3,6 +3,9 @@
 
 use unicode_segmentation::UnicodeSegmentation;
 
+// Combining marks stay with the letter before them (`e` + U+0301), in words as in tags.
+use crate::wiki::is_combining;
+
 /// Longest term kept in the index, in bytes; longer runs (base64, hashes) are noise.
 const MAX_TERM_BYTES: usize = 64;
 
@@ -10,11 +13,6 @@ const MAX_TERM_BYTES: usize = 64;
 /// a term of its own, so a prefix search finds them anywhere in a run.
 fn is_ideographic(c: char) -> bool {
     matches!(c as u32, 0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2FFFF)
-}
-
-/// Combining marks stay with the letter before them (`e` + U+0301).
-fn is_combining(c: char) -> bool {
-    matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
 }
 
 fn is_word_char(c: char) -> bool {
@@ -96,7 +94,8 @@ pub(crate) fn front_matter_tags(block: &str) -> Vec<String> {
     let push = |item: &str, out: &mut Vec<String>| {
         let item = item.trim().trim_matches(['"', '\'']);
         let t = normalize_tag(item);
-        if !t.is_empty() {
+        // YAML's nulls are no tag.
+        if !t.is_empty() && t != "~" && t != "null" {
             out.push(t);
         }
     };
@@ -119,6 +118,9 @@ pub(crate) fn front_matter_tags(block: &str) -> Vec<String> {
                 }
                 i += 1;
             }
+        } else if rest.starts_with(['>', '|']) {
+            // A block scalar is one string, not a list: no tags rather than a tag called `>`.
+            continue;
         } else if let Some(flow) = rest.strip_prefix('[') {
             // A flow list, possibly continued on the next lines.
             let mut text = flow.to_owned();
