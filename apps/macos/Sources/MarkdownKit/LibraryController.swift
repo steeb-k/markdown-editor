@@ -326,10 +326,14 @@ public final class LibraryController {
 
     /// An open document's text, as it is now. Opened documents push on every edit (debounced by
     /// the caller); the index never waits for a save.
+    ///
+    /// Only for a note whose file the library has: a document whose file was deleted (or moved out of the
+    /// roots) while it was open is not a note any more, and its text would stay in the index, with its links
+    /// and tags, after the window closed. Saved again, it is found by the file system's events.
     public func push(_ note: NoteRef, text: String) {
         let now = Self.millis(Date())
         submit { [self] in
-            guard queueRoots.contains(where: { $0.id == note.root }) else { return }
+            guard queueRoots.contains(where: { $0.id == note.root }), entries[note.root]?[note.path]?.kind == .note else { return }
             try? library.upsert(note: note, text: text, modified: now)
             changedSinceAnnounced = true
             finishChanges()

@@ -32,8 +32,45 @@ final class TabOverflowTests: XCTestCase {
         XCTAssertEqual(s(-1, 96), 0)
         XCTAssertEqual(s(-1, 10), 0, "not past the first tab")
         XCTAssertEqual(s(1, 800), 840, "not past the last tab")
-        XCTAssertEqual(s(3, 100), 388)
+        XCTAssertEqual(s(3, 100), 480, "from a scroll of the wheel: three tabs on from the first one wholly in view (at 192)")
         XCTAssertEqual(TabStripModel.scrolled(by: 1, tabWidth: 96, count: 2, available: 600, from: 0), 0, "nothing to scroll")
+    }
+
+    /// With the chevrons: a press brings the next tab out from under the left chevron, and it begins where the
+    /// chevron ends, so its close button and title are never under the fade.
+    func testAPressLeavesTheFirstTabClearOfTheChevron() {
+        let c = TabOverflowButton.width
+        XCTAssertEqual(TabStripModel.chevronWidth(tabWidth: 96, available: 600), c)
+        XCTAssertEqual(TabStripModel.chevronWidth(tabWidth: 96, available: 150), 0, "no room for both and a tab: plain multiples")
+        func s(_ tabs: Int, _ offset: CGFloat) -> CGFloat { TabStripModel.scrolled(by: tabs, tabWidth: 96, count: 15, available: 600, chevron: c, from: offset) }
+        func first(_ offset: CGFloat) -> Int { TabStripModel.firstClearTab(offset: offset, tabWidth: 96, chevron: c) }
+        XCTAssertEqual(s(1, 0), 96 - c, "the second tab begins at the chevron's edge")
+        XCTAssertEqual(first(96 - c), 1)
+        XCTAssertEqual(s(1, 96 - c), 2 * 96 - c, "then a whole tab a press")
+        XCTAssertEqual(s(-1, 2 * 96 - c), 96 - c)
+        XCTAssertEqual(s(-1, 96 - c), 0, "back at the start: the first tab, no chevron")
+        // From the end (840): the tab partly under the chevron (at 24) counts as shown; a press shows the one before.
+        XCTAssertEqual(first(840), 9)
+        XCTAssertEqual(s(-1, 840), 8 * 96 - c)
+        XCTAssertEqual(s(1, 8 * 96 - c), 9 * 96 - c)
+        XCTAssertEqual(s(1, 9 * 96 - c), 840, "the last press reaches the end")
+        XCTAssertEqual(s(1, 840), 840)
+        // Every stop short of the end leaves tab `first` beginning exactly at the chevron's edge.
+        var e: CGFloat = 0
+        for _ in 0..<12 {
+            e = s(1, e)
+            guard e < 840 else { break }
+            XCTAssertEqual(CGFloat(first(e)) * 96 - e, c, "at \(e)")
+        }
+        // Revealing a tab scrolled out on the left puts it at the chevron's edge; one past the right edge, clear of
+        // the right chevron.
+        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 3, tabWidth: 96, count: 15, available: 600, chevron: c, current: 500), 3 * 96 - c)
+        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 0, tabWidth: 96, count: 15, available: 600, chevron: c, current: 500), 0)
+        let right = TabStripModel.scrollOffset(revealing: 9, tabWidth: 96, count: 15, available: 600, chevron: c, current: 0)
+        XCTAssertEqual(right, 10 * 96 - 600 + c)
+        XCTAssertLessThanOrEqual(10 * 96 - right, 600 - c, "its right edge is left of the right chevron")
+        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 14, tabWidth: 96, count: 15, available: 600, chevron: c, current: 0), 840)
+        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 2, tabWidth: 96, count: 15, available: 600, chevron: c, current: 96 - c), 96 - c, "in view: no scroll")
     }
 
     // MARK: the view
@@ -91,10 +128,16 @@ final class TabOverflowTests: XCTestCase {
     func testAPressScrollsByOneTabAndTheChevronGoesWhenThereIsNothingMore() {
         let s = strip(tabs: 15)
         let w = s.tabWidth
+        let c = s.chevronWidth
+        XCTAssertEqual(c, TabOverflowButton.width)
         XCTAssertEqual(s.scrollOffset, 0)
         s.rightChevron.onPress?(1)
-        XCTAssertEqual(s.scrollOffset, w)
+        XCTAssertEqual(s.scrollOffset, w - c, "the second tab begins where the chevron ends")
         XCTAssertEqual(state(s), "<>")
+        // The second tab's close button is clear of the chevron that now shows.
+        let second = s.visibleTabFrames[1]
+        XCTAssertEqual(second.width, w, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(second.minX + TabStripModel.closeButtonInset, s.leftChevron.frame.maxX)
         s.leftChevron.onPress?(-1)
         XCTAssertEqual(s.scrollOffset, 0)
         XCTAssertEqual(state(s), "->")
@@ -108,7 +151,7 @@ final class TabOverflowTests: XCTestCase {
         // Pressing it with the pointer, as a person would.
         s.rightChevron.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
                                                           eventNumber: 0, clickCount: 1, pressure: 1)!)
-        XCTAssertEqual(s.scrollOffset, w)
+        XCTAssertEqual(s.scrollOffset, w - c)
     }
 
     func testTheStateFollowsTheTabsTheRoomAndTheSelection() {
@@ -149,6 +192,31 @@ final class TabOverflowTests: XCTestCase {
         XCTAssertEqual(s.leftChevron.frame.minX, 0)
     }
 
+    /// A scroll of the user's stays while tabs change their titles or edited dots (an autosave, a rename in the
+    /// background); another tab selected, or one added, brings the selected one into view.
+    func testATitleThatChangesDoesNotUndoAScroll() {
+        func entries(selected: Int, count: Int = 15, edited: Int = -1, title: String = "Tab") -> [TabEntry] {
+            (0..<count).map { TabEntry(windowNumber: 100 + $0, title: "\(title) \($0)", edited: $0 == edited, selected: $0 == selected) }
+        }
+        let s = strip(tabs: 15, selected: 12)
+        XCTAssertGreaterThan(s.scrollOffset, 0, "the selected tab was brought into view")
+        s.scroll(toFraction: 0)
+        s.setEntries(entries(selected: 12, edited: 3))
+        s.layoutSubtreeIfNeeded()
+        XCTAssertEqual(s.scrollOffset, 0, "an edited dot")
+        s.setEntries(entries(selected: 12, edited: 3, title: "Renamed"))
+        s.layoutSubtreeIfNeeded()
+        XCTAssertEqual(s.scrollOffset, 0, "titles")
+        XCTAssertEqual(state(s), "->")
+        s.setEntries(entries(selected: 13, edited: 3, title: "Renamed"))
+        s.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(s.scrollOffset, 0, "another tab selected: it is shown")
+        s.scroll(toFraction: 0)
+        s.setEntries(entries(selected: 13, count: 16))
+        s.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(s.scrollOffset, 0, "a tab added: the selected one is shown")
+    }
+
     func testAScrollWheelMovesThemToo() {
         let s = strip(tabs: 15)
         let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: -200, wheel3: 0).flatMap { NSEvent(cgEvent: $0) }
@@ -166,7 +234,23 @@ final class TabOverflowTests: XCTestCase {
         XCTAssertEqual(s.rightChevron.accessibilityLabel(), "Show later tabs")
         XCTAssertTrue(s.rightChevron.isAccessibilityElement())
         XCTAssertTrue(s.rightChevron.accessibilityPerformPress())
-        XCTAssertEqual(s.scrollOffset, s.tabWidth, "the accessibility press does what the click does")
+        XCTAssertEqual(s.scrollOffset, s.tabWidth - s.chevronWidth, "the accessibility press does what the click does")
+    }
+
+    /// VoiceOver reaches the chevrons that show, beside the tabs, and none that do not.
+    func testTheChevronsThatShowAreInTheAccessibilityTree() {
+        let s = strip(tabs: 15)
+        func children() -> [String] { (s.accessibilityChildren() ?? []).compactMap { ($0 as? NSView)?.accessibilityLabel() } }
+        XCTAssertEqual(children().first, "Tab 0")
+        XCTAssertEqual(children().last, "Show later tabs")
+        XCTAssertFalse(children().contains("Show earlier tabs"))
+        s.scroll(toFraction: 0.5)
+        XCTAssertEqual(children().first, "Show earlier tabs")
+        XCTAssertEqual(children().last, "Show later tabs")
+        XCTAssertEqual(children().count, 17)
+        s.setEntries((0..<3).map { TabEntry(windowNumber: 100 + $0, title: "Tab \($0)", edited: false, selected: $0 == 0) })
+        s.layoutSubtreeIfNeeded()
+        XCTAssertEqual(children(), ["Tab 0", "Tab 1", "Tab 2"])
     }
 
     func testAFadedStripTakesNoClicksOnItsChevrons() {

@@ -118,7 +118,8 @@ final class LinkUpdateTests: XCTestCase {
         // The renamed note itself: its own link, in its window, and its document followed the file.
         XCTAssertEqual(alpha.session.text, "# Alpha\n\nSelf: [[Omega]]\n")
         XCTAssertEqual(alpha.undoManager?.undoActionName, "Update Links")
-        XCTAssertEqual(alpha.fileURL.map(DocumentFileAccess.canonical)?.lastPathComponent, "Omega.md")
+        // (The document hears of the move from its file presenter, a moment later.)
+        XCTAssertTrue(waitUntil { alpha.fileURL.map(DocumentFileAccess.canonical)?.lastPathComponent == "Omega.md" })
     }
 
     func testTheLibraryFollowsTheRenameAndTheEditedText() throws {
@@ -134,6 +135,66 @@ final class LinkUpdateTests: XCTestCase {
         controller.backlinks(of: NoteRef(root: "lib", path: path)) { out = $0.map(\.from.path) }
         _ = controller.waitUntilIdle()
         return out
+    }
+
+    /// Closed notes are rewritten byte for byte outside the links: a BOM and CRLF, mixed line endings, an
+    /// authorship block (kept as it was).
+    func testClosedNotesKeepTheirBytesOutsideTheEditedLinks() throws {
+        let files: [String: [UInt8]] = [
+            "Crlf.md": [0xEF, 0xBB, 0xBF] + Array("Intro\r\n\r\nSee [[Alpha]] here.\r\nEnd\r\n".utf8),
+            "Mixed.md": Array("a\r\nSee [[Alpha]]\nz\rlast".utf8),
+            "Marked.md": Array("See [[Alpha]] now\n\n---\nAnnotations: 0,17 SHA-256 abc  \n&AI: 0,3  \n...\n".utf8),
+        ]
+        for (name, bytes) in files { try Data(bytes).write(to: lib.url.appendingPathComponent(name)) }
+        controller.refresh(files.keys.map { lib.url.appendingPathComponent($0) })
+        XCTAssertTrue(controller.waitUntilIdle())
+        _ = move("Projects/Alpha.md", to: "Projects/Omega.md")
+        func bytes(_ name: String) -> [UInt8] { (try? Data(contentsOf: lib.url.appendingPathComponent(name))).map { Array($0) } ?? [] }
+        XCTAssertEqual(bytes("Crlf.md"), [0xEF, 0xBB, 0xBF] + Array("Intro\r\n\r\nSee [[Omega]] here.\r\nEnd\r\n".utf8))
+        XCTAssertEqual(String(decoding: bytes("Mixed.md"), as: UTF8.self), "a\r\nSee [[Omega]]\nz\rlast")
+        XCTAssertEqual(String(decoding: bytes("Marked.md"), as: UTF8.self), "See [[Omega]] now\n\n---\nAnnotations: 0,17 SHA-256 abc  \n&AI: 0,3  \n...\n")
+    }
+
+    /// A note open with unsaved changes when the question was asked, and closed without saving before it was
+    /// answered: its links were found in the text it had, not in the file, and the file is left alone.
+    func testANoteClosedWhileTheQuestionWasUpIsNotEditedByTheWrongRanges() throws {
+        let other = try open("Other.md")
+        let tv = try XCTUnwrap(other.session.textView)
+        _ = tv.replaceThroughUndo(range: NSRange(location: 0, length: 0), with: "X")
+        XCTAssertEqual(other.session.text, "X[[Alpha]] twice [[alpha]]\n")
+        var reported: [Error] = []
+        WorkspacePrompts.reportOverride = { reported.append($0) }
+        defer { WorkspacePrompts.reportOverride = nil }
+        WorkspacePrompts.linkUpdateOverride = { [unowned self] q in
+            questions.append(q)
+            other.updateChangeCount(.changeCleared)
+            other.close()
+            return .update
+        }
+        docs.removeAll { $0 === other }
+        _ = move("Projects/Alpha.md", to: "Projects/Omega.md")
+        XCTAssertEqual(lib.read("Other.md"), "[[Alpha]] twice [[alpha]]\n", "not written with ranges from another text")
+        XCTAssertEqual(lib.read("Home.md"), "See [[Omega]] and [[Projects/Omega|the first]].\n", "the rest are updated")
+        XCTAssertEqual(reported.count, 1, "and the user is told which note was left")
+        XCTAssertTrue(lib.exists("Projects/Omega.md"))
+    }
+
+    /// Hundreds of closed notes that link to a renamed one are rewritten off the main thread.
+    func testClosedNotesAreRewrittenOffTheMainThread() throws {
+        let names = (0..<200).map { "Many/Link \($0).md" }
+        for n in names { try lib.write(n, "Up to [[Alpha]].\n") }
+        controller.refresh([lib.url.appendingPathComponent("Many")])
+        XCTAssertTrue(controller.waitUntilIdle())
+        let lock = NSLock()
+        var onMain = 0, off = 0
+        DocumentFileAccess.coordinatedWriteObserver = { _ in lock.lock(); if Thread.isMainThread { onMain += 1 } else { off += 1 }; lock.unlock() }
+        defer { DocumentFileAccess.coordinatedWriteObserver = nil }
+        let result = move("Projects/Alpha.md", to: "Projects/Omega.md")
+        XCTAssertNotNil(try result?.get())
+        XCTAssertEqual(onMain, 0, "no closed note is written on the main thread")
+        XCTAssertEqual(off, 203, "the 200, Home, Other and Alpha's link to itself")
+        XCTAssertEqual(lib.read("Many/Link 7.md"), "Up to [[Omega]].\n")
+        XCTAssertTrue(lib.exists("Projects/Omega.md"), "moved once the links were written")
     }
 
     func testRenameOnlyLeavesTheLinks() throws {

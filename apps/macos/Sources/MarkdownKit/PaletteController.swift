@@ -34,6 +34,9 @@ final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSou
         super.init()
         panel.style = style
         panel.field.placeholderString = placeholder
+        // Named for what it does (Quick Open, a template), for VoiceOver.
+        panel.field.setAccessibilityLabel(placeholder)
+        panel.setAccessibilityLabel(placeholder)
         panel.field.delegate = self
         panel.table.dataSource = self
         panel.table.delegate = self

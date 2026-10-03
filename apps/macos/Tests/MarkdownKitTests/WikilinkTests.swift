@@ -115,6 +115,14 @@ final class WikilinkTests: XCTestCase {
         XCTAssertEqual(link("/abs/x.md"), nil)
         XCTAssertEqual(link("~/x.md"), nil)
         XCTAssertEqual(link(""), nil)
+        // The same ways out spelled with escapes, which are decoded once.
+        XCTAssertEqual(link("%2Fetc%2Fx.md"), nil, "an escaped absolute path")
+        XCTAssertEqual(link("./%2F%2Fhost/x.md"), nil)
+        XCTAssertEqual(link("%2E%2E/up.md"), nil)
+        XCTAssertEqual(link("a/%2E%2E/%2E%2E/b.md"), nil)
+        XCTAssertEqual(link("..%2Fup.md"), nil)
+        XCTAssertEqual(link("%7E/x.md"), nil)
+        XCTAssertEqual(link("a%2Fb.md"), "a/b.md#", "an escaped slash inside is a folder, as written unescaped")
     }
 
     func testTheSchemeHandlerDecodesWhatTheAddressesEscape() throws {

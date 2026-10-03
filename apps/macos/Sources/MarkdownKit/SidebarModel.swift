@@ -103,7 +103,22 @@ enum SidebarModel {
 extension LibrarySnapshot {
     /// What the sidebar would draw: the same tree, tags and hits (the generation and the loading flag
     /// are not drawn), so a snapshot that only differs in those need not reload the outline.
+    ///
+    /// The tree is compared as it is drawn: the rows in their order, not when each file was modified. Saving
+    /// a note (an autosave while typing) changes its date and nothing on the screen; a reload of a library of
+    /// thousands of notes, and the drawing of every row after it, held the main thread for 50–90 ms each time.
     func drawsSameAs(_ other: LibrarySnapshot) -> Bool {
-        roots == other.roots && tags == other.tags && hits == other.hits && query == other.query && loading == other.loading
+        tags == other.tags && hits == other.hits && query == other.query && loading == other.loading
+            && roots.count == other.roots.count && zip(roots, other.roots).allSatisfy { $0.drawsSameAs($1) }
+    }
+}
+
+extension LibraryNode {
+    /// The same row, and the same rows below it in the same order (the date is not drawn; the order it gives
+    /// under "Date Modified" is compared).
+    func drawsSameAs(_ other: LibraryNode) -> Bool {
+        // A root's folder, though: the rows' files are found below it.
+        kind == other.kind && path == other.path && name == other.name && root == other.root && (kind != .root || url == other.url)
+            && children.count == other.children.count && zip(children, other.children).allSatisfy { $0.drawsSameAs($1) }
     }
 }

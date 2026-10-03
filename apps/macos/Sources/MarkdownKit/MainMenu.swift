@@ -196,7 +196,9 @@ enum MainMenu {
             _ = item(m, "Rename", #selector(EditorWindowController.renameSelection(_:)))
             _ = item(m, "Duplicate Note", #selector(EditorWindowController.duplicateSelection(_:)))
             _ = item(m, "Reveal in Finder", #selector(EditorWindowController.revealSelection(_:)))
-            _ = item(m, "Move to Trash", #selector(EditorWindowController.trashSelection(_:)), "\u{8}")
+            // No key equivalent: a menu item that matches ⌘⌫ takes the key even while it is disabled, and ⌘⌫ is the
+            // editor's delete to the start of the line. The sidebar's list takes ⌘⌫ itself (`SidebarOutlineView`).
+            _ = item(m, "Move to Trash", #selector(EditorWindowController.trashSelection(_:)))
             m.addItem(.separator())
             _ = item(m, "Add Folder\u{2026}", #selector(EditorWindowController.addFolderToLibrary(_:)))
             _ = item(m, "Choose Library Folder\u{2026}", #selector(EditorWindowController.chooseLibraryFolder(_:)))

@@ -14,6 +14,7 @@ public enum LinkUpdateAnswer { case update, leave, cancel }
 public enum WorkspacePrompts {
     nonisolated(unsafe) public static var linkUpdateOverride: ((String) -> LinkUpdateAnswer)?
     nonisolated(unsafe) public static var trashEditedOverride: ((String) -> Bool)?
+    nonisolated(unsafe) public static var reportOverride: ((Error) -> Void)?
 
     static func confirmLinkUpdate(_ question: String, window: NSWindow?, completion: @escaping (LinkUpdateAnswer) -> Void) {
         if let hook = linkUpdateOverride { completion(hook(question)); return }
@@ -39,6 +40,7 @@ public enum WorkspacePrompts {
     }
 
     static func report(_ error: Error, window: NSWindow?) {
+        if let hook = reportOverride { hook(error); return }
         let alert = NSAlert(error: error)
         present(alert, on: window) { _ in }
     }
@@ -218,18 +220,18 @@ extension Workspace {
         let pairs = movedNotes(from: old, to: new)
         collectEdits(pairs) { [self] edits in
             let finish: ([LibraryEdit]) -> Void = { [self] applied in
-                var touched: [URL] = []
-                if !applied.isEmpty { touched = applyEdits(applied, texts: texts, window: window) }
-                do {
-                    try DocumentFileAccess.move(old, to: new)
-                } catch {
-                    library.refresh(touched)
-                    completion(.failure(error))
-                    return
+                applyEdits(applied, texts: texts, window: window) { [self] touched in
+                    do {
+                        try DocumentFileAccess.move(old, to: new)
+                    } catch {
+                        library.refresh(touched)
+                        completion(.failure(error))
+                        return
+                    }
+                    library.moved(from: old, to: new)
+                    library.refresh(touched.filter { Self.canonicalPlace($0) != DocumentFileAccess.canonical(old) })
+                    completion(.success(new))
                 }
-                library.moved(from: old, to: new)
-                library.refresh(touched.filter { Self.canonicalPlace($0) != DocumentFileAccess.canonical(old) })
-                completion(.success(new))
             }
             guard !edits.isEmpty else { finish([]); return }
             WorkspacePrompts.confirmLinkUpdate(NoteNaming.linkUpdateQuestion(edits), window: window) { answer in
@@ -276,40 +278,57 @@ extension Workspace {
         }
     }
 
-    /// Writes the edits into the notes they are for: open ones through their sessions, the rest
-    /// through file coordination. Returns the files of the closed notes it changed.
-    private func applyEdits(_ edits: [LibraryEdit], texts: [String: String], window: NSWindow?) -> [URL] {
+    /// Writes the edits into the notes they are for: open ones through their sessions, at once, the rest
+    /// through file coordination on a utility queue (a rename can touch hundreds of notes: written on the main
+    /// thread, 500 of them held it for 1.4 s). `done` gets, on the main thread, the files of the closed notes it
+    /// changed.
+    private func applyEdits(_ edits: [LibraryEdit], texts: [String: String], window: NSWindow?, done: @escaping ([URL]) -> Void) {
+        guard !edits.isEmpty else { done([]); return }
         var order: [NoteRef] = []
         var byNote: [NoteRef: [LibraryEdit]] = [:]
         for e in edits {
             if byNote[e.note] == nil { order.append(e.note) }
             byNote[e.note, default: []].append(e)
         }
-        var changed: [URL] = []
         var failed: [String] = []
+        var closed: [(url: URL, edits: [LibraryEdit], was: String?)] = []
+        // What the open documents held, by file name first: resolving every path (hundreds of notes) is not needed.
+        let flushedNames = Set(texts.keys.map { ($0 as NSString).lastPathComponent })
         for note in order {
             guard let url = library.url(for: note), let list = byNote[note] else { continue }
+            let key = flushedNames.contains(url.lastPathComponent) ? DocumentFileAccess.canonical(url).path : ""
             if let doc = NSDocumentController.shared.document(for: url) as? MarkdownDocument {
-                let key = DocumentFileAccess.canonical(url).path
                 if let was = texts[key], was == doc.session.text, doc.session.applyLinkEdits(list) { continue }
                 failed.append(url.lastPathComponent)
                 continue
             }
-            do {
-                let data = try DocumentFileAccess.readCoordinated(url)
-                guard let text = NoteText.decode(data), let edited = NoteText.apply(list, to: text),
-                      let out = NoteText.encode(edited, replacing: data) else { failed.append(url.lastPathComponent); continue }
-                try DocumentFileAccess.writeCoordinated(out, to: url)
-                changed.append(url)
-            } catch {
-                failed.append(url.lastPathComponent)
+            closed.append((url, list, texts[key]))
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            var changed: [URL] = []
+            var failedClosed: [String] = []
+            for (url, list, was) in closed {
+                do {
+                    let data = try DocumentFileAccess.readCoordinated(url)
+                    // A note that was open when the edits were worked out, on its unsaved text, and was closed
+                    // without saving while the question was up: the ranges are in a text the file does not hold.
+                    guard let text = NoteText.decode(data), was == nil || was == text, let edited = NoteText.apply(list, to: text),
+                          let out = NoteText.encode(edited, replacing: data) else { failedClosed.append(url.lastPathComponent); continue }
+                    try DocumentFileAccess.writeCoordinated(out, to: url)
+                    changed.append(url)
+                } catch {
+                    failedClosed.append(url.lastPathComponent)
+                }
+            }
+            DispatchQueue.main.async {
+                let all = failed + failedClosed
+                if !all.isEmpty {
+                    let info = [NSLocalizedDescriptionKey: "Some links could not be updated", NSLocalizedRecoverySuggestionErrorKey: all.joined(separator: ", ")]
+                    WorkspacePrompts.report(NSError(domain: "Markdown", code: 1, userInfo: info), window: window)
+                }
+                done(changed)
             }
         }
-        if !failed.isEmpty {
-            let info = [NSLocalizedDescriptionKey: "Some links could not be updated", NSLocalizedRecoverySuggestionErrorKey: failed.joined(separator: ", ")]
-            WorkspacePrompts.report(NSError(domain: "Markdown", code: 1, userInfo: info), window: window)
-        }
-        return changed
     }
 
     // MARK: trash

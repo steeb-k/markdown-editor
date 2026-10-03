@@ -395,10 +395,10 @@ extension EditorWindowController {
         }
     }
 
-    /// There is a library to put notes in; otherwise the sidebar's invitation to make one shows.
+    /// There is a folder to put notes in; otherwise the sidebar's invitation to make one shows.
     private func ensureLibrary() -> Bool {
         guard let ws = workspace else { return false }
-        if ws.primaryRoot != nil { return true }
+        if !ws.library.roots.isEmpty { return true }
         NSSound.beep()
         return false
     }
@@ -620,8 +620,7 @@ extension EditorWindowController {
         case #selector(renameSelection(_:)), #selector(duplicateSelection(_:)):
             return on && selection.count == 1 && selection[0].kind != .root
         case #selector(trashSelection(_:)):
-            // ⌘⌫ is the editor's "delete to the start of the line" unless the sidebar has the keyboard.
-            return on && window?.firstResponder === sidebar?.outline && selection.contains { $0.kind != .root }
+            return on && selection.contains { $0.kind != .root }
         case #selector(trashFromContextMenu(_:)):
             return on && selection.contains { $0.kind != .root }
         case #selector(revealSelection(_:)):

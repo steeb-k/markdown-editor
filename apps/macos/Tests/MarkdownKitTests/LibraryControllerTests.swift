@@ -280,6 +280,27 @@ final class LibraryControllerTests: XCTestCase {
         XCTAssertEqual(lib.read("Projects/Beta.md"), "# Beta\n\n#work notes\n", "nothing was written")
     }
 
+    /// A note deleted on disk while its document is open: what the document still pushes does not bring it
+    /// back into the index (it would stay there, with its tags and links, after the window closed).
+    func testAPushForANoteWhoseFileIsGoneIsIgnored() throws {
+        try FileManager.default.removeItem(at: lib.url.appendingPathComponent("Projects/Beta.md"))
+        controller.refresh([lib.url.appendingPathComponent("Projects/Beta.md")])
+        XCTAssertTrue(controller.waitUntilIdle())
+        XCTAssertEqual(controller.snapshotNow().noteCount, 3)
+        controller.push(NoteRef(root: "lib", path: "Projects/Beta.md"), text: "# Beta\n\n#ghost [[Home]]\n")
+        controller.push(NoteRef(root: "lib", path: "Nowhere.md"), text: "#ghost\n")
+        XCTAssertTrue(controller.waitUntilIdle())
+        let s = controller.snapshotNow()
+        XCTAssertEqual(s.noteCount, 3)
+        XCTAssertFalse(s.tags.contains { $0.tag == "ghost" })
+        XCTAssertTrue(controller.snapshotNow(LibraryQuery(search: "Beta")).hits.isEmpty)
+        // Saved again: a note again, with what the file says.
+        try lib.write("Projects/Beta.md", "# Beta\n\n#back\n")
+        controller.refresh([lib.url.appendingPathComponent("Projects/Beta.md")])
+        XCTAssertTrue(controller.waitUntilIdle())
+        XCTAssertTrue(controller.snapshotNow().tags.contains { $0.tag == "back" })
+    }
+
     func testRefreshForceReadsTheFileAgainAfterAPush() {
         let beta = NoteRef(root: "lib", path: "Projects/Beta.md")
         controller.push(beta, text: "# Beta\n\n#unsaved\n")

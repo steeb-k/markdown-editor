@@ -185,6 +185,58 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([DocumentFileAccess.Grant].self, from: data), [grant])
     }
 
+    func testAMissingLibraryFolderIsNotReplacedByAnAddedOne() throws {
+        let library = try TempLibrary(["Home.md": "# Home\n"])
+        let other = try TempLibrary(["Other.md": "# Other\n"])
+        defer { library.remove(); other.remove() }
+        let fresh = Workspace(library: LibraryController(), settings: isolatedSettings(), notesMode: true)
+        fresh.addRoot(library.url)
+        fresh.addRoot(other.url)
+        XCTAssertTrue(fresh.library.waitUntilIdle())
+        XCTAssertEqual(fresh.primaryRoot?.id, LibraryRootInfo.libraryID)
+        // The library's folder is not there (a drive that is not connected); the added folder is.
+        library.remove()
+        fresh.applyGrants()
+        XCTAssertTrue(fresh.library.waitUntilIdle())
+        XCTAssertEqual(fresh.library.roots.map(\.id), [LibraryRootInfo.addedFolderID(2)])
+        XCTAssertNil(fresh.primaryRoot, "an added folder does not become the library")
+        XCTAssertNil(fresh.templatesFolder)
+        XCTAssertThrowsError(try fresh.todaysNote())
+        XCTAssertFalse(other.exists("Daily"), "today's note is not made in the added folder")
+    }
+
+    /// A folder on a volume that is not mounted is not there; resolving its bookmark must not mount the volume
+    /// (it runs on the main thread, and a server could keep it for seconds).
+    func testAGrantOnAnUnmountedVolumeDoesNotMountIt() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("markdown-volume-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let image = dir.appendingPathComponent("v.dmg"), mount = dir.appendingPathComponent("mnt", isDirectory: true)
+        let name = "MarkdownTest\(Int.random(in: 1000...9999))"
+        func hdiutil(_ args: [String]) -> Bool {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+            p.arguments = args
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            guard (try? p.run()) != nil else { return false }
+            p.waitUntilExit()
+            return p.terminationStatus == 0
+        }
+        guard hdiutil(["create", "-size", "2m", "-fs", "APFS", "-volname", name, image.path]),
+              hdiutil(["attach", image.path, "-nobrowse", "-mountpoint", mount.path]) else { throw XCTSkip("hdiutil cannot make a volume here") }
+        let notes = mount.appendingPathComponent("Notes", isDirectory: true)
+        try FileManager.default.createDirectory(at: notes, withIntermediateDirectories: true)
+        let grant = DocumentFileAccess.makeGrant(id: "folder-2", folder: notes)
+        XCTAssertNotNil(DocumentFileAccess.open(grant), "mounted: found")
+        XCTAssertTrue(hdiutil(["detach", mount.path]))
+        defer { _ = hdiutil(["detach", "/Volumes/\(name)"]) }
+        let t0 = Date()
+        XCTAssertNil(DocumentFileAccess.open(grant), "not mounted: not there")
+        XCTAssertLessThan(Date().timeIntervalSince(t0), 0.2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: "/Volumes/\(name)"), "the volume was not mounted to find the folder")
+    }
+
     // MARK: making things
 
     func testNewNotesAreNumberedAndTheLibrarySeesThem() throws {

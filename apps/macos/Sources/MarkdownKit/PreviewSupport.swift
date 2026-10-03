@@ -148,7 +148,8 @@ public enum LinkPolicy {
         guard !raw.isEmpty, !raw.hasPrefix("/"), !raw.hasPrefix("~") else { return nil }
         if !prefixed, let colon = raw.firstIndex(of: ":"), !raw[..<colon].contains("/") { return nil }
         let name = raw.removingPercentEncoding ?? raw
-        guard !name.hasPrefix("../"), !name.contains("/../"), DocumentFileAccess.noteExtensions.contains((name as NSString).pathExtension.lowercased()) else { return nil }
+        // Checked again once decoded: `%2F` and `%2E` spell the same ways out of the folder.
+        guard !name.hasPrefix("/"), !name.hasPrefix("~"), name != "..", !name.hasPrefix("../"), !name.contains("/../"), !name.hasSuffix("/.."), DocumentFileAccess.noteExtensions.contains((name as NSString).pathExtension.lowercased()) else { return nil }
         return (name, fragment)
     }
 

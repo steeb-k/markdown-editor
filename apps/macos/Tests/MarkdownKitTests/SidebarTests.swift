@@ -74,6 +74,18 @@ final class SidebarTests: XCTestCase {
         XCTAssertFalse(a.drawsSameAs(b))
         b = snapshot(search: "q")
         XCTAssertFalse(a.drawsSameAs(b))
+        // A note saved (an autosave while typing): a new date, nothing drawn changes.
+        b = snapshot()
+        b.roots[0].children[1].modified = Date()
+        b.roots[0].children[0].children[0].modified = Date()
+        XCTAssertTrue(a.drawsSameAs(b), "the date is not drawn")
+        // The order it gives is.
+        b.roots[0].children.swapAt(1, 2)
+        XCTAssertFalse(a.drawsSameAs(b))
+        // And a root that is another folder, though its rows read the same, is another tree.
+        b = snapshot()
+        b.roots[0].url = URL(fileURLWithPath: "/elsewhere")
+        XCTAssertFalse(a.drawsSameAs(b))
     }
 
     // MARK: a window in notes mode
@@ -174,17 +186,30 @@ final class SidebarTests: XCTestCase {
         wc.leaveWorkspace()
     }
 
-    func testMoveToTrashIsTheSidebarsUnlessTheEditorHasTheKeyboard() throws {
+    /// ⌘⌫ in the sidebar's list moves the selection to the Trash; the menu item has no key equivalent, so the key
+    /// stays the editor's (delete to the line start) everywhere else, in plain mode too.
+    func testCommandDeleteInTheListMovesToTheTrash() throws {
         let ws = try makeWorkspace()
         let (_, wc) = try makeWindow()
         wc.adopt(ws)
         let sidebar = try XCTUnwrap(wc.sidebar)
-        ws.setSelection(["lib:Home.md"])
-        let trash = NSMenuItem(title: "Move to Trash", action: #selector(EditorWindowController.trashSelection(_:)), keyEquivalent: "\u{8}")
-        // With a selection, but the keyboard in the editor: the key stays the editor's (delete to the line start).
-        XCTAssertFalse(wc.validateMenuItem(trash))
-        wc.window?.makeFirstResponder(sidebar.outline)
-        if wc.window?.firstResponder === sidebar.outline { XCTAssertTrue(wc.validateMenuItem(trash)) }
+        ws.setSelection(["lib:plain.txt"])
+        let trash = NSMenuItem(title: "Move to Trash", action: #selector(EditorWindowController.trashSelection(_:)), keyEquivalent: "")
+        XCTAssertTrue(wc.validateMenuItem(trash), "chosen from the menu, it acts on the sidebar's selection")
+        var trashed: [URL?] = []
+        DocumentFileAccess.trashObserver = { trashed.append($1) }
+        defer { DocumentFileAccess.trashObserver = nil }
+        func key(_ mods: NSEvent.ModifierFlags) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: wc.window?.windowNumber ?? 0,
+                                           context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51))
+        }
+        sidebar.outline.keyDown(with: try key([.command, .option]))
+        XCTAssertTrue(trashed.isEmpty, "only ⌘⌫")
+        sidebar.outline.keyDown(with: try key(.command))
+        XCTAssertEqual(trashed.count, 1)
+        XCTAssertFalse(lib.exists("plain.txt"))
+        if let landed = trashed.first ?? nil { try? FileManager.default.removeItem(at: landed) }
+        XCTAssertTrue(ws.library.waitUntilIdle())
         wc.leaveWorkspace()
     }
 
@@ -231,6 +256,10 @@ final class SidebarTests: XCTestCase {
         XCTAssertTrue(ws.expanded.contains("lib:Projects"), "what is opened is the workspace's")
         sb.activate(projects)
         XCTAssertFalse(ws.expanded.contains("lib:Projects"))
+        // A double-click: the second click does not close what the first opened.
+        sb.activate(projects)
+        sb.activate(projects, again: true)
+        XCTAssertTrue(sb.outline.isItemExpanded(projects), "a double-click leaves the folder open")
         wc.leaveWorkspace()
     }
 
@@ -248,6 +277,37 @@ final class SidebarTests: XCTestCase {
         XCTAssertEqual(ws.searchText, "")
         XCTAssertEqual(sb.view.searchField.stringValue, "")
         XCTAssertTrue(waitUntil { sb.visibleRowTitles.contains("Tags") })
+        wc.leaveWorkspace()
+    }
+
+    /// Type, arrow down into the hits, Return: the hit opens (Return on a note of the tree renames it).
+    func testReturnOnASearchHitInTheListOpensIt() throws {
+        let ws = try makeWorkspace()
+        let (_, wc) = try makeWindow("# Not empty\n")
+        wc.adopt(ws)
+        let sb = try XCTUnwrap(wc.sidebar)
+        sb.view.searchField.stringValue = "alpha"
+        sb.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: sb.view.searchField))
+        XCTAssertTrue(waitUntil { sb.visibleRowTitles.first == "Alpha" })
+        XCTAssertTrue(sb.control(sb.view.searchField, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
+        XCTAssertEqual(sb.selectedRowIDs, ["hit:lib:Projects/Alpha.md"])
+        // The note is open in another window (a test cannot have AppKit open a file): Return brings it forward, and
+        // the sidebar selects it.
+        let url = lib.url.appendingPathComponent("Projects/Alpha.md")
+        let alpha = MarkdownDocument(settings: isolatedSettings())
+        try alpha.read(from: url, ofType: "net.daringfireball.markdown")
+        alpha.fileURL = url
+        NSDocumentController.shared.addDocument(alpha)
+        alpha.makeWindowControllers()
+        docs.append(alpha)
+        let other = try XCTUnwrap(alpha.windowControllers.first as? EditorWindowController)
+        other.adopt(ws)
+        let returnKey = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: wc.window?.windowNumber ?? 0,
+                                                       context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        sb.outline.keyDown(with: returnKey)
+        XCTAssertFalse(sb.isRenaming, "a hit is not renamed")
+        XCTAssertEqual(ws.selection, ["lib:Projects/Alpha.md"], "the hit's note was brought forward")
+        other.leaveWorkspace()
         wc.leaveWorkspace()
     }
 
@@ -410,11 +470,184 @@ final class SidebarTests: XCTestCase {
         wc.leaveWorkspace()
     }
 
+    /// A drop as the outline is given it: files on a pasteboard, from the outline itself or from elsewhere.
+    private final class Drop: NSObject, NSDraggingInfo {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("markdown-test-\(UUID().uuidString)"))
+        let source: Any?
+        init(_ urls: [URL], from source: Any?) {
+            self.source = source
+            super.init()
+            pasteboard.clearContents()
+            pasteboard.writeObjects(urls as [NSURL])
+        }
+        var draggingDestinationWindow: NSWindow? { nil }
+        var draggingSourceOperationMask: NSDragOperation { source == nil ? .copy : .move }
+        var draggingLocation: NSPoint { .zero }
+        var draggedImageLocation: NSPoint { .zero }
+        var draggedImage: NSImage? { nil }
+        var draggingPasteboard: NSPasteboard { pasteboard }
+        var draggingSource: Any? { source }
+        var draggingSequenceNumber: Int { 1 }
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        var draggingFormation: NSDraggingFormation = .default
+        var animatesToDestination = false
+        var numberOfValidItemsForDrop = 1
+        func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
+                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+        func resetSpringLoading() {}
+    }
+
+    /// Dragging within the sidebar moves (never into itself or where it already is); a drop from elsewhere copies.
+    func testDragsWithinTheSidebarMoveAndDropsFromElsewhereCopy() throws {
+        let ws = try makeWorkspace()
+        let (_, wc) = try makeWindow()
+        wc.adopt(ws)
+        let sb = try XCTUnwrap(wc.sidebar)
+        ws.setExpanded("lib:Projects", true)
+        WorkspacePrompts.linkUpdateOverride = { _ in .update }
+        defer { WorkspacePrompts.linkUpdateOverride = nil }
+        func item(_ id: String) throws -> SidebarItem { try XCTUnwrap(sb.item(withID: id)) }
+        func validate(_ urls: [URL], local: Bool, onto id: String) throws -> NSDragOperation {
+            sb.outlineView(sb.outline, validateDrop: Drop(urls, from: local ? sb.outline : nil), proposedItem: try item(id), proposedChildIndex: -1)
+        }
+        let home = lib.url.appendingPathComponent("Home.md"), projects = lib.url.appendingPathComponent("Projects", isDirectory: true)
+        let alpha = projects.appendingPathComponent("Alpha.md")
+        XCTAssertEqual(try validate([home], local: true, onto: "lib:Projects"), .move)
+        XCTAssertEqual(try validate([home], local: true, onto: "lib:Projects/Alpha.md"), .move, "onto a note: into its folder")
+        XCTAssertEqual(try validate([alpha], local: true, onto: "lib:Projects"), [], "where it already is")
+        XCTAssertEqual(try validate([projects], local: true, onto: "lib:Projects/Alpha.md"), [], "into itself")
+        XCTAssertEqual(try validate([lib.url], local: true, onto: "lib:Projects"), [], "a folder into one of its own")
+        let outside = try TempLibrary(["Dropped.md": "# Dropped\n"])
+        defer { outside.remove() }
+        let dropped = outside.url.appendingPathComponent("Dropped.md")
+        XCTAssertEqual(try validate([dropped], local: false, onto: "lib:Projects"), .copy)
+        // Moved, and copied, through the drop itself.
+        XCTAssertTrue(sb.outlineView(sb.outline, acceptDrop: Drop([home], from: sb.outline), item: try item("lib:Projects"), childIndex: -1))
+        XCTAssertTrue(waitUntil { lib.exists("Projects/Home.md") && !lib.exists("Home.md") })
+        XCTAssertTrue(sb.outlineView(sb.outline, acceptDrop: Drop([dropped], from: nil), item: try item("lib:Projects"), childIndex: -1))
+        XCTAssertTrue(waitUntil { lib.exists("Projects/Dropped.md") })
+        XCTAssertTrue(outside.exists("Dropped.md"), "a copy: the original stays")
+        XCTAssertTrue(sb.outlineView(sb.outline, acceptDrop: Drop([dropped], from: nil), item: try item("lib:Projects"), childIndex: -1))
+        XCTAssertTrue(waitUntil { lib.exists("Projects/Dropped 2.md") }, "a name that is taken is numbered")
+        // While a search is typed the list is hits, not folders: nothing is dropped there.
+        ws.setSearch("alpha")
+        XCTAssertTrue(waitUntil { ws.snapshot.query.isSearching })
+        XCTAssertEqual(sb.outlineView(sb.outline, validateDrop: Drop([dropped], from: nil), proposedItem: nil, proposedChildIndex: -1), [])
+        XCTAssertTrue(ws.library.waitUntilIdle())
+        wc.leaveWorkspace()
+    }
+
+    /// Two notes groups and a plain window merged into one group: one workspace, every window in notes mode.
+    func testMergingGroupsLeavesOneWorkspace() throws {
+        let ws1 = try makeWorkspace()
+        let ws2 = ws1.fork()
+        let windows = try (0..<5).map { try makeWindow("# W\($0)\n").1 }
+        let w = try windows.map { try XCTUnwrap($0.window) }
+        windows[0].adopt(ws1)
+        w[0].addTabbedWindow(w[1], ordered: .above)
+        windows[2].adopt(ws2)
+        w[2].addTabbedWindow(w[3], ordered: .above)
+        XCTAssertTrue(windows[1].workspace === ws1 && windows[3].workspace === ws2)
+        XCTAssertNil(windows[4].workspace)
+        // What Merge All Windows does, window by window (the menu's own action needs an active app).
+        for i in [3, 2, 4] { w[0].addTabbedWindow(w[i], ordered: .above) }
+        XCTAssertEqual(w[0].tabGroup?.windows.count, 5)
+        let spaces = windows.map(\.workspace)
+        XCTAssertTrue(spaces.allSatisfy { $0 != nil && $0 === spaces[0] }, "one workspace: \(spaces.map { $0.map { ObjectIdentifier($0).hashValue } ?? 0 })")
+        XCTAssertTrue(windows.allSatisfy { $0.sidebar != nil }, "every window of a notes group shows the sidebar")
+        for c in windows { c.leaveWorkspace() }
+    }
+
+    /// The sidebar and the palettes through the accessibility API: each named for what it is.
+    func testTheSidebarAndThePalettesAreNamedForVoiceOver() throws {
+        let ws = try makeWorkspace()
+        let (_, wc) = try makeWindow()
+        wc.adopt(ws)
+        let sb = try XCTUnwrap(wc.sidebar)
+        XCTAssertEqual(sb.outline.accessibilityLabel(), "Library")
+        XCTAssertEqual(sb.view.searchField.accessibilityLabel(), "Search the library")
+        XCTAssertEqual(sb.view.backlinks.table.accessibilityLabel(), "Backlinks")
+        let row = try XCTUnwrap(sb.outline.view(atColumn: 0, row: 0, makeIfNecessary: true))
+        XCTAssertEqual(row.accessibilityLabel(), lib.url.lastPathComponent)
+        wc.quickOpen(nil)
+        XCTAssertEqual(wc.palette?.panel.field.accessibilityLabel(), "Open note")
+        wc.palette?.close()
+        wc.chooseTemplate(nil)
+        XCTAssertEqual(wc.palette?.panel.field.accessibilityLabel(), "New from template", "not called Quick Open")
+        wc.palette?.close()
+        wc.leaveWorkspace()
+    }
+
+    /// A workspace whose windows have all left it is freed (nothing else holds it).
+    func testAWorkspaceIsFreedWithItsWindows() throws {
+        let (_, a) = try makeWindow()
+        let (_, b) = try makeWindow()
+        weak var gone: Workspace?
+        autoreleasepool {
+            let ws = Workspace(library: LibraryController(), settings: isolatedSettings(), notesMode: true)
+            gone = ws
+            a.adopt(ws)
+            b.adopt(ws)
+            ws.setSearch("x")
+            a.leaveWorkspace()
+            b.leaveWorkspace()
+        }
+        XCTAssertTrue(waitUntil { gone == nil })
+    }
+
+    /// Leaving notes mode lets go of everything it made: the sidebar, its views, the split view and the container.
+    func testAWindowOutOfNotesModeKeepsNothingOfIt() throws {
+        let ws = try makeWorkspace()
+        let (_, wc) = try makeWindow()
+        weak var sidebar: SidebarController?
+        weak var sidebarView: SidebarView?
+        weak var outline: NSOutlineView?
+        weak var split: NSSplitView?
+        weak var container: NSView?
+        weak var palette: PaletteController?
+        autoreleasepool {
+            wc.adopt(ws)
+            sidebar = wc.sidebar
+            sidebarView = wc.sidebar?.view
+            outline = wc.sidebar?.outline
+            split = wc.notesSplit
+            container = wc.notesContainer
+            wc.quickOpen(nil)
+            palette = wc.palette
+            XCTAssertNotNil(palette)
+            ws.setBacklinksShown(true)
+            ws.setNotesMode(false)
+        }
+        XCTAssertTrue(waitUntil { sidebar == nil && sidebarView == nil && outline == nil && split == nil && container == nil && palette == nil },
+                      "sidebar \(sidebar != nil) view \(sidebarView != nil) outline \(outline != nil) split \(split != nil) container \(container != nil) palette \(palette != nil)")
+        XCTAssertTrue(wc.window?.contentView === wc.root)
+        wc.leaveWorkspace()
+    }
+
     private func window(_ w: NSWindow, isInGroupOf other: NSWindow) -> Bool {
         other.tabGroup?.windows.contains { $0 === w } ?? false
     }
 
     // MARK: the menus
+
+    /// A menu item matching a key takes it even while it is disabled (AppKit beeps and the key goes nowhere), so no
+    /// menu may use a key the editor's text view binds itself.
+    func testNoMenuItemTakesAKeyTheEditorUses() {
+        let deleteKeys: Set<String> = ["\u{8}", "\u{7f}", String(UnicodeScalar(NSDeleteFunctionKey)!)]
+        let arrows: Set<String> = [NSLeftArrowFunctionKey, NSRightArrowFunctionKey, NSUpArrowFunctionKey, NSDownArrowFunctionKey,
+                                   NSHomeFunctionKey, NSEndFunctionKey, NSPageUpFunctionKey, NSPageDownFunctionKey].map { String(UnicodeScalar($0)!) }.reduce(into: []) { $0.insert($1) }
+        var offenders: [String] = []
+        func walk(_ menu: NSMenu, _ path: String) {
+            for item in menu.items where !item.isSeparatorItem {
+                let name = path + " > " + item.title
+                if let sub = item.submenu { walk(sub, name) }
+                if deleteKeys.contains(item.keyEquivalent) || arrows.contains(item.keyEquivalent) { offenders.append(name) }
+            }
+        }
+        for top in MainMenu.build().items { if let sub = top.submenu { walk(sub, top.title) } }
+        XCTAssertEqual(offenders, [], "these would take the editor's delete or caret keys")
+    }
 
     func testNoKeyEquivalentIsUsedTwice() {
         var seen: [String: String] = [:]
@@ -436,7 +669,7 @@ final class SidebarTests: XCTestCase {
         XCTAssertEqual(keys["File > Today\u{2019}s Note"], "⌃⌘N")
         XCTAssertEqual(keys["File > New from Template > Choose Template"], "⇧⌘N")
         XCTAssertEqual(keys["View > Show Backlinks"], "⌥⌘B")
-        XCTAssertEqual(keys["Library > Move to Trash"], "⌘⌫")
+        XCTAssertNil(keys["Library > Move to Trash"], "⌘⌫ is the list's own key (see testCommandDeleteInTheListMovesToTheTrash)")
         XCTAssertEqual(keys["File > New Folder"], "⌥⌘N")
         XCTAssertEqual(keys["File > New"], "⌘N", "New is still New")
     }

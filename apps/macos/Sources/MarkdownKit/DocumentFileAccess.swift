@@ -179,18 +179,25 @@ public enum DocumentFileAccess {
 
     /// The folder a grant stands for and access to it (kept until the app ends). A moved folder
     /// is found through its bookmark; without one, by its path.
+    ///
+    /// Never mounts a volume or asks anything: this runs on the main thread when a window turns notes mode
+    /// on, and a folder on a drive that is not connected (or a server that is not reachable) would otherwise
+    /// hold it while the system tries; such a folder is simply not there until the drive is.
     public static func open(_ grant: Grant) -> URL? {
         var url = URL(fileURLWithPath: grant.path, isDirectory: true)
         if let data = grant.bookmark {
             var stale = false
-            if let resolved = (try? URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale))
-                ?? (try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)) {
+            if let resolved = (try? URL(resolvingBookmarkData: data, options: resolveOptions.union(.withSecurityScope), relativeTo: nil, bookmarkDataIsStale: &stale))
+                ?? (try? URL(resolvingBookmarkData: data, options: resolveOptions, relativeTo: nil, bookmarkDataIsStale: &stale)) {
                 url = resolved
             }
         }
         _ = url.startAccessingSecurityScopedResource()
         return isDirectory(url) ? url : nil
     }
+
+    /// How a grant's bookmark is resolved: without mounting anything and without any panel.
+    static let resolveOptions: URL.BookmarkResolutionOptions = [.withoutUI, .withoutMounting]
 
     /// The folder, made when it is not there.
     public static func ensureFolder(_ url: URL) throws {
@@ -211,9 +218,13 @@ public enum DocumentFileAccess {
         return try result.get()
     }
 
+    /// Told of each coordinated write, on the thread that makes it (tests).
+    nonisolated(unsafe) public static var coordinatedWriteObserver: ((URL) -> Void)?
+
     /// Writes `data` over `url` through a file coordinator, so a document that has the file open
     /// (a file presenter) is told and reads it again.
     public static func writeCoordinated(_ data: Data, to url: URL) throws {
+        coordinatedWriteObserver?(url)
         var result: Result<Void, Error> = .success(())
         var coordinationError: NSError?
         NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { u in

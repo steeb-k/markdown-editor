@@ -589,14 +589,28 @@ final class UIScriptRunner {
             let chevron = side == "left" ? strip.leftChevron : strip.rightChevron
             let before = strip.scrollOffset
             let hidden = chevron.isHidden
+            func firstClear() -> Int { TabStripModel.firstClearTab(offset: strip.scrollOffset, tabWidth: strip.tabWidth, chevron: strip.chevronWidth) }
+            let clearBefore = firstClear()
             let point = chevron.convert(NSPoint(x: chevron.bounds.midX, y: chevron.bounds.midY), to: strip)
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                 if let e = tabEvent(type, at: point, in: strip) { w.sendEvent(e) }
             }
             let moved = strip.scrollOffset - before
-            let want = (side == "left" ? -1 : 1) * strip.tabWidth
-            record(["tabChevron": side, "was_hidden": hidden, "moved": Double(moved), "one_tab": Double(want), "overflow": "left \(strip.overflow.left) right \(strip.overflow.right)"],
-                   ok: !hidden && abs(moved - want) < 1.5)
+            // One tab: the first tab clear of the left chevron is the next (or the previous) one, or the strip
+            // reached the end it was pressed towards.
+            let step = firstClear() - clearBefore
+            let atEnd = side == "left" ? strip.scrollOffset < 0.5 : !strip.overflow.right
+            let oneTab = step == (side == "left" ? -1 : 1) || (atEnd && moved != 0 && abs(step) <= 1)
+            // Short of the end, the first tab in view begins where the left chevron ends: its close button and title
+            // are not under the fade.
+            var clearOfChevron = true
+            if !strip.leftChevron.isHidden, strip.overflow.right, strip.chevronWidth > 0 {
+                let frames = strip.visibleTabFrames, i = firstClear()
+                clearOfChevron = i < frames.count && abs(frames[i].minX - strip.leftChevron.frame.maxX) < 1
+            }
+            record(["tabChevron": side, "was_hidden": hidden, "moved": Double(moved), "first_clear_tab": [clearBefore, firstClear()],
+                    "first_tab_clear_of_the_chevron": clearOfChevron, "overflow": "left \(strip.overflow.left) right \(strip.overflow.right)"],
+                   ok: !hidden && oneTab && clearOfChevron)
             later(0.2, done)
         } else if let i = step["tabClose"] as? Int {
             tabClick(i, close: true)
@@ -2203,6 +2217,18 @@ final class UIScriptRunner {
                     check("\(side) chevron \(want ? "shown" : "hidden")", shown == want && chevron.isHidden == !want,
                           "overflow left \(strip.overflow.left) right \(strip.overflow.right), offset \(strip.scrollOffset), tabs \(strip.tabViews.count) of \(strip.tabWidth) in \(strip.available)")
                 }
+            }
+            if t["chevronsMatchClipping"] as? Bool == true {
+                // Worked out from where the tabs are, not from the strip's own flags: a chevron shows on a side exactly
+                // when a tab is cut off there.
+                let strip = c.tabs.strip
+                strip.layoutSubtreeIfNeeded()
+                let room = NSRect(x: strip.leadingInset, y: 0, width: strip.available, height: strip.bounds.height)
+                let frames = strip.tabViews.map { strip.convert($0.frame, from: $0.superview) }
+                let cutLeft = (frames.map(\.minX).min() ?? room.minX) < room.minX - 0.5
+                let cutRight = (frames.map(\.maxX).max() ?? room.maxX) > room.maxX + 0.5
+                check("chevrons shown exactly where tabs are cut off", strip.leftChevron.isHidden == !cutLeft && strip.rightChevron.isHidden == !cutRight,
+                      "cut left \(cutLeft) right \(cutRight), chevrons left \(!strip.leftChevron.isHidden) right \(!strip.rightChevron.isHidden), offset \(strip.scrollOffset), \(frames.count) tabs of \(strip.tabWidth) in \(room)")
             }
             if t["chevronsInside"] as? Bool == true {
                 // Over the tabs' own room, never beyond the strip or into the part above the sidebar.

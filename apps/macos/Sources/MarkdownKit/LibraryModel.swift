@@ -21,6 +21,12 @@ public struct LibraryRootInfo: Equatable, Hashable, Sendable {
 
     /// The id of the root the user's library lives in; further roots are numbered.
     public static let libraryID = "library"
+
+    /// The id of the `n`th folder the user added (`folder-2`, ...).
+    public static func addedFolderID(_ n: Int) -> String { "folder-\(n)" }
+    public static func isAddedFolder(id: String) -> Bool { id.hasPrefix("folder-") }
+    /// A folder added beside the library, not the library itself.
+    public var isAddedFolder: Bool { Self.isAddedFolder(id: id) }
 }
 
 public enum LibraryEntryKind: Equatable, Sendable {

@@ -37,7 +37,8 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         outline.delegate = self
         outline.target = self
         outline.action = #selector(rowClicked(_:))
-        outline.onReturn = { [weak self] in self?.beginRenameOfSelection() }
+        outline.onReturn = { [weak self] in self?.returnPressed() }
+        outline.onDeleteKey = { [weak self] in self?.controller?.trashSelection(nil) }
         outline.registerForDraggedTypes([.fileURL])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.setDraggingSourceOperationMask(.copy, forLocal: false)
@@ -260,12 +261,16 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         let row = outline.clickedRow
         guard row >= 0, let item = outline.item(atRow: row) as? SidebarItem else { return }
         let mods = NSApp.currentEvent?.modifierFlags ?? []
-        activate(item, replacing: mods.contains(.option), extending: !mods.intersection([.command, .shift]).isEmpty)
+        activate(item, replacing: mods.contains(.option), extending: !mods.intersection([.command, .shift]).isEmpty,
+                 again: (NSApp.currentEvent?.clickCount ?? 1) > 1)
     }
 
     /// What a click on a row does: a note opens (in a new tab, or replacing the current tab's document with
     /// Option), a folder opens or closes, a tag filters, another file opens in its own app.
-    func activate(_ item: SidebarItem, replacing: Bool = false, extending: Bool = false) {
+    ///
+    /// `again`: the second click of a double-click (the outline sends its action for each click). A folder
+    /// opened by the first stays open, as a double-click in Finder leaves it.
+    func activate(_ item: SidebarItem, replacing: Bool = false, extending: Bool = false, again: Bool = false) {
         switch item.kind {
         case .tag(let name, _):
             workspace.toggleTag(name)
@@ -279,7 +284,9 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             switch n.kind {
             case .note: controller?.openNote(NoteOpenRequest(url: n.url), replacing: replacing)
             case .other: LinkOpener.open(n.url)
-            case .root, .folder: if outline.isItemExpanded(item) { outline.collapseItem(item) } else { outline.expandItem(item) }
+            case .root, .folder:
+                guard !again else { return }
+                if outline.isItemExpanded(item) { outline.collapseItem(item) } else { outline.expandItem(item) }
             }
         case .message: break
         }
@@ -346,6 +353,17 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
     }
 
     // MARK: renaming
+
+    /// Return in the list: a search hit opens, as Return in the search field does (after arrowing down from the
+    /// field into the hits); a note or folder is renamed.
+    func returnPressed() {
+        let rows = outline.selectedRowIndexes
+        if rows.count == 1, let row = rows.first, let item = outline.item(atRow: row) as? SidebarItem, case .hit = item.kind {
+            activate(item)
+            return
+        }
+        beginRenameOfSelection()
+    }
 
     func beginRenameOfSelection() {
         guard let node = selectedNodes().first, node.kind != .root else { return }

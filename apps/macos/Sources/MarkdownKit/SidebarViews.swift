@@ -131,15 +131,19 @@ final class SidebarRowView: NSTableRowView {
     }
 }
 
-/// The outline: Return renames, the context menu selects the row it opens on.
+/// The outline: Return renames, ⌘⌫ moves to the Trash, the context menu selects the row it opens on.
 final class SidebarOutlineView: NSOutlineView {
     var onReturn: (() -> Void)?
     var onDeleteKey: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
+        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
         // Return (or Enter) renames what is selected.
-        if event.keyCode == 36 || event.keyCode == 76, event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+        if event.keyCode == 36 || event.keyCode == 76, mods.subtracting(.shift).isEmpty {
             onReturn?()
+        } else if event.keyCode == 51, mods == .command {
+            // ⌘⌫ (the Delete key): here, not as the menu's key equivalent, which would take it from the editor.
+            onDeleteKey?()
         } else {
             super.keyDown(with: event)
         }

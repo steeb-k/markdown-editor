@@ -76,7 +76,7 @@ extension UIScriptRunner {
                 done()
             }
         } else if let id = str("click") {
-            click(nodeID(id), option: n["option"] as? Bool ?? false, then: done)
+            click(nodeID(id), option: n["option"] as? Bool ?? false, times: n["times"] as? Int ?? 1, then: done)
         } else if let ids = n["select"] as? [String] {
             workspaceNow?.setSelection(ids.map(nodeID))
             record(["notes select": ids], ok: workspaceNow != nil)
@@ -254,7 +254,12 @@ extension UIScriptRunner {
         } else if n["settle"] != nil {
             guard let ws = workspaceNow else { done(); return }
             ws.requestSnapshot()
-            waitFor(num("settle") ?? 10, { self.libraryQuiet(ws) }) { _ in later(0.4, done) }
+            // Also every open document has heard where its file went (a rename's move reaches a document through its
+            // file presenter, a moment after the file system has it).
+            func documentsFollowed() -> Bool {
+                NSDocumentController.shared.documents.allSatisfy { $0.fileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? true }
+            }
+            waitFor(num("settle") ?? 10, { self.libraryQuiet(ws) && documentsFollowed() }) { _ in later(0.4, done) }
         } else if n["dumpRows"] != nil {
             let sb = notesController?.sidebar
             record(["notes rows": sb?.visibleRowTitles ?? [], "selected": sb?.selectedRowIDs ?? [], "reloads": sb?.reloads ?? 0,
@@ -282,7 +287,8 @@ extension UIScriptRunner {
 
     // MARK: clicking, searching, creating
 
-    private func click(_ id: String, option: Bool, then done: @escaping () -> Void) {
+    /// `times`: clicks one after another before the first has opened anything (a double-click on a row).
+    private func click(_ id: String, option: Bool, times: Int = 1, then done: @escaping () -> Void) {
         guard let c = notesController, let sb = c.sidebar, let item = sb.item(withID: id) else {
             record(["notes click": id, "error": "no such row"], ok: false)
             done()
@@ -290,7 +296,7 @@ extension UIScriptRunner {
         }
         let target = item.node?.url
         let docsBefore = NSDocumentController.shared.documents.count
-        sb.activate(item, replacing: option)
+        for _ in 0..<max(1, times) { sb.activate(item, replacing: option) }
         func arrived() -> Bool {
             if self.window?.attachedSheet != nil { return true }
             guard let target else { return true }

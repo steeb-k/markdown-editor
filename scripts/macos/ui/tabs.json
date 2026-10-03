@@ -440,7 +440,8 @@
     "count": 15,
     "stripShown": true,
     "nativeBarVisible": false,
-    "chevronsInside": true
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
    },
    "titlebarClean": true
   }
@@ -459,7 +460,8 @@
      "left": false,
      "right": true
     },
-    "chevronsInside": true
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
    }
   }
  },
@@ -477,7 +479,8 @@
      "left": true,
      "right": true
     },
-    "chevronsInside": true
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
    }
   }
  },

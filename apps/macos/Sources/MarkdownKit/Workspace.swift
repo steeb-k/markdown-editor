@@ -237,7 +237,7 @@ public final class Workspace {
             if node.isFolder { return node }
             if let parent = snapshot.node(withID: LibraryNode.id(root: node.root, path: Self.parentPath(node.path))) { return parent }
         }
-        return snapshot.roots.first
+        return snapshot.roots.first { !LibraryRootInfo.isAddedFolder(id: $0.root) } ?? snapshot.roots.first
     }
 
     public static func parentPath(_ path: String) -> String {
@@ -250,8 +250,10 @@ public final class Workspace {
         return snapshot.node(withID: LibraryNode.id(root: ref.root, path: ref.path))
     }
 
-    /// The library itself: the first root.
-    public var primaryRoot: LibraryRootInfo? { library.roots.first }
+    /// The library itself: the root that is not a folder the user added. Not merely the first: when the library's folder
+    /// cannot be found (on a drive that is not connected), an added folder is first and must not be given the
+    /// daily notes and the templates.
+    public var primaryRoot: LibraryRootInfo? { library.roots.first { !$0.isAddedFolder } }
 
     // MARK: roots
 
@@ -269,8 +271,8 @@ public final class Workspace {
             id = LibraryRootInfo.libraryID
         } else {
             var n = 2
-            while grants.contains(where: { $0.id == "folder-\(n)" }) { n += 1 }
-            id = "folder-\(n)"
+            while grants.contains(where: { $0.id == LibraryRootInfo.addedFolderID(n) }) { n += 1 }
+            id = LibraryRootInfo.addedFolderID(n)
         }
         let grant = DocumentFileAccess.makeGrant(id: id, folder: folder)
         if id == LibraryRootInfo.libraryID { grants.insert(grant, at: 0) } else { grants.append(grant) }

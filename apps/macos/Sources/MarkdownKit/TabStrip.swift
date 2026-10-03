@@ -70,19 +70,52 @@ enum TabStripModel {
         return (offset > 0.5, offset < total - available - 0.5)
     }
 
-    /// The offset after scrolling by `tabs` tabs (negative: to the left), kept within what there is.
-    static func scrolled(by tabs: Int, tabWidth: CGFloat, count: Int, available: CGFloat, from offset: CGFloat) -> CGFloat {
-        let maxOffset = max(0, tabWidth * CGFloat(count) - available)
-        return min(max(0, offset + tabWidth * CGFloat(tabs)), maxOffset)
+    /// Where a tab's close button begins, from the tab's left edge.
+    static let closeButtonInset: CGFloat = 6
+
+    /// How much of the row a chevron covers when there is room for one at each end beside a whole tab, else
+    /// nothing (the chevrons are then all there is to see of them, and the tabs keep to plain multiples).
+    static func chevronWidth(tabWidth: CGFloat, available: CGFloat) -> CGFloat {
+        available >= tabWidth + 2 * TabOverflowButton.width ? TabOverflowButton.width : 0
     }
 
-    /// How far the strip is scrolled so that tab `index` is fully in view, given the offset now.
-    static func scrollOffset(revealing index: Int, tabWidth: CGFloat, count: Int, available: CGFloat, current: CGFloat) -> CGFloat {
+    /// The offset at which tab `k` begins just right of the left chevron (the first tab: at the strip's start),
+    /// so that its close button and title are never under the chevron's fade.
+    static func stop(_ k: Int, tabWidth: CGFloat, chevron: CGFloat, maxOffset: CGFloat) -> CGFloat {
+        k <= 0 ? 0 : min(maxOffset, CGFloat(k) * tabWidth - chevron)
+    }
+
+    /// The first tab whose close button is clear of the left chevron at this offset (a tab under the chevron
+    /// is one of those it says are hidden).
+    static func firstClearTab(offset: CGFloat, tabWidth: CGFloat, chevron: CGFloat) -> Int {
+        let edge = offset > 0.5 ? offset + max(0, chevron - closeButtonInset) : offset
+        return max(0, Int(((edge - 0.5) / max(tabWidth, 1)).rounded(.up)))
+    }
+
+    /// The offset after scrolling by `tabs` tabs (negative: to the left), kept within what there is. Each press
+    /// brings one more tab out from under the chevron: the next tab then begins where the left chevron ends.
+    static func scrolled(by tabs: Int, tabWidth: CGFloat, count: Int, available: CGFloat, chevron: CGFloat = 0, from offset: CGFloat) -> CGFloat {
+        let maxOffset = max(0, tabWidth * CGFloat(count) - available)
+        var e = min(max(0, offset), maxOffset)
+        for _ in 0..<abs(tabs) {
+            let first = firstClearTab(offset: e, tabWidth: tabWidth, chevron: chevron)
+            e = stop(tabs > 0 ? first + 1 : first - 1, tabWidth: tabWidth, chevron: chevron, maxOffset: maxOffset)
+        }
+        return e
+    }
+
+    /// How far the strip is scrolled so that tab `index` is fully in view, and clear of the chevrons, given the
+    /// offset now.
+    static func scrollOffset(revealing index: Int, tabWidth: CGFloat, count: Int, available: CGFloat, chevron: CGFloat = 0, current: CGFloat) -> CGFloat {
         let total = tabWidth * CGFloat(count)
         let maxOffset = max(0, total - available)
         var offset = min(max(0, current), maxOffset)
         let left = tabWidth * CGFloat(index), right = left + tabWidth
-        if left < offset { offset = left } else if right > offset + available { offset = right - available }
+        if index < firstClearTab(offset: offset, tabWidth: tabWidth, chevron: chevron) {
+            offset = stop(index, tabWidth: tabWidth, chevron: chevron, maxOffset: maxOffset)
+        } else if right > offset + available - (offset < maxOffset - 0.5 ? chevron : 0) + 0.5 {
+            offset = right - available + chevron
+        }
         return min(max(0, offset), maxOffset)
     }
 }
@@ -154,9 +187,14 @@ final class TabStripView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     var tabWidth: CGFloat { TabStripModel.tabWidth(count: entries.count, available: available) }
+    /// What a chevron covers of the tabs' room.
+    var chevronWidth: CGFloat { TabStripModel.chevronWidth(tabWidth: tabWidth, available: available) }
 
     func setEntries(_ new: [TabEntry]) {
         guard new != entries || tabViews.count != new.count else { return }
+        // Only another tab selected, or tabs added or closed, bring the selected tab into view: a title or an
+        // edited dot that changes (an autosave, a rename) must not take away a scroll of the user's.
+        let reveal = new.count != entries.count || new.first(where: \.selected)?.windowNumber != entries.first(where: \.selected)?.windowNumber
         entries = new
         while tabViews.count > new.count { tabViews.removeLast().removeFromSuperview() }
         while tabViews.count < new.count {
@@ -165,15 +203,23 @@ final class TabStripView: NSView {
             tabViews.append(t)
         }
         for (view, entry) in zip(tabViews, new) { view.entry = entry }
-        revealSelected()
+        if reveal { revealSelected() }
         needsLayout = true
-        setAccessibilityChildren(tabViews)
+        updateAccessibilityChildren()
+    }
+
+    /// The tabs, and the chevrons that show: an explicit list of children would otherwise leave the chevrons out of
+    /// what VoiceOver can reach.
+    private func updateAccessibilityChildren() {
+        let left: [NSView] = leftChevron.isHidden ? [] : [leftChevron], right: [NSView] = rightChevron.isHidden ? [] : [rightChevron]
+        setAccessibilityChildren(left + tabViews + right)
     }
 
     /// Scrolls so that the selected tab is in view.
     private func revealSelected() {
         guard let i = entries.firstIndex(where: \.selected) else { return }
-        scrollOffset = TabStripModel.scrollOffset(revealing: i, tabWidth: tabWidth, count: entries.count, available: available, current: scrollOffset)
+        scrollOffset = TabStripModel.scrollOffset(revealing: i, tabWidth: tabWidth, count: entries.count, available: available,
+                                                  chevron: chevronWidth, current: scrollOffset)
     }
 
     /// The room the tabs had at the last layout: when it changes (a window resized, the divider dragged) the
@@ -226,14 +272,18 @@ final class TabStripView: NSView {
         let width = TabOverflowButton.width
         leftChevron.frame = NSRect(x: clip.frame.minX, y: 0, width: min(width, available), height: bounds.height)
         rightChevron.frame = NSRect(x: clip.frame.maxX - min(width, available), y: 0, width: min(width, available), height: bounds.height)
-        leftChevron.isHidden = !overflow.left
-        rightChevron.isHidden = !overflow.right
+        if leftChevron.isHidden == overflow.left || rightChevron.isHidden == overflow.right {
+            leftChevron.isHidden = !overflow.left
+            rightChevron.isHidden = !overflow.right
+            updateAccessibilityChildren()
+        }
     }
 
     /// A press on a chevron: the tabs move by one tab towards that side.
     func scrollByOneTab(_ direction: Int) {
         let before = scrollOffset
-        scrollOffset = TabStripModel.scrolled(by: direction, tabWidth: tabWidth, count: entries.count, available: available, from: scrollOffset)
+        scrollOffset = TabStripModel.scrolled(by: direction, tabWidth: tabWidth, count: entries.count, available: available,
+                                              chevron: chevronWidth, from: scrollOffset)
         if scrollOffset != before { needsLayout = true; layoutSubtreeIfNeeded() }
     }
 
@@ -304,7 +354,7 @@ final class TabView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    private var closeRect: NSRect { NSRect(x: 6, y: (bounds.height - 16) / 2, width: 16, height: 16) }
+    private var closeRect: NSRect { NSRect(x: TabStripModel.closeButtonInset, y: (bounds.height - 16) / 2, width: 16, height: 16) }
 
     func updateHover(_ on: Bool) {
         let value = on && strip?.isFaded != true
