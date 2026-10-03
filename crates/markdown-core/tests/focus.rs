@@ -327,6 +327,31 @@ fn a_selection_outside_the_window_lights_only_itself() {
     }
 }
 
+/// A selection of only the CR of a CRLF ends between the CR and the LF, which is the position
+/// before the CR: it is a caret there, and a caret lights its unit whatever the window (the
+/// proptest seed `ec984a98`).
+#[test]
+fn a_selection_of_only_a_cr_is_a_caret_before_it() {
+    let text = "Word **\n\n**\r\n`c. d` ![****===\n****1. ";
+    let cr = text.find('\r').unwrap() as u32;
+    for enc in ENCODINGS {
+        let doc = Document::new(text, enc);
+        let sel = TextRange::new(cr, cr + 1);
+        let caret = TextRange::new(cr, cr);
+        for scope in [FocusScope::Sentence, FocusScope::Paragraph] {
+            let want = doc.focus_range(caret, scope);
+            // The paragraph that starts with the second `**` (offset 9), outside the window 0..0.
+            assert_eq!(want.first().map(|r| r.start), Some(9), "{enc:?} {scope:?}");
+            assert!(slice_units(text, enc, want[0]).starts_with("**\r\n"), "{enc:?} {scope:?}");
+            assert_eq!(doc.focus_range(sel, scope), want, "{enc:?} {scope:?}");
+            for window in [TextRange::new(0, 0), TextRange::new(20, 30)] {
+                let st = doc.selection_state(sel, Some(window), false, Some(scope));
+                assert_eq!(st.focus.as_ref(), Some(&want), "{enc:?} {scope:?} {window:?}");
+            }
+        }
+    }
+}
+
 #[test]
 fn selection_state_is_the_three_queries_in_one() {
     let text = "# T\n\nOne. **Two.** Three.\n\n- [ ] a\n- b\n";
@@ -894,20 +919,22 @@ proptest! {
                     prop_assert_eq!(&st.table, &doc.table_at(lo));
                     prop_assert_eq!(&st.concealment, &Some(doc.concealment(sel, within)));
                     let whole = scope.map(|sc| doc.focus_range(sel, sc));
-                    if within.is_none() || sel.start == sel.end {
-                        // A caret's unit is computed whatever the window.
+                    let (lo, hi) = (sel.start.min(sel.end), sel.start.max(sel.end));
+                    // (A selection end between a CR and its LF is the position before the CR, for the
+                    // window as well as for the units; either end.)
+                    let split = |p: u32| p > 0 && slice_units(&text, enc, TextRange::new(p - 1, p)) == "\r" && slice_units(&text, enc, TextRange::new(p, p + 1)) == "\n";
+                    let seen = |p: u32| if split(p) { p - 1 } else { p };
+                    let (lo_seen, hi_seen) = (seen(lo), seen(hi));
+                    if within.is_none() || lo_seen == hi_seen {
+                        // A caret's unit is computed whatever the window. A selection of only the CR
+                        // of a CRLF is a caret before the CR.
                         prop_assert_eq!(&st.focus, &whole);
                     } else if let (Some(got), Some(whole)) = (&st.focus, &whole) {
                         // A windowed selection: never more than the whole answer, and inside the
                         // window exactly it when the selection meets the window (otherwise only
                         // the selection itself is lit).
                         let lit = |rs: &[TextRange], u: u32| rs.iter().any(|r| r.start <= u && u < r.end);
-                        let (lo, hi) = (sel.start.min(sel.end), sel.start.max(sel.end));
-                        // (A selection end between a CR and its LF is the position before the CR, for the
-                        // window as well as for the units.)
-                        let split = hi > 0 && slice_units(&text, enc, TextRange::new(hi - 1, hi)) == "\r" && slice_units(&text, enc, TextRange::new(hi, hi + 1)) == "\n";
-                        let hi_seen = if split { hi - 1 } else { hi };
-                        let meets = lo.max(window.start) < hi_seen.min(window.end);
+                        let meets = lo_seen.max(window.start) < hi_seen.min(window.end);
                         for u in 0..doc.len() {
                             prop_assert!(!lit(got, u) || lit(whole, u), "{} lit beyond the whole answer", u);
                             if !meets {
