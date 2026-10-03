@@ -191,6 +191,7 @@ struct Tally {
     parser_panics: usize,
     skipped_raw_div_in_notes: usize,
     skipped_nested_notes: usize,
+    skipped_wiki: usize,
 }
 
 fn compare(md: &str, tally: &mut Tally) -> Result<(), String> {
@@ -198,6 +199,12 @@ fn compare(md: &str, tally: &mut Tally) -> Result<(), String> {
         tally.parser_panics += 1;
         return Ok(());
     };
+    // Wikilinks and tags are additions the reference does not have (their rendering is checked
+    // in tests/wiki.rs).
+    if Document::new(md, OffsetEncoding::Utf8).spans(None).iter().any(|s| matches!(s.kind, SpanKind::Wikilink | SpanKind::Tag)) {
+        tally.skipped_wiki += 1;
+        return Ok(());
+    }
     tally.compared += 1;
     let mine = ours(md);
     let mut mine = strip_heading_ids(&mine);

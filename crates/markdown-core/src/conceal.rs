@@ -337,6 +337,23 @@ pub(crate) fn link_at(doc: &Document, offset: u32) -> Option<LinkTarget> {
     Some(LinkTarget { range: TextRange::new(doc.unit_of(ls), doc.unit_of(le)), destination })
 }
 
+/// The wikilink under `offset`; see [`Document::wikilink_at`].
+pub(crate) fn wikilink_at(doc: &Document, offset: u32) -> Option<WikilinkRef> {
+    let a = doc.analysis();
+    let text = doc.text();
+    let p = doc.byte_snapped(offset, false);
+    let (lo, hi) = doc.span_indices_bytes(Some((p, p)));
+    let sp = a.spans[lo..hi].iter().find(|s| s.kind == SpanKind::Wikilink && s.start <= p && p < s.end)?;
+    let w = crate::wiki::parse_wikilink(text, sp.start, sp.end)?;
+    let get = |r: (usize, usize)| text[r.0..r.1].to_owned();
+    Some(WikilinkRef {
+        range: TextRange::new(doc.unit_of(sp.start), doc.unit_of(sp.end)),
+        target: get(w.target),
+        heading: w.heading.map(get),
+        label: w.label.map(get),
+    })
+}
+
 fn normalize_label(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
 }

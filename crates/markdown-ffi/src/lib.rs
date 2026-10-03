@@ -9,6 +9,8 @@ uniffi::setup_scaffolding!();
 
 mod authorship;
 pub use authorship::*;
+mod library;
+pub use library::*;
 
 // ----- records and enums ------------------------------------------------------------------
 
@@ -44,6 +46,8 @@ pub enum SpanKind {
     ThematicBreak,
     Html,
     HardBreak,
+    Wikilink,
+    Tag,
     Markup,
 }
 
@@ -126,6 +130,15 @@ impl std::error::Error for EditError {}
 pub struct LinkTarget {
     pub range: Utf16Range,
     pub destination: String,
+}
+
+/// A wikilink and where it points (see `core::WikilinkRef`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct WikilinkRef {
+    pub range: Utf16Range,
+    pub target: String,
+    pub heading: Option<String>,
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -397,6 +410,8 @@ impl From<core::SpanKind> for SpanKind {
             K::ThematicBreak => SpanKind::ThematicBreak,
             K::Html => SpanKind::Html,
             K::HardBreak => SpanKind::HardBreak,
+            K::Wikilink => SpanKind::Wikilink,
+            K::Tag => SpanKind::Tag,
             K::Markup => SpanKind::Markup,
         }
     }
@@ -877,6 +892,13 @@ impl Document {
 
     pub fn link_at(&self, offset: u32) -> Option<LinkTarget> {
         self.with(|d| d.link_at(offset).map(|l| LinkTarget { range: l.range.into(), destination: l.destination }))
+    }
+
+    pub fn wikilink_at(&self, offset: u32) -> Option<WikilinkRef> {
+        self.with(|d| {
+            d.wikilink_at(offset)
+                .map(|w| WikilinkRef { range: w.range.into(), target: w.target, heading: w.heading, label: w.label })
+        })
     }
 
     pub fn concealment(&self, selection: Utf16Range, within: Option<Utf16Range>) -> Concealment {

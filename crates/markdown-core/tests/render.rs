@@ -104,7 +104,7 @@ fn pulldown_html(md: &str) -> String {
 fn commonmark_spec_examples() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/commonmark-spec.json");
     let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    let (mut total, mut equal_spec, mut parser_gap, mut skipped_urls) = (0, 0, 0, 0);
+    let (mut total, mut equal_spec, mut parser_gap, mut skipped_urls, mut skipped_wiki) = (0, 0, 0, 0, 0);
     let mut gaps = Vec::new();
     for e in json.as_array().unwrap() {
         let md = e["markdown"].as_str().unwrap();
@@ -114,6 +114,11 @@ fn commonmark_spec_examples() {
         let ours = doc(md).render_html(&plain());
         if !autolink::find(md).is_empty() {
             skipped_urls += 1;
+            continue;
+        }
+        // Wikilinks and tags are additions too (tests/wiki.rs).
+        if doc(md).spans(None).iter().any(|s| matches!(s.kind, SpanKind::Wikilink | SpanKind::Tag)) {
+            skipped_wiki += 1;
             continue;
         }
         let ours = strip_heading_ids(&ours);
@@ -126,10 +131,11 @@ fn commonmark_spec_examples() {
             panic!("example {n}: {md:?}\n  ours  {ours:?}\n  spec  {spec:?}\n  pulldown  {:?}", pulldown_html(md));
         }
     }
-    println!("{total} examples: {equal_spec} equal the spec, {parser_gap} follow pulldown-cmark where it differs from the spec {gaps:?}, {skipped_urls} with bare URLs set aside");
+    println!("{total} examples: {equal_spec} equal the spec, {parser_gap} follow pulldown-cmark where it differs from the spec {gaps:?}, {skipped_urls} with bare URLs and {skipped_wiki} with wikilinks or tags set aside");
     assert!(total > 600);
     assert!(skipped_urls <= 12, "{skipped_urls}");
-    assert_eq!(equal_spec + parser_gap + skipped_urls, total);
+    assert!(skipped_wiki <= 8, "{skipped_wiki}");
+    assert_eq!(equal_spec + parser_gap + skipped_urls + skipped_wiki, total);
     assert!(parser_gap <= 70, "pulldown-cmark deviates from the spec more than before ({parser_gap})");
 }
 

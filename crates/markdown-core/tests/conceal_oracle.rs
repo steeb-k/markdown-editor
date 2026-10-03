@@ -75,6 +75,12 @@ fn rendered(text: &str, doc: &Document) -> Option<String> {
     if doc.spans(None).iter().filter(|s| matches!(s.kind, SpanKind::TaskMarker { .. })).count() != tasks {
         return None;
     }
+    // Wikilinks: Live mode hides the brackets (and `Target|`) of syntax pulldown-cmark has no
+    // notion of and renders as text. Such documents are not judged here; tests/wiki.rs checks
+    // what is hidden for them.
+    if doc.spans(None).iter().any(|s| s.kind == SpanKind::Wikilink) {
+        return None;
+    }
     for (ev, r) in events {
         match &ev {
             Event::Start(_) => depth += 1,

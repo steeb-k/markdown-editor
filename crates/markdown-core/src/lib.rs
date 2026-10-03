@@ -9,6 +9,7 @@ mod document;
 mod edit;
 mod focus;
 pub mod highlight;
+pub mod library;
 mod lines;
 mod offsets;
 mod pos;
@@ -17,6 +18,7 @@ mod render;
 mod sanitize;
 pub mod theme;
 mod types;
+pub mod wiki;
 
 pub use document::Document;
 pub use preview_css::{preview_css, syntax_palette, PreviewStyle, SyntaxPalette, Typography};

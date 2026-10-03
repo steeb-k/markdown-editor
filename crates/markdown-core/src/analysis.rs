@@ -11,6 +11,7 @@ use pulldown_cmark::{
 };
 
 use crate::autolink;
+use crate::wiki;
 use crate::lines::LineIndex;
 use crate::types::{BlockKind, ColumnAlignment, MarkupScope, SpanKind};
 
@@ -70,6 +71,7 @@ pub(crate) fn kind_key(kind: SpanKind) -> (u8, u8) {
         ThematicBreak => (7, 0),
         TableDelimiterRow => (8, 0),
         Link => (9, 0),
+        Wikilink => (9, 1),
         Image => (10, 0),
         Emphasis => (11, 0),
         Strong => (12, 0),
@@ -81,6 +83,7 @@ pub(crate) fn kind_key(kind: SpanKind) -> (u8, u8) {
         HardBreak => (18, 0),
         CodeInfo => (19, 0),
         LinkDestination => (20, 0),
+        Tag => (20, 1),
         Markup => (21, 0),
     }
 }
@@ -411,12 +414,26 @@ impl<'a> Builder<'a> {
         self.prev_end = end.max(self.extended_end.take().unwrap_or(0));
     }
 
-    /// Search the finished text run for bare URLs.
+    /// Search the finished text run for bare URLs, wikilinks and tags.
     fn flush_run(&mut self) {
         if let Some((s, e)) = self.run.take() {
-            for a in autolink::find_in(self.text, s, e) {
+            let urls = autolink::find_in(self.text, s, e);
+            for a in &urls {
                 self.push(a.start, a.end, SpanKind::Link);
                 self.bare_urls.push((a.start, a.end));
+            }
+            // Wikilinks and tags, outside the bare URLs; no tags on a heading line.
+            let exclude: Vec<(usize, usize)> = urls.iter().map(|a| (a.start, a.end)).collect();
+            for f in wiki::find_in(self.text, s, e, &exclude, self.heading.is_none()) {
+                match f {
+                    wiki::Found::Wikilink(w) => {
+                        self.push(w.start, w.end, SpanKind::Wikilink);
+                        for (ms, me) in w.markup() {
+                            self.markup(ms, me, (w.start, w.end), MarkupScope::Inline);
+                        }
+                    }
+                    wiki::Found::Tag(t) => self.push(t.start, t.end, SpanKind::Tag),
+                }
             }
         }
     }
@@ -1475,6 +1492,8 @@ fn non_prose(kind: SpanKind) -> bool {
             | SpanKind::Strong
             | SpanKind::Strikethrough
             | SpanKind::Link
+            | SpanKind::Wikilink
+            | SpanKind::Tag
             | SpanKind::BlockQuote
             | SpanKind::Table
             | SpanKind::FootnoteDefinition

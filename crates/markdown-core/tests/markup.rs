@@ -37,7 +37,9 @@ fn empty_atx_heading() {
 
 #[test]
 fn not_a_heading() {
-    assert_spans("#hashtag", &[]);
+    // Not a heading; it is a tag.
+    assert_spans("#hashtag", &[("Tag", "#hashtag")]);
+    assert_spans("#1 seven", &[]);
     assert_spans("####### seven", &[]);
 }
 

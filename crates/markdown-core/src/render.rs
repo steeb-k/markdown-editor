@@ -7,6 +7,9 @@
 //!
 //! * bare `http://`, `https://` and `www.` URLs become links, found by [`crate::autolink`] over
 //!   the same runs of plain text the analysis searches;
+//! * wikilinks and inline tags, found by [`crate::wiki`] in the same runs: `[[Title]]` is
+//!   `<a href="Title.md">Title</a>` (the label when there is one, `#slug` for a heading), `#tag`
+//!   is `<span class="tag">#tag</span>`;
 //! * headings get stable GitHub-style `id`s;
 //! * footnotes are collected into a section at the end, numbered by first reference, with
 //!   back-references;
@@ -38,6 +41,7 @@ use crate::lines::LineIndex;
 use crate::preview_css::{preview_css, PreviewStyle};
 use crate::sanitize::{is_safe_url, HtmlFilter};
 use crate::types::TextRange;
+use crate::wiki;
 
 /// What to render and how. `Default` is the plain body, as the clipboard wants it.
 #[derive(Debug, Clone)]
@@ -213,6 +217,8 @@ struct Renderer<'a, 'o> {
     def_index: HashMap<String, usize>,
     /// Inside a link or an image: no bare-URL linking.
     link_depth: u32,
+    /// Inside a heading: no tags.
+    in_heading: bool,
     filter: HtmlFilter,
     /// A task checkbox waiting for the paragraph that follows it.
     pending_task: Option<bool>,
@@ -292,6 +298,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
             defs,
             def_index,
             link_depth: 0,
+            in_heading: false,
             filter: HtmlFilter::default(),
             pending_task: None,
             highlighted_bytes: 0,
@@ -785,21 +792,74 @@ impl<'a, 'o> Renderer<'a, 'o> {
         }
         let (s, e) = (self.events[i].1.start, self.events[j - 1].1.end);
         let links = autolink::find_in(self.src, s, e);
+        let exclude: Vec<(usize, usize)> = links.iter().map(|l| (l.start, l.end)).collect();
+        let found = wiki::find_in(self.src, s, e, &exclude, !self.in_heading);
+        // Bare URLs and what the wiki scan found, in source order (they never overlap).
+        let mut items: Vec<(usize, Option<&autolink::Autolink>, Option<&wiki::Found>)> = Vec::new();
+        items.extend(links.iter().map(|l| (l.start, Some(l), None)));
+        items.extend(found.iter().map(|f| (f.start(), None, Some(f))));
+        items.sort_by_key(|it| it.0);
         let mut pos = s;
-        for l in links {
-            let before = &self.src[pos..l.start];
+        for (start, link, wiki_item) in items {
+            let before = &self.src[pos..start];
             self.text(before);
-            self.write("<a href=\"");
-            self.href(&l.destination);
-            self.write("\">");
-            let label = &self.src[l.start..l.end];
-            self.text(label);
-            self.write("</a>");
-            pos = l.end;
+            if let Some(l) = link {
+                self.write("<a href=\"");
+                self.href(&l.destination);
+                self.write("\">");
+                let label = &self.src[l.start..l.end];
+                self.text(label);
+                self.write("</a>");
+                pos = l.end;
+            } else if let Some(wiki::Found::Wikilink(w)) = wiki_item {
+                self.wikilink(w);
+                pos = w.end;
+            } else if let Some(wiki::Found::Tag(t)) = wiki_item {
+                self.write("<span class=\"tag\">");
+                let name = &self.src[t.start..t.end];
+                self.text(name);
+                self.write("</span>");
+                pos = t.end;
+            }
         }
         let rest = &self.src[pos..e];
         self.text(rest);
         j
+    }
+
+    /// `[[Target|label#heading]]` as a link to the sibling note: `Target.md`, with the heading's
+    /// slug as the fragment; `[[#Heading]]` links within the page.
+    fn wikilink(&mut self, w: &wiki::Wikilink) {
+        let src = self.src;
+        let target = &src[w.target.0..w.target.1];
+        let mut href = String::new();
+        if !target.is_empty() {
+            href.push_str(target);
+            // A name that already has a note extension is not given another.
+            let lower = target.to_ascii_lowercase();
+            if !["md", "markdown", "mdown", "txt"].iter().any(|e| lower.ends_with(&format!(".{e}"))) {
+                href.push_str(".md");
+            }
+        }
+        if let Some(h) = w.heading {
+            href.push('#');
+            href.push_str(&slug(&src[h.0..h.1]));
+        }
+        // `Note: Title.md` must not read as a URL with the scheme `Note`.
+        let first = href.split('/').next().unwrap_or("");
+        if first.contains(':') {
+            href.insert_str(0, "./");
+        }
+        self.write("<a href=\"");
+        self.href(&href);
+        self.write("\">");
+        let shown = match w.label {
+            Some(l) => &src[l.0..l.1],
+            None => &src[w.target.0..w.target.1],
+        };
+        let shown = if shown.is_empty() { w.heading.map_or("", |h| &src[h.0..h.1]) } else { shown };
+        self.text(shown);
+        self.write("</a>");
     }
 
     fn code_block(&mut self, info: &str, code: &str, start: usize) {
@@ -913,6 +973,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
                     a.push('"');
                     a
                 };
+                self.in_heading = true;
                 self.open_block(&level.to_string(), &attrs, range.start, "");
             }
             Tag::Table(alignments) => {
@@ -1022,6 +1083,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 self.write("</p>\n");
             }
             TagEnd::Heading(level) => {
+                self.in_heading = false;
                 self.end_inline_html();
                 self.write(&format!("</{level}>\n"));
             }

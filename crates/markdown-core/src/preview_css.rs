@@ -212,6 +212,7 @@ th {{ background: var(--code-bg); font-weight: 700; text-align: left; }}
 .footnotes p {{ margin-bottom: 0.4em; }}
 .footnote-ref {{ font-size: 0.75em; line-height: 0; }}
 .footnote-ref a, .footnote-backref {{ text-decoration: none; }}
+.tag {{ color: var(--quote); }}
 .unparsed {{ white-space: pre-wrap; }}
 ",
         family = font_stack(&t.font_family),

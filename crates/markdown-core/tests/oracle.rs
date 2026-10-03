@@ -29,6 +29,8 @@ fn non_prose(k: SpanKind) -> bool {
             | SpanKind::Strong
             | SpanKind::Strikethrough
             | SpanKind::Link
+            | SpanKind::Wikilink
+            | SpanKind::Tag
             | SpanKind::BlockQuote
             | SpanKind::Table
             | SpanKind::FootnoteDefinition
@@ -140,7 +142,10 @@ pub fn examine(text: &str) -> Report {
                     }
                 }
                 for &(s, e, k) in &spans {
-                    if k == SpanKind::Markup && overlaps((s, e), r) {
+                    // A wikilink's brackets are text to pulldown-cmark, which has no wikilinks.
+                    let in_wikilink = spans.iter().any(|&(ws, we, wk)| wk == SpanKind::Wikilink && ws <= s && e <= we);
+                    if k == SpanKind::Markup && in_wikilink {
+                    } else if k == SpanKind::Markup && overlaps((s, e), r) {
                         rep.markup_over_text.push(format!("markup {s}..{e} {:?} over text {r:?} {:?}", &text[s..e], &text[r.0..r.1]));
                     } else if image == 0 && autolink == 0 && non_prose(k) && overlaps((s, e), r) {
                         rep.prose_text_lost.push(format!("{k:?} {s}..{e} {:?} over text {r:?} {:?}", &text[s..e], &text[r.0..r.1]));
@@ -202,6 +207,15 @@ pub fn examine(text: &str) -> Report {
         }
     }
 
+    // Wikilink brackets and `Target|` are markup, not prose, though pulldown reports them as text.
+    for &(s, e, k) in &spans {
+        if k == SpanKind::Markup && spans.iter().any(|&(ws, we, wk)| wk == SpanKind::Wikilink && ws <= s && e <= we) {
+            for c in &mut prose_expected[s..e] {
+                *c = false;
+            }
+        }
+    }
+
     // Prose is exactly the text that is rendered as prose (not code, URLs, alt text, HTML).
     let mut prose_got = vec![false; b.len()];
     for p in doc.prose_ranges(None) {
@@ -241,6 +255,7 @@ pub fn examine(text: &str) -> Report {
                                 | SpanKind::Strikethrough
                                 | SpanKind::InlineCode
                                 | SpanKind::Link
+                                | SpanKind::Wikilink
                                 | SpanKind::Image
                                 | SpanKind::FootnoteReference
                         )
@@ -266,6 +281,7 @@ pub fn examine(text: &str) -> Report {
                                     | SpanKind::Strikethrough
                                     | SpanKind::InlineCode
                                     | SpanKind::Link
+                                    | SpanKind::Wikilink
                                     | SpanKind::Image
                                     | SpanKind::FootnoteReference
                             )

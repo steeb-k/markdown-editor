@@ -255,6 +255,11 @@ impl Document {
         crate::conceal::link_at(self, offset)
     }
 
+    /// The wikilink containing `offset` (the character at it), for Cmd-click.
+    pub fn wikilink_at(&self, offset: u32) -> Option<WikilinkRef> {
+        crate::conceal::wikilink_at(self, offset)
+    }
+
     // ----- editing commands (implemented in `crate::edit`) --------------------------------
 
     /// Apply a formatting command to `selection`. `None` means nothing to do. The edit

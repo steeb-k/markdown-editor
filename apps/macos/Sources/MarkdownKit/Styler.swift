@@ -176,7 +176,7 @@ public final class Styler {
                     }
                 }
             case .codeInfo, .linkDestination, .footnoteDefinition, .thematicBreak, .html, .hardBreak,
-                 .markup, .tableDelimiterRow:
+                 .markup, .tableDelimiterRow, .wikilink, .tag:
                 break
             }
         }

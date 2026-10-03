@@ -1,0 +1,5 @@
+# Meeting {{date}}
+
+Attendees:
+
+{{cursor}}

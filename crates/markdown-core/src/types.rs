@@ -74,6 +74,14 @@ pub enum SpanKind {
     Html,
     /// Trailing double space (or backslash) plus the newline.
     HardBreak,
+    /// Whole wikilink, `[[Title|label]]`. Its `[[`, `]]`, the `|` with what precedes it (target
+    /// and `#heading`) and, without a label, the `#heading` are `Markup` owned by the wikilink,
+    /// so Live mode shows the label (or the target) alone. Found in runs of plain text only,
+    /// never inside code, links, images, HTML or front matter.
+    Wikilink,
+    /// Inline tag, `#` included. Never on a heading line, nor inside anything a wikilink
+    /// cannot be in.
+    Tag,
     /// Syntax characters; dimmed in Source mode, concealable in Live mode.
     Markup,
 }
@@ -82,6 +90,18 @@ pub enum SpanKind {
 pub struct Span {
     pub range: TextRange,
     pub kind: SpanKind,
+}
+
+/// A wikilink and where it points (see [`crate::Document::wikilink_at`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WikilinkRef {
+    /// The whole `[[...]]`.
+    pub range: TextRange,
+    /// As written, without surrounding blanks; empty for a link into the same note
+    /// (`[[#Heading]]`).
+    pub target: String,
+    pub heading: Option<String>,
+    pub label: Option<String>,
 }
 
 /// Leaf block kinds. Containers (block quote, list, list item, footnote
