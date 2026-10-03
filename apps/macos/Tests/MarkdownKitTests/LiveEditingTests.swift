@@ -395,19 +395,22 @@ final class LiveEditingTests: XCTestCase {
         XCTAssertEqual(e.session.viewMode, .source)
     }
 
-    func testModeSwitchControlFollowsTheSession() throws {
+    /// The Source/Live switch is not in the title bar any more: the View menu is where the mode is
+    /// chosen and shown, from the window's own state, also while the preview has the keyboard.
+    func testTheViewModeIsChosenAndShownInTheMenuOnly() throws {
         let doc = MarkdownDocument(settings: isolatedSettings())
         doc.makeWindowControllers()
         let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
-        XCTAssertEqual(wc.modeSwitch.selectedSegment, 0)
-        XCTAssertEqual(wc.modeSwitch.label(forSegment: 0), "Source")
-        XCTAssertEqual(wc.modeSwitch.label(forSegment: 1), "Live")
+        let view = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu)
+        let source = try XCTUnwrap(view.items.first { $0.title == "Source" })
+        let live = try XCTUnwrap(view.items.first { $0.title == "Live" })
+        XCTAssertTrue(wc.validateMenuItem(source) && source.state == .on && live.state == .off || wc.textView.validateUserInterfaceItem(source))
         doc.session.setViewMode(.live)
-        XCTAssertEqual(wc.modeSwitch.selectedSegment, 1)
-        wc.modeSwitch.selectedSegment = 0
-        _ = wc.modeSwitch.sendAction(wc.modeSwitch.action, to: wc.modeSwitch.target)
-        XCTAssertEqual(doc.session.viewMode, .source)
-        XCTAssertTrue(wc.titlebarControls.contains { $0.subviews.contains(wc.modeSwitch) }, "the switch fades with the chrome")
+        XCTAssertTrue(wc.textView.validateUserInterfaceItem(live) && wc.textView.validateUserInterfaceItem(source))
+        XCTAssertEqual([live.state, source.state], [.on, .off], "the menu follows the session")
+        wc.showSourceMode(nil)
+        XCTAssertEqual(doc.session.viewMode, .source, "the window controller answers when the preview has the keyboard")
+        XCTAssertFalse(wc.titlebarControls.contains { $0.subviews.contains { $0 is NSSegmentedControl } })
         doc.close()
     }
 

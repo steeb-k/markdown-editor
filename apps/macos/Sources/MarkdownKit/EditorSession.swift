@@ -45,6 +45,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public internal(set) var focusEnabled: Bool
     public internal(set) var syntaxEnabled: Bool
     public var onFocusToolsChange: (() -> Void)?
+    /// The caret moved or the text changed (the selection changed): focus mode's centring follows.
+    public var onCaretActivity: (() -> Void)?
+    /// Concealment or the focus range was applied (the lines may have changed height): centring is kept.
+    public var onLayoutSettled: (() -> Void)?
     // Authorship (see EditorSession+Authorship.swift).
     /// Which author each character belongs to. Main thread only, next to the text: undo has to
     /// be synchronous, which is why it is not part of the analysis queue's `Document`.
@@ -391,6 +395,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     func selectionChanged(in tv: EditorTextView) {
         selectionToken += 1
         let token = selectionToken
+        onCaretActivity?()
         tv.refreshTypingAttributes()
         let selection = tv.selectedRange()
         // The table the caret has just left (the answer below replaces it).

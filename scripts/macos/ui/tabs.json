@@ -1,0 +1,277 @@
+[
+ {
+  "log": "--- Tabs live in the title bar: no native tab bar, the same height, the native tab commands"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   640
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 1,
+    "titles": [
+     "tour.md"
+    ],
+    "stripShown": false,
+    "nativeBarVisible": false
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "remember": "single-tab"
+ },
+ {
+  "snapshot": "01-one-tab",
+  "bitmap": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/focus.md",
+  "folder": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/live.md",
+  "folder": true
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "action": "mergeAllWindows:",
+  "edits": false
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "titles": [
+     "live.md",
+     "tour.md",
+     "focus.md"
+    ],
+    "stripShown": true,
+    "nativeBarVisible": false,
+    "documents": 3,
+    "stripHeightAtMost": 32,
+    "editedMarks": {
+     "0": false,
+     "1": false,
+     "2": false
+    }
+   },
+   "titlebarHeightSameAs": "single-tab",
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "02-three-tabs-merged",
+  "bitmap": true
+ },
+ {
+  "tabClick": 0
+ },
+ {
+  "assert": {
+   "tabs": {
+    "selected": 0
+   }
+  }
+ },
+ {
+  "tabClick": 1
+ },
+ {
+  "assert": {
+   "tabs": {
+    "selected": 1
+   }
+  }
+ },
+ {
+  "type": "an edit",
+  "interval": 0.03
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "tabs": {
+    "editedMarks": {
+     "0": false,
+     "1": true,
+     "2": false
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "03-edited-dot",
+  "bitmap": true
+ },
+ {
+  "log": "--- empty title bar beside the tabs still zooms the window"
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.96
+  }
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "nativeBarVisible": false
+   },
+   "titlebarHeightSameAs": "single-tab"
+  }
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.96
+  }
+ },
+ {
+  "tabDrag": [
+   1,
+   0
+  ]
+ },
+ {
+  "assert": {
+   "tabs": {
+    "titles": [
+     "tour.md",
+     "live.md",
+     "focus.md"
+    ],
+    "selected": 0
+   }
+  }
+ },
+ {
+  "snapshot": "04-dragged-to-the-front",
+  "bitmap": true
+ },
+ {
+  "tabClose": 1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 2,
+    "titles": [
+     "tour.md",
+     "focus.md"
+    ],
+    "documents": 2,
+    "stripShown": true,
+    "nativeBarVisible": false
+   }
+  }
+ },
+ {
+  "snapshot": "05-two-tabs-after-close",
+  "bitmap": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 3,
+    "stripShown": true,
+    "nativeBarVisible": false,
+    "documents": 3
+   },
+   "titlebarHeightSameAs": "single-tab",
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "06-three-tabs-with-untitled",
+  "bitmap": true
+ },
+ {
+  "tabClick": 0
+ },
+ {
+  "type": "typing fades the strip too",
+  "interval": 0.03
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "titlebarHeightSameAs": "single-tab"
+  }
+ },
+ {
+  "snapshot": "07-faded-with-tabs",
+  "bitmap": true
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.96
+  }
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.96
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "snapshot": "08-chrome-back",
+  "bitmap": true
+ }
+]

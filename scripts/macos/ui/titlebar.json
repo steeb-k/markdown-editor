@@ -1,0 +1,462 @@
+[
+ {
+  "log": "--- The title bar: no custom controls, a double-click does what System Settings says, the View menu has everything"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "chromeReturnsAfterPause": true,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "Writing should feel calm",
+  "offset": 5,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "chromeVisible": true,
+   "tabs": {
+    "count": 1,
+    "stripShown": false,
+    "nativeBarVisible": false
+   }
+  }
+ },
+ {
+  "snapshot": "01-titlebar-before",
+  "bitmap": true
+ },
+ {
+  "remember": "start"
+ },
+ {
+  "log": "--- every switch that used to be in the title bar is in the menus, with its state"
+ },
+ {
+  "assert": {
+   "menu": {
+    "View > Source": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Live": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Editor": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Editor and Preview": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Preview": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Focus Mode": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Focus Scope > Sentence": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Focus Scope > Paragraph": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Keep Focused Line Centred": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Syntax Highlight > Highlight Parts of Speech": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Show Authorship": {
+     "enabled": true
+    },
+    "View > Hide Formatting Toolbar": {
+     "enabled": true,
+     "title": "Hide Formatting Toolbar"
+    }
+   }
+  }
+ },
+ {
+  "action": "showLiveMode:",
+  "edits": false
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "action": "toggleSyntaxHighlight:",
+  "edits": false
+ },
+ {
+  "action": "showSplitLayout:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "menu": {
+    "View > Source": {
+     "state": "off"
+    },
+    "View > Live": {
+     "state": "on"
+    },
+    "View > Editor": {
+     "state": "off"
+    },
+    "View > Editor and Preview": {
+     "state": "on"
+    },
+    "View > Preview": {
+     "state": "off"
+    },
+    "View > Focus Mode": {
+     "state": "on"
+    },
+    "View > Syntax Highlight > Highlight Parts of Speech": {
+     "state": "on"
+    },
+    "View > Syntax Highlight > Nouns": {
+     "enabled": true
+    }
+   },
+   "viewMode": "live",
+   "layout": "split",
+   "focusing": true,
+   "syntaxing": true
+  }
+ },
+ {
+  "action": "showPreviewLayout:",
+  "edits": false
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "menu": {
+    "View > Preview": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Focus Mode": {
+     "enabled": true,
+     "state": "on"
+    },
+    "View > Source": {
+     "enabled": true,
+     "state": "off"
+    },
+    "View > Live": {
+     "enabled": true,
+     "state": "on"
+    }
+   }
+  }
+ },
+ {
+  "action": "toggleFocusMode:",
+  "edits": false
+ },
+ {
+  "action": "toggleSyntaxHighlight:",
+  "edits": false
+ },
+ {
+  "action": "showSourceMode:",
+  "edits": false
+ },
+ {
+  "action": "showEditorLayout:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "menu": {
+    "View > Source": {
+     "state": "on"
+    },
+    "View > Editor": {
+     "state": "on"
+    },
+    "View > Focus Mode": {
+     "state": "off"
+    }
+   },
+   "focusing": false,
+   "syntaxing": false
+  }
+ },
+ {
+  "log": "--- a double-click on the title bar, chrome showing"
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.5
+  }
+ },
+ {
+  "snapshot": "02-after-double-click-visible",
+  "bitmap": true
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.35
+  }
+ },
+ {
+  "assert": {
+   "titlebarClean": true
+  }
+ },
+ {
+  "log": "--- and with the chrome faded by typing"
+ },
+ {
+  "type": "Typing hides the chrome. ",
+  "interval": 0.03
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "toolbarIgnoresClicksWhenHidden": true,
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "03-titlebar-faded",
+  "bitmap": true
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.5
+  }
+ },
+ {
+  "snapshot": "04-after-double-click-faded",
+  "bitmap": true
+ },
+ {
+  "type": "More typing. ",
+  "interval": 0.03
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.3
+  }
+ },
+ {
+  "doubleClickTitlebar": {
+   "x": 0.8
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "titlebarClean": true,
+   "chromeReturnsByPause": 1
+  }
+ },
+ {
+  "snapshot": "05-titlebar-after",
+  "bitmap": true
+ },
+ {
+  "log": "--- the chrome fades back in by itself after a pause in typing (2.5 s)"
+ },
+ {
+  "type": "ab",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "wait": 2.2
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "chromeReturnsByPause": 2
+  }
+ },
+ {
+  "snapshot": "06-back-after-a-pause",
+  "bitmap": true
+ },
+ {
+  "log": "--- keys within the pause keep it hidden, however long they go on"
+ },
+ {
+  "type": "abcd",
+  "interval": 1.0
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "chromeReturnsByPause": 2
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "wait": 1.0
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "chromeReturnsByPause": 3
+  }
+ },
+ {
+  "log": "--- a pointer move first: no second fade-in when the pause ends"
+ },
+ {
+  "type": "ab",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "wait": 3.0
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "chromeReturnsByPause": 3
+  }
+ },
+ {
+  "log": "--- the setting off: the chrome stays hidden until the pointer moves"
+ },
+ {
+  "setting": {
+   "chromeReturnsAfterPause": false
+  }
+ },
+ {
+  "type": "ab",
+  "interval": 0.05
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "setting": {
+   "chromeReturnsAfterPause": true
+  }
+ }
+]

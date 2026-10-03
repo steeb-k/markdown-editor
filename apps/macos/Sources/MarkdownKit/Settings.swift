@@ -81,6 +81,8 @@ public final class Settings: NSObject {
         static let spellCheck = "spellCheck"
         static let showToolbar = "showFormattingToolbar"
         static let autoHide = "autoHideChrome"
+        static let chromeReturns = "chromeReturnsAfterPause"
+        static let centreFocus = "centreFocusedLine"
         static let defaultViewMode = "defaultViewMode"
         static let defaultLayout = "defaultLayout"
         static let splitRatio = "previewSplitRatio"
@@ -104,6 +106,8 @@ public final class Settings: NSObject {
             Key.spellCheck: true,
             Key.showToolbar: true,
             Key.autoHide: true,
+            Key.chromeReturns: true,
+            Key.centreFocus: true,
             Key.defaultViewMode: ViewMode.source.rawValue,
             Key.defaultLayout: LayoutMode.editor.rawValue,
             Key.splitRatio: 0.5,
@@ -186,6 +190,18 @@ public final class Settings: NSObject {
     public var autoHideChrome: Bool {
         get { defaults.bool(forKey: Key.autoHide) }
         set { defaults.set(newValue, forKey: Key.autoHide); changed() }
+    }
+
+    /// Whether the chrome fades back in by itself after a pause in typing.
+    public var chromeReturnsAfterPause: Bool {
+        get { defaults.bool(forKey: Key.chromeReturns) }
+        set { defaults.set(newValue, forKey: Key.chromeReturns); changed() }
+    }
+
+    /// Whether focus mode keeps the caret's line in the vertical middle of the window.
+    public var centreFocusedLine: Bool {
+        get { defaults.bool(forKey: Key.centreFocus) }
+        set { defaults.set(newValue, forKey: Key.centreFocus); changed() }
     }
 
     /// Whether new windows start in focus mode. (Each window toggles its own.)

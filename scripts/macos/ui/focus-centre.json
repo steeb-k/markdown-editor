@@ -1,0 +1,947 @@
+[
+ {
+  "log": "--- Focus mode centres the caret's line, animated, and keeps it there: Source, Live, and Split"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   760
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "log": "--- source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Lists that wrap",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "remember": "source-off"
+ },
+ {
+  "snapshot": "source-1-focus-off",
+  "bitmap": true
+ },
+ {
+  "observeScroll": {
+   "do": "toggleFocusMode:",
+   "seconds": 0.8,
+   "expectFrames": 5,
+   "expectDuration": [
+    0.15,
+    0.5
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "assert": {
+   "focusInsets": true,
+   "focusCentred": 2,
+   "sliding": false,
+   "userScrolling": false,
+   "originChanged": "source-off"
+  }
+ },
+ {
+  "snapshot": "source-2-focus-on-middle",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\nA typed line\nand another one\n",
+  "interval": 0.12
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "observeScroll": {
+   "type": "\n",
+   "seconds": 0.5,
+   "expectFrames": 2,
+   "expectDuration": [
+    0.05,
+    0.3
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\n\n\n",
+  "interval": 0.15
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "source-3-after-typing",
+  "bitmap": true
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "source-4-first-line",
+  "bitmap": true
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "source-5-last-line",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "source-pre-scroll"
+ },
+ {
+  "scrollWheel": {
+   "dy": -260,
+   "wait": 0.1
+  }
+ },
+ {
+  "assert": {
+   "userScrolling": true,
+   "originChanged": "source-pre-scroll"
+  }
+ },
+ {
+  "remember": "source-scrolled"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "source-scrolled",
+   "userScrolling": true,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "source-6-scrolled-away",
+  "bitmap": true
+ },
+ {
+  "type": "x",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2,
+   "userScrolling": false
+  }
+ },
+ {
+  "snapshot": "source-7-recentred-by-keystroke",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "remember": "source-pre-off"
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "caretUnmoved": "source-pre-off",
+   "tolerance": 1
+  }
+ },
+ {
+  "snapshot": "source-8-focus-off-again",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "source-9-off-at-the-top",
+  "bitmap": true
+ },
+ {
+  "log": "--- live"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Lists that wrap",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "remember": "live-off"
+ },
+ {
+  "snapshot": "live-1-focus-off",
+  "bitmap": true
+ },
+ {
+  "observeScroll": {
+   "do": "toggleFocusMode:",
+   "seconds": 0.8,
+   "expectFrames": 5,
+   "expectDuration": [
+    0.15,
+    0.5
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "assert": {
+   "focusInsets": true,
+   "focusCentred": 2,
+   "sliding": false,
+   "userScrolling": false,
+   "originChanged": "live-off"
+  }
+ },
+ {
+  "snapshot": "live-2-focus-on-middle",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\nA typed line\nand another one\n",
+  "interval": 0.12
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "observeScroll": {
+   "type": "\n",
+   "seconds": 0.5,
+   "expectFrames": 2,
+   "expectDuration": [
+    0.05,
+    0.3
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\n\n\n",
+  "interval": 0.15
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "live-3-after-typing",
+  "bitmap": true
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "live-4-first-line",
+  "bitmap": true
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "live-5-last-line",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "live-pre-scroll"
+ },
+ {
+  "scrollWheel": {
+   "dy": -260,
+   "wait": 0.1
+  }
+ },
+ {
+  "assert": {
+   "userScrolling": true,
+   "originChanged": "live-pre-scroll"
+  }
+ },
+ {
+  "remember": "live-scrolled"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "live-scrolled",
+   "userScrolling": true,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "live-6-scrolled-away",
+  "bitmap": true
+ },
+ {
+  "type": "x",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2,
+   "userScrolling": false
+  }
+ },
+ {
+  "snapshot": "live-7-recentred-by-keystroke",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "remember": "live-pre-off"
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "caretUnmoved": "live-pre-off",
+   "tolerance": 1
+  }
+ },
+ {
+  "snapshot": "live-8-focus-off-again",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "live-9-off-at-the-top",
+  "bitmap": true
+ },
+ {
+  "log": "--- Split: the editor pane centres and the preview follows it"
+ },
+ {
+  "log": "--- split"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Lists that wrap",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "remember": "split-off"
+ },
+ {
+  "snapshot": "split-1-focus-off",
+  "bitmap": true
+ },
+ {
+  "observeScroll": {
+   "do": "toggleFocusMode:",
+   "seconds": 0.8,
+   "expectFrames": 5,
+   "expectDuration": [
+    0.15,
+    0.5
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "assert": {
+   "focusInsets": true,
+   "focusCentred": 2,
+   "sliding": false,
+   "userScrolling": false,
+   "originChanged": "split-off"
+  }
+ },
+ {
+  "snapshot": "split-2-focus-on-middle",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\nA typed line\nand another one\n",
+  "interval": 0.12
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "observeScroll": {
+   "type": "\n",
+   "seconds": 0.5,
+   "expectFrames": 2,
+   "expectDuration": [
+    0.05,
+    0.3
+   ],
+   "monotonic": true
+  }
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "type": "\n\n\n",
+  "interval": 0.15
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "split-3-after-typing",
+  "bitmap": true
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "split-4-first-line",
+  "bitmap": true
+ },
+ {
+  "command": "moveToEndOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "snapshot": "split-5-last-line",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "split-pre-scroll"
+ },
+ {
+  "scrollWheel": {
+   "dy": -260,
+   "wait": 0.1
+  }
+ },
+ {
+  "assert": {
+   "userScrolling": true,
+   "originChanged": "split-pre-scroll"
+  }
+ },
+ {
+  "remember": "split-scrolled"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "split-scrolled",
+   "userScrolling": true,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "split-6-scrolled-away",
+  "bitmap": true
+ },
+ {
+  "type": "x",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2,
+   "userScrolling": false
+  }
+ },
+ {
+  "snapshot": "split-7-recentred-by-keystroke",
+  "bitmap": true
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "remember": "split-pre-off"
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "caretUnmoved": "split-pre-off",
+   "tolerance": 1
+  }
+ },
+ {
+  "snapshot": "split-8-focus-off-again",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "command": "moveToBeginningOfDocument:",
+  "edits": false
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "split-9-off-at-the-top",
+  "bitmap": true
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "preview": {
+    "scrollSynced": 8
+   },
+   "coreMatchesText": true,
+   "overlayConsistent": true
+  }
+ },
+ {
+  "log": "--- the setting off: focus mode without centring"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ }
+]

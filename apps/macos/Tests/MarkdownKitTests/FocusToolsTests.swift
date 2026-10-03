@@ -196,9 +196,9 @@ final class FocusToolsTests: XCTestCase {
         tv.toggleSyntaxHighlight(nil)
         XCTAssertTrue(s.pos.waitUntilSettled())
         tv.setSelectedRange(NSRange(location: 200, length: 0))
-        wc.focusButton.performClick(nil)   // off
-        wc.syntaxButton.performClick(nil)  // off
-        wc.focusButton.performClick(nil)   // on
+        tv.toggleFocusMode(nil)      // off
+        tv.toggleSyntaxHighlight(nil)  // off
+        tv.toggleFocusMode(nil)      // on
         s.settings.focusScope = .paragraph
         s.settings.setSyntaxClass(.noun, false)
         XCTAssertTrue(s.waitUntilStyled())
@@ -552,26 +552,25 @@ final class FocusToolsTests: XCTestCase {
         XCTAssertFalse(e.session.focusEnabled)
     }
 
-    func testTheTitleBarButtonsFollowTheWindowAndFadeWithTheChrome() throws {
+    func testFocusAndSyntaxAreMenuItemsOnlyAndFollowTheWindow() throws {
         let doc = MarkdownDocument(settings: isolatedSettings())
         try doc.read(from: Data("Some words.".utf8), ofType: "net.daringfireball.markdown")
         doc.makeWindowControllers()
         let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
         _ = wc.window
-        XCTAssertEqual(wc.focusButton.state, .off)
-        wc.focusButton.performClick(nil)
+        let view = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu)
+        let focus = try XCTUnwrap(view.items.first { $0.title == "Focus Mode" })
+        let syntax = try XCTUnwrap(view.items.first { $0.title == "Syntax Highlight" }?.submenu?.items.first)
+        XCTAssertTrue(wc.textView.validateUserInterfaceItem(focus))
+        XCTAssertEqual(focus.state, .off)
+        wc.textView.toggleFocusMode(focus)
         XCTAssertTrue(doc.session.focusEnabled)
-        XCTAssertEqual(wc.focusButton.state, .on)
-        wc.textView.toggleFocusMode(nil)
-        XCTAssertEqual(wc.focusButton.state, .off, "the menu item and the button agree")
-        wc.syntaxButton.performClick(nil)
+        XCTAssertTrue(wc.textView.validateUserInterfaceItem(focus))
+        XCTAssertEqual(focus.state, .on)
+        wc.textView.toggleSyntaxHighlight(syntax)
         XCTAssertTrue(doc.session.syntaxEnabled)
-        XCTAssertEqual(wc.syntaxButton.state, .on)
-        // Beside the mode switch, in the one view that fades with the chrome.
-        let holder = try XCTUnwrap(wc.modeSwitch.superview)
-        XCTAssertTrue(wc.focusButton.superview === holder && wc.syntaxButton.superview === holder)
-        XCTAssertTrue(wc.titlebarControls.contains { $0 === holder })
-        XCTAssertLessThan(wc.focusButton.frame.maxX, wc.modeSwitch.frame.minX)
+        XCTAssertTrue(wc.textView.validateUserInterfaceItem(syntax))
+        XCTAssertEqual(syntax.state, .on)
         // Each window has its own; a new one starts from the settings.
         let other = MarkdownDocument(settings: doc.session.settings)
         XCTAssertFalse(other.session.focusEnabled)

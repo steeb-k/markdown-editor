@@ -197,6 +197,7 @@ enum MainMenu {
                 _ = item(f, "Sentence", #selector(EditorTextView.setFocusScope(_:)), tag: 0)
                 _ = item(f, "Paragraph", #selector(EditorTextView.setFocusScope(_:)), tag: 1)
             }
+            _ = item(m, "Keep Focused Line Centred", #selector(AppDelegate.toggleCentreFocusedLine(_:)))
             nested(m, "Syntax Highlight") { h in
                 _ = item(h, "Highlight Parts of Speech", #selector(EditorTextView.toggleSyntaxHighlight(_:)), "d", [.command, .shift])
                 h.addItem(.separator())
@@ -221,7 +222,6 @@ enum MainMenu {
             m.addItem(.separator())
             _ = item(m, "Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "\t", [.control, .shift])
             _ = item(m, "Show Next Tab", #selector(NSWindow.selectNextTab(_:)), "\t", [.control])
-            _ = item(m, "Show Tab Bar", #selector(NSWindow.toggleTabBar(_:)), "\\", [.command, .shift])
             _ = item(m, "Show All Tabs", #selector(NSWindow.toggleTabOverview(_:)))
             _ = item(m, "Move Tab to New Window", #selector(NSWindow.moveTabToNewWindow(_:)))
             _ = item(m, "Merge All Windows", #selector(NSWindow.mergeAllWindows(_:)))

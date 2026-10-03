@@ -661,9 +661,20 @@ final class PreviewTests: XCTestCase {
         doc.session.setLayout(.split)
         XCTAssertTrue(tv.validateUserInterfaceItem(item))
         XCTAssertFalse(wc.toolbar.isHidden)
-        for control in [wc.modeSwitch, wc.focusButton, wc.syntaxButton, wc.authorshipButton] as [NSControl] { XCTAssertTrue(control.isEnabled) }
+        // The switches that used to sit in the title bar are View-menu items now: they stay available in
+        // every layout, answered by the editor, and the window controller answers while the preview has the keys.
+        let view = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu)
+        for title in ["Source", "Live", "Focus Mode", "Show Authorship"] {
+            let menuItem = try XCTUnwrap(view.items.first { $0.title == title })
+            XCTAssertTrue(wc.validateMenuItem(menuItem), "\(title) in the split layout")
+        }
         doc.session.setLayout(.preview)
-        for control in [wc.modeSwitch, wc.focusButton, wc.syntaxButton, wc.authorshipButton] as [NSControl] { XCTAssertFalse(control.isEnabled) }
+        for title in ["Source", "Live", "Focus Mode", "Show Authorship"] {
+            let menuItem = try XCTUnwrap(view.items.first { $0.title == title })
+            XCTAssertTrue(wc.validateMenuItem(menuItem), "\(title) in the preview layout, with the web view first responder")
+        }
+        wc.toggleFocusMode(nil)
+        XCTAssertTrue(doc.session.focusEnabled, "the preview layout can turn focus mode on for the editor")
         doc.close()
     }
 

@@ -26,6 +26,17 @@ public final class EditorTextView: NSTextView {
     var verticalGoal: (selection: NSRange, x: CGFloat, placed: Bool)?
     /// The pointing hand is showing for a Command-hover over a link.
     var showsLinkCursor = false
+    /// Focus mode's centring; while it is on, what asks the view to scroll something into view
+    /// asks it to centre that instead (one slide, not a jump and a slide).
+    weak var centring: FocusCentring?
+
+    public override func scrollRangeToVisible(_ range: NSRange) {
+        if let centring, centring.isActive {
+            centring.request(range)
+        } else {
+            super.scrollRangeToVisible(range)
+        }
+    }
 
     public override var undoManager: UndoManager? { documentUndoManager ?? super.undoManager }
 

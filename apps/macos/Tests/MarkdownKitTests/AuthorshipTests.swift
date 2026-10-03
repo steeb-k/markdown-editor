@@ -328,9 +328,8 @@ final class AuthorshipBasicsTests: XCTestCase {
         for _ in 0..<3 {
             doc.session.setAuthorshipDisplay(false)
             XCTAssertEqual(wc.textView.validateAuthorshipAction(#selector(EditorTextView.toggleAuthorshipDisplay(_:)))?.on, false)
-            XCTAssertFalse(wc.authorshipButton.state == .on)
             doc.session.setAuthorshipDisplay(true)
-            XCTAssertTrue(wc.authorshipButton.state == .on)
+            XCTAssertEqual(wc.textView.validateAuthorshipAction(#selector(EditorTextView.toggleAuthorshipDisplay(_:)))?.on, true)
         }
         XCTAssertEqual(doc.session.text, text)
         XCTAssertTrue(doc.session.storage.attributedSubstring(from: NSRange(location: 0, length: doc.session.storage.length)).isEqual(to: attrs))

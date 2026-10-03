@@ -6,7 +6,7 @@ Markdown is plain text with a few marks that mean something: `#` makes a heading
 
 ## Two ways of seeing your words
 
-**Source** shows every mark, dimmed, so you can see exactly what you wrote. **Live** hides the marks until the caret touches the thing they belong to: put the caret inside a **bold word** and the stars appear; move away and they go. The text on disk is the same either way. Choose in the View menu, or with the switch in the title bar. Which one new windows start in is a setting.
+**Source** shows every mark, dimmed, so you can see exactly what you wrote. **Live** hides the marks until the caret touches the thing they belong to: put the caret inside a **bold word** and the stars appear; move away and they go. The text on disk is the same either way. Choose in the View menu (Source, Live). Which one new windows start in is a setting.
 
 Beside the editor you can have a preview: **Editor and Preview** puts the two side by side and keeps them scrolled together; **Preview** shows the finished page alone. Pictures, tables, footnotes and highlighted code blocks look as they will when you print or export.
 
@@ -47,9 +47,9 @@ Write `![a description](picture.png)` on a line by itself. In Live mode the pict
 
 ## Focus, syntax and authorship
 
-Three independent aids, in the View menu and in the title bar:
+Three independent aids, all in the View menu:
 
-- **Focus Mode** dims everything except the sentence or paragraph you are writing (Focus Scope chooses which).
+- **Focus Mode** dims everything except the sentence or paragraph you are writing (Focus Scope chooses which), and keeps the line you are on in the middle of the window, sliding the page as you type. Keep Focused Line Centred, in the same menu and in Settings, turns the centring off.
 - **Syntax Highlight** colours the parts of speech: adjectives, nouns, adverbs, verbs and conjunctions, each of which can be switched off. It is for rereading: long runs of one colour are where a draft is flabby.
 - **Authorship** keeps track of whose words are whose. Paste text with Edit > Paste As > AI or Reference, or select text and use Mark As, and it is coloured as borrowed. Your own writing stays the plain text colour. The marks are saved at the end of the file in the open Markdown Annotations format other editors read; a file with no borrowed text is never touched. Show Authorship hides the colours without removing the marks.
 
@@ -59,7 +59,7 @@ File > Export > PDF writes the preview as a paginated PDF; File > Print prints i
 
 ## Look and feel
 
-Settings (in the app menu) chooses the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom and the title bar fade away while you type and return when you move the pointer.
+Settings (in the app menu) chooses the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom, the window buttons and the title fade away while you type and return when you move the pointer, open a menu, or stop typing for a couple of seconds. With two or more tabs, the tabs take the place of the title in the title bar.
 
 ## Keyboard shortcuts
 

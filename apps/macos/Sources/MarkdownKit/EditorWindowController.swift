@@ -8,25 +8,20 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     public let session: EditorSession
     public let textView: EditorTextView
     public let scrollView: NSScrollView
+    var editorScrollView: EditorScrollView { scrollView as! EditorScrollView }
     let toolbar = FormattingToolbar(frame: .zero)
     /// Text scrolled up under the transparent title bar fades out instead of colliding with the
     /// traffic lights and the title.
     let titlebarFade = EdgeFadeView()
-    /// The view-mode switch in the title bar (Source, Live).
-    let modeSwitch = NSSegmentedControl()
-    /// The layout switch beside it: editor, editor and preview, preview.
-    let layoutSwitch = NSSegmentedControl()
     /// The editor and the preview side by side (either may be collapsed away).
     let splitView = PreviewSplitView()
     let previewPane = NSView()
     public let previewController: PreviewController
     private var applyingSplitPosition = false
-    /// Focus mode and syntax highlighting for this window, beside the mode switch.
-    let focusButton = NSButton()
-    let syntaxButton = NSButton()
-    /// Shows or hides the colouring of borrowed text (AI, Reference) in this window.
-    let authorshipButton = NSButton()
-    private var modeAccessory: NSTitlebarAccessoryViewController?
+    /// Focus mode's vertical centring (see `FocusCentring`).
+    let centring = FocusCentring()
+    /// The tabs, drawn in the title-bar row (see `TabStripController`).
+    private(set) var tabs: TabStripController!
     private var fadeHeight: NSLayoutConstraint!
     private let root = EditorRootView()
     private var chrome: ChromeController!
@@ -60,7 +55,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         textView.documentUndoManager = document.undoManager
         session.documentURL = { [weak document] in document?.fileURL }
 
-        let scroll = NSScrollView()
+        let scroll = EditorScrollView()
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
@@ -121,13 +116,14 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             window.setFrameTopLeftPoint(window.cascadeTopLeft(from: from))
         }
 
-        chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome)
+        chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome,
+                                  reappearsAfterPause: settings.chromeReturnsAfterPause)
         splitView.onRatioChange = { [weak self] ratio in self?.session.settings.splitRatio = Double(ratio) }
         // When the editor's pane changes width (the divider, the window), its top character stays.
         splitView.captureTop = { [weak self] in self?.scrollView.isHidden == false ? self?.keptTopAnchor() : nil }
         splitView.restoreTop = { [weak self] anchor in self?.restoreEditorTop(anchor) }
         previewController.observeEditor(scroll)
-        installModeSwitch(in: window)
+        installTitlebar(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
         textView.onTyping = { [weak self] in self?.chrome.send(.typingStarted) }
         session.onFormatStateChange = { [weak self] in
@@ -150,100 +146,33 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
 
-    private func installModeSwitch(in window: NSWindow) {
-        modeSwitch.segmentCount = ViewMode.allCases.count
-        for (i, mode) in ViewMode.allCases.enumerated() {
-            modeSwitch.setLabel(mode.title, forSegment: i)
-            modeSwitch.setWidth(0, forSegment: i)
-        }
-        modeSwitch.trackingMode = .selectOne
-        modeSwitch.segmentStyle = .rounded
-        modeSwitch.controlSize = .small
-        modeSwitch.target = self
-        modeSwitch.action = #selector(modeSwitchChanged(_:))
-        modeSwitch.setAccessibilityLabel("View mode")
-        modeSwitch.sizeToFit()
-        for (button, title, action, label) in [
-            (focusButton, "Focus", #selector(focusButtonPressed(_:)), "Focus mode"),
-            (syntaxButton, "Syntax", #selector(syntaxButtonPressed(_:)), "Syntax highlighting"),
-            (authorshipButton, "Authorship", #selector(authorshipButtonPressed(_:)), "Authorship colours"),
-        ] {
-            button.title = title
-            button.setButtonType(.pushOnPushOff)
-            button.bezelStyle = .rounded
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-            button.target = self
-            button.action = action
-            button.setAccessibilityLabel(label)
-            button.sizeToFit()
-        }
-        layoutSwitch.segmentCount = LayoutMode.allCases.count
-        for (i, mode) in LayoutMode.allCases.enumerated() {
-            layoutSwitch.setImage(NSImage(systemSymbolName: mode.symbolName, accessibilityDescription: mode.title), forSegment: i)
-            layoutSwitch.setToolTip(mode.title, forSegment: i)
-            layoutSwitch.setWidth(30, forSegment: i)
-        }
-        layoutSwitch.trackingMode = .selectOne
-        layoutSwitch.segmentStyle = .rounded
-        layoutSwitch.controlSize = .small
-        layoutSwitch.target = self
-        layoutSwitch.action = #selector(layoutSwitchChanged(_:))
-        layoutSwitch.setAccessibilityLabel("Layout")
-        layoutSwitch.sizeToFit()
-        let gap: CGFloat = 6
-        let buttonsWidth = focusButton.frame.width + syntaxButton.frame.width + authorshipButton.frame.width + 3 * gap
-        let height = max(modeSwitch.frame.height, focusButton.frame.height)
-        let holder = NSView(frame: NSRect(x: 0, y: 0, width: buttonsWidth + modeSwitch.frame.width + gap + layoutSwitch.frame.width + 20, height: height + 8))
-        focusButton.frame.origin = NSPoint(x: 8, y: (holder.frame.height - focusButton.frame.height) / 2)
-        syntaxButton.frame.origin = NSPoint(x: focusButton.frame.maxX + gap, y: (holder.frame.height - syntaxButton.frame.height) / 2)
-        authorshipButton.frame.origin = NSPoint(x: syntaxButton.frame.maxX + gap, y: (holder.frame.height - authorshipButton.frame.height) / 2)
-        modeSwitch.frame.origin = NSPoint(x: authorshipButton.frame.maxX + gap, y: (holder.frame.height - modeSwitch.frame.height) / 2)
-        layoutSwitch.frame.origin = NSPoint(x: modeSwitch.frame.maxX + gap, y: (holder.frame.height - layoutSwitch.frame.height) / 2)
-        holder.addSubview(layoutSwitch)
-        holder.addSubview(focusButton)
-        holder.addSubview(syntaxButton)
-        holder.addSubview(authorshipButton)
-        holder.addSubview(modeSwitch)
-        let accessory = NSTitlebarAccessoryViewController()
-        accessory.view = holder
-        accessory.layoutAttribute = .trailing
-        window.addTitlebarAccessoryViewController(accessory)
-        // Never narrower than the title-bar controls beside the window buttons and a little of the
-        // title, or the formatting bar: at 360 points both ran off the window and over the buttons.
-        window.minSize = NSSize(width: max(window.minSize.width, (holder.frame.width + 170).rounded(), (toolbar.fittingSize.width + 40).rounded()),
+    /// The title bar holds the window buttons, the title and (with two tabs or more) the tab strip,
+    /// and nothing else: every switch lives in the menus. The window state the menus show comes
+    /// from the session, so nothing here has to be kept in step with it.
+    private func installTitlebar(in window: NSWindow) {
+        tabs = TabStripController(window: window)
+        chrome.extraTitlebarViews = [tabs.strip]
+        chrome.onFaded = { [weak self] faded in self?.tabs.setFaded(faded) }
+        // Never narrower than the formatting bar, and room for the window buttons and a tab or two.
+        window.minSize = NSSize(width: max(window.minSize.width, (toolbar.fittingSize.width + 40).rounded(), 360),
                                 height: window.minSize.height)
-        modeAccessory = accessory
-        chrome.extraTitlebarViews = [holder]
-        session.onViewModeChange = { [weak self] in self?.syncModeSwitch() }
-        session.onFocusToolsChange = { [weak self] in self?.syncFocusButtons() }
-        session.onAuthorshipChange = { [weak self] in self?.syncFocusButtons() }
+        session.onFocusToolsChange = { [weak self] in self?.focusToolsChanged() }
         session.onAuthorshipDecisionNeeded = { [weak self] in
             DispatchQueue.main.async { self?.presentAuthorshipSheetIfNeeded() }
         }
-        syncModeSwitch()
-        syncFocusButtons()
+        centring.session = session
+        centring.textView = textView
+        centring.attach(to: editorScrollView)
+        centring.applyInsets = { [weak self] in self?.updateFadeGeometry() }
+        centring.editorShown = { [weak self] in self?.scrollView.isHidden == false && self?.window?.isVisible == true }
+        textView.centring = centring
+        session.onCaretActivity = { [weak self] in self?.centring.request() }
+        session.onLayoutSettled = { [weak self] in self?.centring.layoutChanged() }
+        centring.update()
     }
 
-    @objc private func focusButtonPressed(_ sender: NSButton) {
-        session.setFocusEnabled(sender.state == .on)
-        window?.makeFirstResponder(textView)
-    }
-
-    @objc private func syntaxButtonPressed(_ sender: NSButton) {
-        session.setSyntaxEnabled(sender.state == .on)
-        window?.makeFirstResponder(textView)
-    }
-
-    @objc private func authorshipButtonPressed(_ sender: NSButton) {
-        session.setAuthorshipDisplay(sender.state == .on)
-        window?.makeFirstResponder(textView)
-    }
-
-    private func syncFocusButtons() {
-        focusButton.state = session.focusEnabled ? .on : .off
-        syntaxButton.state = session.syntaxEnabled ? .on : .off
-        authorshipButton.state = session.authorshipDisplay ? .on : .off
+    private func focusToolsChanged() {
+        centring.update()
     }
 
     /// The file's marks may not line up with its text (it was changed elsewhere): ask, once,
@@ -262,23 +191,6 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         alert.beginSheetModal(for: window) { [weak self] response in
             self?.session.resolveAuthorshipDecision(keep: response != .alertSecondButtonReturn)
         }
-    }
-
-    @objc private func modeSwitchChanged(_ sender: NSSegmentedControl) {
-        let modes = ViewMode.allCases
-        guard sender.selectedSegment >= 0, sender.selectedSegment < modes.count else { return }
-        session.setViewMode(modes[sender.selectedSegment])
-        window?.makeFirstResponder(textView)
-    }
-
-    private func syncModeSwitch() {
-        if let i = ViewMode.allCases.firstIndex(of: session.viewMode) { modeSwitch.selectedSegment = i }
-    }
-
-    @objc private func layoutSwitchChanged(_ sender: NSSegmentedControl) {
-        let modes = LayoutMode.allCases
-        guard sender.selectedSegment >= 0, sender.selectedSegment < modes.count else { return }
-        session.setLayout(modes[sender.selectedSegment])
     }
 
     // MARK: layouts
@@ -301,12 +213,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         scrollView.isHidden = !layout.showsEditor
         previewPane.isHidden = !layout.showsPreview
         splitView.needsLayout = true
-        if let i = LayoutMode.allCases.firstIndex(of: layout) { layoutSwitch.selectedSegment = i }
-        let editing = layout.showsEditor
-        for control in [modeSwitch, focusButton, syntaxButton, authorshipButton] as [NSControl] { control.isEnabled = editing }
         updateToolbarVisibility()
         updateFadeGeometry()
         if layout == .split { restoreSplitPosition() }
+        defer { centring.update() }
         splitView.layoutSubtreeIfNeeded()
         splitView.suspendsTopKeeping = false
         if layout.showsEditor {
@@ -330,7 +240,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// starts (nil when nothing is laid out).
     func editorTopAnchor() -> EditorTopAnchor? {
         guard let lm = textView.layoutManager, let tc = textView.textContainer, session.storage.length > 0 else { return nil }
-        let y = scrollView.contentView.bounds.minY + scrollView.contentInsets.top - textView.textContainerOrigin.y
+        let y = scrollView.contentView.bounds.minY + scrollView.editorBaseInsetTop - textView.textContainerOrigin.y
         if y <= 0 { return EditorTopAnchor(character: 0, intoLine: y) }
         lm.ensureLayout(forBoundingRect: NSRect(x: 0, y: y, width: tc.size.width, height: 1), in: tc)
         let glyph = lm.glyphIndex(for: NSPoint(x: 0, y: y), in: tc)
@@ -357,6 +267,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         guard let lm = textView.layoutManager, session.storage.length > 0 else { return }
         let clip = scrollView.contentView
         let insets = scrollView.contentInsets
+        let baseTop = scrollView.editorBaseInsetTop
         var y: CGFloat
         if anchor.character == 0 && anchor.intoLine <= 0 {
             y = anchor.intoLine
@@ -367,7 +278,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
             y = fragment.minY + min(max(0, anchor.intoLine), max(0, fragment.height - 1))
         }
-        let wanted = y + textView.textContainerOrigin.y - insets.top
+        let wanted = y + textView.textContainerOrigin.y - baseTop
         // Within what the clip view allows (the end is AppKit's), but never pulled up from the
         // top line by its odd top limit.
         let constrained = clip.constrainBoundsRect(NSRect(x: clip.bounds.minX, y: wanted, width: clip.bounds.width, height: clip.bounds.height)).minY
@@ -442,16 +353,41 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
         case #selector(copyAsHTML(_:)), #selector(copyAsRichText(_:)): return session.storage.length > 0
         case #selector(exportPDF(_:)): return true
+        case .some(let action) where Self.forwardedToEditor.contains(action):
+            // The View menu's switches while the preview has the keyboard: the editor's answers.
+            guard let r = textView.validateEditorAction(action, tag: item.tag) else { return true }
+            item.state = r.on ? .on : .off
+            return r.enabled
         default: return true
         }
     }
 
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
+    // MARK: the View menu while the preview has the keyboard
+
+    /// The view mode, focus and authorship switches are the text view's actions; in the Preview
+    /// layout the web view is first responder and the menu would find nobody to ask.
+    private static let forwardedToEditor: Set<Selector> = [
+        #selector(EditorTextView.showSourceMode(_:)), #selector(EditorTextView.showLiveMode(_:)),
+        #selector(EditorTextView.toggleFocusMode(_:)), #selector(EditorTextView.setFocusScope(_:)),
+        #selector(EditorTextView.toggleSyntaxHighlight(_:)), #selector(EditorTextView.toggleSyntaxClass(_:)),
+        #selector(EditorTextView.toggleAuthorshipDisplay(_:)),
+    ]
+    @objc func showSourceMode(_ sender: Any?) { textView.showSourceMode(sender) }
+    @objc func showLiveMode(_ sender: Any?) { textView.showLiveMode(sender) }
+    @objc func toggleFocusMode(_ sender: Any?) { textView.toggleFocusMode(sender) }
+    @objc func setFocusScope(_ sender: Any?) { textView.setFocusScope(sender) }
+    @objc func toggleSyntaxHighlight(_ sender: Any?) { textView.toggleSyntaxHighlight(sender) }
+    @objc func toggleSyntaxClass(_ sender: Any?) { textView.toggleSyntaxClass(sender) }
+    @objc func toggleAuthorshipDisplay(_ sender: Any?) { textView.toggleAuthorshipDisplay(sender) }
+
     private func settingsChanged() {
         chrome.send(.autoHideChanged(session.settings.autoHideChrome))
+        chrome.send(.reappearAfterPauseChanged(session.settings.chromeReturnsAfterPause))
         updateToolbarVisibility()
         applyChrome()
+        centring.update()
     }
 
     /// Window-level look: background under the transparent title bar, and the native
@@ -478,14 +414,24 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         titlebarFade.isHidden = bar == 0
         previewController.setChrome(top: bar, bottom: 0)
         let bottom = toolbar.isHidden ? 0 : toolbar.fittingSize.height + Self.toolbarBottomMargin
-        let insets = NSEdgeInsets(top: bar, left: 0, bottom: bottom, right: 0)
+        // Focus mode makes room above and below the text, half of what is visible, so that the
+        // first and the last line can come to the middle.
+        let clip = scrollView.contentView
+        let extra = centring.insetNow(visibleHeight: max(0, clip.bounds.height - bar - bottom))
+        let old = editorScrollView.focusInset
+        let insets = NSEdgeInsets(top: bar + extra, left: 0, bottom: bottom + extra, right: 0)
         if scrollView.contentInsets.top != insets.top || scrollView.contentInsets.bottom != insets.bottom {
-            let clip = scrollView.contentView
-            let atTop = clip.bounds.minY <= 0
+            let atTop = clip.bounds.minY <= 0 && extra == 0 && old == 0
+            let origin = clip.bounds.minY
+            editorScrollView.focusInset = extra
             scrollView.contentInsets = insets
             if atTop {
                 // Start (or stay) at the top of the text, below the title bar.
                 clip.scroll(to: NSPoint(x: clip.bounds.minX, y: -insets.top))
+                scrollView.reflectScrolledClipView(clip)
+            } else if extra != old, abs(clip.bounds.minY - origin) >= 0.01 {
+                // Room appearing or going away moves nothing on screen.
+                clip.scroll(to: NSPoint(x: clip.bounds.minX, y: origin))
                 scrollView.reflectScrolledClipView(clip)
             }
         }
@@ -493,9 +439,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     static let toolbarBottomMargin: CGFloat = 16
 
-    public func windowDidResize(_ notification: Notification) { updateFadeGeometry() }
-    public func windowDidEnterFullScreen(_ notification: Notification) { updateFadeGeometry() }
-    public func windowDidExitFullScreen(_ notification: Notification) { updateFadeGeometry() }
+    public func windowDidResize(_ notification: Notification) { updateFadeGeometry(); centring.update() }
+    public func windowDidEnterFullScreen(_ notification: Notification) { updateFadeGeometry(); centring.update() }
+    public func windowDidExitFullScreen(_ notification: Notification) { updateFadeGeometry(); centring.update() }
 
     public override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
@@ -517,6 +463,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     public func windowDidBecomeKey(_ notification: Notification) {
         session.refreshAppearance()
+        tabs?.refresh()
         // Pictures another app changed while this window was in the background.
         session.imageController.revalidate()
     }
@@ -527,9 +474,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// Views drawn over the text (UI-script snapshots composite them).
     var overlayViews: [NSView] { [titlebarFade, toolbar] }
     var titlebarControls: [NSView] { chrome.titlebarViews }
+    var chromeController: ChromeController { chrome }
     func simulatePointerMoved() { chrome.send(.pointerMoved) }
-    /// While the chrome is hidden its title bar controls must not take clicks.
-    var titlebarButtonsIgnoreClicksWhenHidden: Bool { chrome.state.isVisible || chrome.titlebarControlsAreHidden }
+    /// While the chrome is hidden the window buttons must not take clicks (the rest of the title
+    /// bar stays a title bar: it can be dragged and double-clicked).
+    var titlebarButtonsIgnoreClicksWhenHidden: Bool { chrome.state.isVisible || chrome.windowButtonsAreHidden }
 }
 
 /// A band of the window's background color that fades to clear downwards; never takes clicks.

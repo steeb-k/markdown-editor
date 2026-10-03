@@ -177,6 +177,7 @@ extension EditorSession {
             if selectionChange, selectionToken == self.selectionToken, processed == coordinator.latestSeq {
                 applyFormatState(state)
             }
+            if current, live || scope != nil { onLayoutSettled?() }
         }
         if coordinator.isIdle || synchronous {
             finish(coordinator.sync(query), processed: coordinator.latestSeq)

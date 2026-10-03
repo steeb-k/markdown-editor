@@ -52,6 +52,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         Settings.shared.showFormattingToolbar.toggle()
     }
 
+    /// View > Keep Focused Line Centred: whether focus mode centres the caret's line (every window).
+    @objc public func toggleCentreFocusedLine(_ sender: Any?) {
+        Settings.shared.centreFocusedLine.toggle()
+    }
+
     @objc public func biggerText(_ sender: Any?) { Settings.shared.fontSize += 1 }
     @objc public func smallerText(_ sender: Any?) { Settings.shared.fontSize -= 1 }
     @objc public func actualSize(_ sender: Any?) { Settings.shared.fontSize = 17 }
@@ -114,6 +119,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         switch item.action {
         case #selector(toggleFormattingToolbar(_:)):
             item.title = Settings.shared.showFormattingToolbar ? "Hide Formatting Toolbar" : "Show Formatting Toolbar"
+            return true
+        case #selector(toggleCentreFocusedLine(_:)):
+            item.state = Settings.shared.centreFocusedLine ? .on : .off
             return true
         case #selector(showWelcome(_:)): return HelpDocuments.resource("Welcome", extension: "md") != nil
         case #selector(showAcknowledgements(_:)): return HelpDocuments.resource("Acknowledgements", extension: "md") != nil

@@ -1,10 +1,12 @@
 import Foundation
 
-/// When the window chrome (title bar contents, formatting toolbar) is shown. Pure logic, no
-/// windows: the controller feeds it events and animates whatever it answers.
+/// When the window chrome (the title, the window buttons, the tab strip and the formatting
+/// toolbar) is shown. Pure logic, no windows and no clock: the controller feeds it events and the
+/// time they happened at, and animates whatever it answers.
 ///
 /// Typing hides the chrome; the pointer moving, a menu opening, or the window losing focus
-/// brings it back. With auto-hide off it is always visible.
+/// brings it back at once, and so does a pause in typing (`reappearDelay` after the last key).
+/// With auto-hide off it is always visible.
 public struct ChromeState: Equatable {
     public enum Event: Equatable {
         case typingStarted
@@ -14,38 +16,72 @@ public struct ChromeState: Equatable {
         case windowResignedKey
         case windowBecameKey
         case autoHideChanged(Bool)
+        /// Whether a pause in typing brings the chrome back (a setting).
+        case reappearAfterPauseChanged(Bool)
+        /// Time has passed (the controller sends one when a deadline falls due).
+        case tick
     }
+
+    /// How long after the last keystroke the chrome fades back in.
+    public static let reappearDelay: TimeInterval = 2.5
 
     public private(set) var isVisible = true
     public private(set) var autoHide: Bool
+    public private(set) var reappearsAfterPause: Bool
     public private(set) var menuOpen = false
     public private(set) var windowIsKey = true
+    /// The time of the last keystroke that hid (or kept hidden) the chrome; nil while it is shown.
+    public private(set) var lastKey: TimeInterval?
+    public let delay: TimeInterval
 
-    public init(autoHide: Bool = true) { self.autoHide = autoHide }
+    public init(autoHide: Bool = true, reappearsAfterPause: Bool = true, delay: TimeInterval = ChromeState.reappearDelay) {
+        self.autoHide = autoHide
+        self.reappearsAfterPause = reappearsAfterPause
+        self.delay = delay
+    }
 
-    /// Applies an event; returns the new visibility when it changed, nil otherwise.
+    /// When the chrome comes back by itself, if it is hidden and nothing else is going to show it.
+    public var reappearDeadline: TimeInterval? {
+        guard !isVisible, reappearsAfterPause, let lastKey else { return nil }
+        return lastKey + delay
+    }
+
+    /// Applies an event that happened at `now` (seconds, any steady clock); returns the new
+    /// visibility when it changed, nil otherwise.
     @discardableResult
-    public mutating func handle(_ event: Event) -> Bool? {
+    public mutating func handle(_ event: Event, at now: TimeInterval = 0) -> Bool? {
         let before = isVisible
         switch event {
         case .typingStarted:
-            if autoHide && windowIsKey && !menuOpen { isVisible = false }
+            if autoHide && windowIsKey && !menuOpen {
+                isVisible = false
+                lastKey = now
+            }
         case .pointerMoved:
-            isVisible = true
+            show()
         case .menuOpened:
             menuOpen = true
-            isVisible = true
+            show()
         case .menuClosed:
             menuOpen = false
         case .windowResignedKey:
             windowIsKey = false
-            isVisible = true
+            show()
         case .windowBecameKey:
             windowIsKey = true
         case .autoHideChanged(let on):
             autoHide = on
-            if !on { isVisible = true }
+            if !on { show() }
+        case .reappearAfterPauseChanged(let on):
+            reappearsAfterPause = on
+        case .tick:
+            if let deadline = reappearDeadline, now >= deadline { show() }
         }
         return isVisible == before ? nil : isVisible
+    }
+
+    private mutating func show() {
+        isVisible = true
+        lastKey = nil
     }
 }

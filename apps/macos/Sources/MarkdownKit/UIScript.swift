@@ -275,7 +275,10 @@ final class UIScriptRunner {
             record(["modifyOnDisk": url.lastPathComponent, "bytes": text.utf8.count], ok: ok)
             done()
         } else if let mode = str("layout") {
-            session?.setLayout(LayoutMode(rawValue: mode) ?? .editor)
+            // Through the View menu's action, as the title bar's switch used to be (and a person now does).
+            let selector: Selector = mode == "split" ? #selector(EditorWindowController.showSplitLayout(_:))
+                : mode == "preview" ? #selector(EditorWindowController.showPreviewLayout(_:)) : #selector(EditorWindowController.showEditorLayout(_:))
+            menuAction(selector)
             record(["layout": mode], ok: session?.layout.rawValue == mode)
             done()
         } else if step["waitPreview"] != nil {
@@ -327,12 +330,12 @@ final class UIScriptRunner {
         } else if let m = step["measurePreview"] as? [String: Any] {
             measurePreview(m, then: done)
         } else if let mode = str("viewMode") {
-            session?.setViewMode(ViewMode(rawValue: mode) ?? .source)
+            menuAction(mode == "live" ? #selector(EditorTextView.showLiveMode(_:)) : #selector(EditorTextView.showSourceMode(_:)))
             record(["viewMode": mode], ok: session?.viewMode.rawValue == mode)
             done()
         } else if let f = step["focus"] as? [String: Any] {
             if let scope = f["scope"] as? String, let c = FocusScopeChoice(rawValue: scope) { Settings.shared.focusScope = c }
-            if let on = f["on"] as? Bool { session?.setFocusEnabled(on) }
+            if let on = f["on"] as? Bool, on != session?.focusEnabled { menuAction(#selector(EditorTextView.toggleFocusMode(_:))) }
             session?.refreshState(synchronous: true)
             record(["focus": f], ok: session != nil)
             done()
@@ -340,7 +343,7 @@ final class UIScriptRunner {
             if let classes = f["classes"] as? [String] {
                 for c in SyntaxClass.allCases { Settings.shared.setSyntaxClass(c, classes.contains(c.rawValue)) }
             }
-            if let on = f["on"] as? Bool { session?.setSyntaxEnabled(on) }
+            if let on = f["on"] as? Bool, on != session?.syntaxEnabled { menuAction(#selector(EditorTextView.toggleSyntaxHighlight(_:))) }
             record(["syntax": f], ok: session != nil)
             done()
         } else if step["waitSyntax"] != nil {
@@ -479,6 +482,7 @@ final class UIScriptRunner {
                 // The window's controller (the window's delegate, next in the chain when the window
                 // is key; the app need not be active while a script runs, and then no window is).
                 if !ok, let wc = self.controller, wc.responds(to: sel) { ok = NSApp.sendAction(sel, to: wc, from: sender) }
+                if !ok, let w = self.window, w.responds(to: sel) { ok = NSApp.sendAction(sel, to: w, from: sender) }
             }
             // An action that edits runs as one undo group, like an event would. One that does not
             // (`"edits": false`: view toggles) must not: a closed empty group marks the document edited.
@@ -515,6 +519,36 @@ final class UIScriptRunner {
             done()
         } else if let name = str("snapshot") {
             snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false, then: done)
+        } else if let d = step["doubleClickTitlebar"] as? [String: Any] {
+            doubleClickTitlebar(d, then: done)
+        } else if let d = step["scrollWheel"] as? [String: Any] {
+            scrollWheel(d)
+            later((d["wait"] as? NSNumber)?.doubleValue ?? 0.2, done)
+        } else if let o = step["observeScroll"] as? [String: Any] {
+            observeScroll(o, then: done)
+        } else if step["dumpTitlebar"] != nil {
+            var lines: [String] = []
+            func walk(_ v: NSView, _ depth: Int) {
+                lines.append(String(repeating: " ", count: depth) + "\(Swift.type(of: v)) \(NSStringFromRect(v.frame)) hidden=\(v.isHidden) alpha=\(v.alphaValue)")
+                if depth < 6 { for s in v.subviews { walk(s, depth + 1) } }
+            }
+            if let f = window?.contentView?.superview { for s in f.subviews where !(s === window?.contentView) { walk(s, 0) } }
+            lines.append("accessories: " + (window?.titlebarAccessoryViewControllers.map { "\(Swift.type(of: $0)) \(NSStringFromRect($0.view.frame)) hidden=\($0.isHidden)" }.joined(separator: "; ") ?? ""))
+            lines.append("tabGroup visible: \(String(describing: window?.tabGroup?.isTabBarVisible)) overview \(String(describing: window?.tabGroup?.isOverviewVisible))")
+            record(["dumpTitlebar": lines], ok: true)
+            done()
+        } else if let name = str("remember") {
+            remember(name)
+            done()
+        } else if let i = step["tabClick"] as? Int {
+            tabClick(i, close: false)
+            later(0.4, done)
+        } else if let i = step["tabClose"] as? Int {
+            tabClick(i, close: true)
+            later(0.6, done)
+        } else if let m = step["tabDrag"] as? [Int], m.count == 2 {
+            tabDrag(from: m[0], to: m[1])
+            later(0.4, done)
         } else if let a = step["assert"] as? [String: Any] {
             assertions(a)
             done()
@@ -585,8 +619,9 @@ final class UIScriptRunner {
                 w.endSheet(s, returnCode: .alertSecondButtonReturn)
             }
             // "accept": its first button (Insert, OK).
+            // (What the sheet's button does edits the text: as one event, in an undo group of its own.)
             if sheet == "accept", let w = window, let s = w.attachedSheet {
-                w.endSheet(s, returnCode: .alertFirstButtonReturn)
+                asEvent { w.endSheet(s, returnCode: .alertFirstButtonReturn) }
             }
             record(["sheet": sheet], ok: true)
             done()
@@ -788,6 +823,7 @@ final class UIScriptRunner {
                 d["idle"] = s.coordinator.isIdle
                 d["clipFrame"] = NSStringFromRect(tv.enclosingScrollView?.contentView.frame ?? .zero)
                 d["undoGroupingLevel"] = document?.undoManager?.groupingLevel ?? -1
+                d["groupsByEvent"] = document?.undoManager?.groupsByEvent ?? false
                 d["undoActionName"] = document?.undoManager?.undoActionName ?? ""
                 d["edited"] = document?.isDocumentEdited ?? false
                 d["unautosaved"] = document?.hasUnautosavedChanges ?? false
@@ -905,12 +941,242 @@ final class UIScriptRunner {
         if let v = s["spellCheck"] as? Bool { st.spellCheck = v }
         if let v = s["showFormattingToolbar"] as? Bool { st.showFormattingToolbar = v }
         if let v = s["autoHideChrome"] as? Bool { st.autoHideChrome = v }
+        if let v = s["chromeReturnsAfterPause"] as? Bool { st.chromeReturnsAfterPause = v }
+        if let v = s["centreFocusedLine"] as? Bool { st.centreFocusedLine = v }
         if let v = s["defaultViewMode"] as? String, let m = ViewMode(rawValue: v) { st.defaultViewMode = m }
         if let v = s["focusMode"] as? Bool { st.focusMode = v }
         if let v = s["focusScope"] as? String, let m = FocusScopeChoice(rawValue: v) { st.focusScope = m }
         if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
         if let v = s["authorshipDisplay"] as? Bool { st.authorshipDisplay = v }
         if let v = s["authorName"] as? String { st.authorNameSetting = v }
+    }
+
+    // MARK: menus, the title bar and tabs
+
+    /// Sends an action as the menu would: along the responder chain, then to the window's own
+    /// objects (the app need not be active while a script runs, and then no window is key).
+    @discardableResult
+    private func menuAction(_ sel: Selector, tag: Int = 0) -> Bool {
+        let sender = NSMenuItem()
+        sender.tag = tag
+        var ok = NSApp.sendAction(sel, to: nil, from: sender)
+        if !ok, let tv = textView, tv.responds(to: sel) { ok = NSApp.sendAction(sel, to: tv, from: sender) }
+        if !ok, let wc = controller, wc.responds(to: sel) { ok = NSApp.sendAction(sel, to: wc, from: sender) }
+        if !ok, let w = window, w.responds(to: sel) { ok = NSApp.sendAction(sel, to: w, from: sender) }
+        return ok
+    }
+
+    /// A double-click on the title bar, sent to the window as the window server would send it (one
+    /// event with a click count of two: a first click alone would start AppKit's window-drag loop,
+    /// which waits for a mouse button that never comes). The window must do what System Settings'
+    /// "Double-click a window's title bar to" says: zoom, minimize or nothing.
+    private func doubleClickTitlebar(_ d: [String: Any], then done: @escaping () -> Void) {
+        guard let w = window, let frameView = w.contentView?.superview else {
+            record(["doubleClickTitlebar": "no window"], ok: false)
+            done()
+            return
+        }
+        let setting = TitlebarDoubleClick.setting()
+        let bar = w.frame.height - w.contentLayoutRect.height
+        let x = (d["x"] as? NSNumber).map { CGFloat(truncating: $0) } ?? 0.5
+        let point = NSPoint(x: x <= 1 ? w.frame.width * x : x, y: w.frame.height - bar / 2)
+        let hit = frameView.hitTest(point)
+        let before = w.frame
+        let miniaturized0 = w.isMiniaturized
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            if let e = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: type == .leftMouseDown ? 1 : 0) {
+                w.sendEvent(e)
+            }
+        }
+        // Zooming animates: wait for the frame to move (or, for "nothing", for long enough that it would have).
+        let deadline = Date(timeIntervalSinceNow: setting == .nothing ? 0.8 : 3)
+        func poll() {
+            let changed = w.frame != before || w.isMiniaturized != miniaturized0
+            if (changed && setting != .nothing) || Date() >= deadline {
+                // Let the animation finish before measuring where it ended.
+                later(setting == .nothing ? 0 : 0.6) {
+                    let after = w.frame
+                    var ok: Bool
+                    switch setting {
+                    case .zoom: ok = after != before && !w.isMiniaturized
+                    case .minimize: ok = w.isMiniaturized
+                    case .nothing: ok = after == before && !w.isMiniaturized
+                    }
+                    if let expect = d["expect"] as? String {
+                        ok = ok && (expect == "any" || (expect == "zoom" && setting == .zoom) || (expect == "minimize" && setting == .minimize) || (expect == "none" && setting == .nothing))
+                    }
+                    self.record(["doubleClickTitlebar": "\(setting)", "hit": hit.map { "\(Swift.type(of: $0))" } ?? "nil",
+                                 "at": NSStringFromPoint(point), "before": NSStringFromRect(before), "after": NSStringFromRect(after),
+                                 "minimized": w.isMiniaturized, "titlebar_height": bar, "minSize": NSStringFromSize(w.minSize)], ok: ok)
+                    if w.isMiniaturized { w.deminiaturize(nil); later(0.8, done) } else { done() }
+                }
+                return
+            }
+            later(0.05, poll)
+        }
+        poll()
+    }
+
+    /// Performs an action and watches the editor's clip view while it settles: how many frames the
+    /// scroll took, how long, whether it only ever moved one way, and its shape (an ease-in,
+    /// ease-out slide is slow at a quarter of the time and has done about half the travel at the middle).
+    private func observeScroll(_ o: [String: Any], then done: @escaping () -> Void) {
+        guard let c = controller else { record(["observeScroll": "no window"], ok: false); done(); return }
+        let clip = c.scrollView.contentView
+        var samples: [(t: Double, y: CGFloat)] = []
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let start = clip.bounds.minY
+        let token = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { _ in
+            samples.append((CFAbsoluteTimeGetCurrent() - t0, clip.bounds.minY))
+        }
+        if let action = o["do"] as? String { menuAction(Selector(action)) }
+        if let typed = o["type"] as? String { for ch in typed { sendKey(ch == "\n" ? "\r" : String(ch)) } }
+        let seconds = (o["seconds"] as? NSNumber)?.doubleValue ?? 0.8
+        later(seconds) {
+            NotificationCenter.default.removeObserver(token)
+            let end = clip.bounds.minY
+            let travel = end - start
+            let ys = samples.map(\.y)
+            let deltas = zip(ys, ys.dropFirst()).map { $1 - $0 }
+            let monotonic = deltas.allSatisfy { travel >= 0 ? $0 >= -0.01 : $0 <= 0.01 }
+            let duration = (samples.last?.t ?? 0) - (samples.first?.t ?? 0)
+            func progress(atFraction f: Double) -> Double {
+                guard let first = samples.first?.t, duration > 0, abs(travel) > 1 else { return 0 }
+                let at = first + duration * f
+                let y = samples.last(where: { $0.t <= at })?.y ?? start
+                return Double((y - start) / travel)
+            }
+            let gaps = zip(samples, samples.dropFirst()).map { $1.t - $0.t }
+            var ok = true
+            if let n = (o["expectFrames"] as? NSNumber)?.intValue { ok = ok && samples.count >= n }
+            if let r = o["expectDuration"] as? [Double], r.count == 2 { ok = ok && duration >= r[0] && duration <= r[1] }
+            if let m = (o["maxFrameGapMs"] as? NSNumber)?.doubleValue { ok = ok && (gaps.max() ?? 0) * 1000 <= m }
+            if o["monotonic"] as? Bool == true { ok = ok && monotonic }
+            self.record(["observeScroll": o["do"] as? String ?? (o["type"] as? String ?? ""), "frames": samples.count, "duration_ms": duration * 1000, "travel": Double(travel),
+                         "monotonic": monotonic, "longest_gap_ms": (gaps.max() ?? 0) * 1000, "mean_gap_ms": gaps.isEmpty ? 0 : gaps.reduce(0, +) / Double(gaps.count) * 1000,
+                         "largest_step": Double(deltas.map { abs($0) }.max() ?? 0),
+                         "progress_at_25pct": progress(atFraction: 0.25), "progress_at_50pct": progress(atFraction: 0.5), "progress_at_75pct": progress(atFraction: 0.75),
+                         "active": c.centring.isActive, "userScrolling": c.centring.userScrolling, "slides": c.centring.slides, "jumps": c.centring.jumps], ok: ok)
+            done()
+        }
+    }
+
+    /// A scroll-wheel event (pixel units, as a trackpad or a smooth mouse makes) delivered to the editor's scroll view.
+    private func scrollWheel(_ d: [String: Any]) {
+        let dy = Int32((d["dy"] as? NSNumber)?.intValue ?? 0)
+        guard let c = controller, let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: dy, wheel2: 0, wheel3: 0),
+              let event = NSEvent(cgEvent: cg) else {
+            record(["scrollWheel": dy, "error": "no event"], ok: false)
+            return
+        }
+        let before = c.scrollView.contentView.bounds.minY
+        c.scrollView.scrollWheel(with: event)
+        record(["scrollWheel": dy, "origin_before": before, "origin_after": c.scrollView.contentView.bounds.minY], ok: true)
+    }
+
+    /// The caret's rectangle in window coordinates (the insertion point as the text system places it).
+    private func caretRectInWindow() -> NSRect? {
+        guard let tv = textView, let w = window else { return nil }
+        var actual = NSRange()
+        let screen = tv.firstRect(forCharacterRange: NSRange(location: tv.selectedRange().location, length: 0), actualRange: &actual)
+        return w.convertFromScreen(screen)
+    }
+
+    /// The vertical middle of what the reader sees in the editor (between the title bar and the
+    /// formatting bar), in window coordinates.
+    private func visibleMiddleInWindow() -> CGFloat? {
+        guard let c = controller else { return nil }
+        let clip = c.scrollView.contentView
+        let rect = clip.convert(clip.bounds, to: nil)
+        let top = rect.maxY - c.editorScrollView.baseInsetTop, bottom = rect.minY + c.editorScrollView.baseInsetBottom
+        return (top + bottom) / 2
+    }
+
+    private var remembered: [String: [String: CGFloat]] = [:]
+
+    private func remember(_ name: String) {
+        var v: [String: CGFloat] = [:]
+        if let r = caretRectInWindow() { v["caretY"] = r.midY }
+        if let c = controller { v["origin"] = c.scrollView.contentView.bounds.minY }
+        if let w = window { v["titlebar"] = w.frame.height - w.contentLayoutRect.height }
+        remembered[name] = v
+        record(["remember": name, "values": v.mapValues { Double($0) }], ok: true)
+    }
+
+    private func tabEvent(_ type: NSEvent.EventType, at pointInStrip: NSPoint, in strip: NSView, count: Int = 1) -> NSEvent? {
+        guard let w = window else { return nil }
+        let p = strip.convert(pointInStrip, to: nil)
+        return NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                  windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: type == .leftMouseDown ? 1 : 0)
+    }
+
+    /// Clicks a tab (or, with `close`, its close button, which shows while the pointer is over it).
+    private func tabClick(_ index: Int, close: Bool) {
+        guard let strip = controller?.tabs.strip, index < strip.tabViews.count, let w = window else {
+            record(["tabClick": index, "error": "no such tab"], ok: false)
+            return
+        }
+        let tab = strip.tabViews[index]
+        let before = NSDocumentController.shared.documents.count
+        if close { tab.updateHover(true) }
+        let local = close ? NSPoint(x: 14, y: tab.bounds.midY) : NSPoint(x: tab.bounds.midX, y: tab.bounds.midY)
+        let point = tab.convert(local, to: strip)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            if let e = tabEvent(type, at: point, in: strip) { w.sendEvent(e) }
+        }
+        let hit = w.contentView?.superview?.hitTest(tab.convert(local, to: nil))
+        followSelectedTab()
+        record([close ? "tabClose" : "tabClick": index, "documents_before": before, "faded": strip.isFaded, "hovering": tab.hovering,
+                "hit": hit.map { "\(Swift.type(of: $0))" } ?? "nil", "window_visible": w.isVisible, "key": w.isKeyWindow], ok: true)
+    }
+
+    /// The script's document becomes the one in the selected tab (what a person would now be typing into).
+    private func followSelectedTab() {
+        if let w = window?.tabGroup?.selectedWindow ?? NSApp.keyWindow, let d = (w.windowController as? EditorWindowController)?.document as? MarkdownDocument { document = d }
+        else if let d = NSDocumentController.shared.documents.last as? MarkdownDocument { document = d }
+    }
+
+    /// Drags a tab to another place in the strip.
+    private func tabDrag(from: Int, to: Int) {
+        guard let strip = controller?.tabs.strip, from < strip.tabViews.count, to < strip.tabViews.count, let w = window else {
+            record(["tabDrag": [from, to], "error": "no such tab"], ok: false)
+            return
+        }
+        let width = strip.tabWidth
+        let start = NSPoint(x: width * (CGFloat(from) + 0.5) - strip.scrollOffset, y: strip.bounds.midY)
+        let end = NSPoint(x: width * (CGFloat(to) + 0.5) - strip.scrollOffset, y: strip.bounds.midY)
+        if let e = tabEvent(.leftMouseDown, at: start, in: strip) { w.sendEvent(e) }
+        if let e = tabEvent(.leftMouseDragged, at: end, in: strip) { w.sendEvent(e) }
+        if let e = tabEvent(.leftMouseUp, at: end, in: strip) { w.sendEvent(e) }
+        followSelectedTab()
+        record(["tabDrag": [from, to]], ok: true)
+    }
+
+    /// The state a menu item shows for the front window, validated the way the menu does: by the
+    /// first responder that answers its action (with no key window, by this window's own objects).
+    private func menuItemState(_ path: String) -> (found: Bool, enabled: Bool, state: NSControl.StateValue, title: String) {
+        var menu = NSApp.mainMenu
+        var item: NSMenuItem?
+        for part in path.components(separatedBy: " > ") {
+            item = menu?.items.first { $0.title == part }
+            menu = item?.submenu
+        }
+        guard let item, let action = item.action else { return (false, false, .off, "") }
+        let target = NSApp.target(forAction: action, to: nil, from: item)
+        var validators: [AnyObject] = []
+        if let target { validators.append(target as AnyObject) }
+        else {
+            if let tv = textView { validators.append(tv) }
+            if let wc = controller { validators.append(wc) }
+            if let delegate = NSApp.delegate { validators.append(delegate as AnyObject) }
+        }
+        for v in validators where v.responds(to: action) {
+            if let m = v as? NSMenuItemValidation { return (true, m.validateMenuItem(item), item.state, item.title) }
+            if let u = v as? NSUserInterfaceValidations { return (true, u.validateUserInterfaceItem(item), item.state, item.title) }
+            return (true, true, item.state, item.title)
+        }
+        return (true, false, item.state, item.title)
     }
 
     // MARK: input
@@ -1011,6 +1277,8 @@ final class UIScriptRunner {
         let wait0 = session?.coordinator.totalWaitTime ?? 0, style0 = session?.totalStyleTime ?? 0
         let state0 = session?.timeInStateQueries ?? 0, pos0 = session?.pos.timeOnMain ?? 0
         let overlayEdit0 = session?.overlay.timeFollowingEdits ?? 0, overlayApply0 = session?.overlay.timeApplying ?? 0
+        let centre0 = controller?.centring.timeOnMain ?? 0, slides0 = controller?.centring.slides ?? 0
+        let jumps0 = controller?.centring.jumps ?? 0, frames0 = controller?.centring.frames ?? 0
         func step() {
             guard i < count else {
                 heartbeat.invalidate()
@@ -1026,6 +1294,9 @@ final class UIScriptRunner {
                     "longest_style_ms": (session?.longestStyle ?? 0) * 1000,
                     "mean_state_query_ms": ((session?.timeInStateQueries ?? 0) - state0) / Double(count) * 1000,
                     "mean_pos_main_ms": ((session?.pos.timeOnMain ?? 0) - pos0) / Double(count) * 1000,
+                    "mean_centre_ms": ((controller?.centring.timeOnMain ?? 0) - centre0) / Double(count) * 1000,
+                    "centre_slides": (controller?.centring.slides ?? 0) - slides0, "centre_jumps": (controller?.centring.jumps ?? 0) - jumps0,
+                    "centre_frames": (controller?.centring.frames ?? 0) - frames0, "centre_longest_frame_ms": (controller?.centring.longestFrame ?? 0) * 1000,
                     "mean_overlay_edit_ms": ((session?.overlay.timeFollowingEdits ?? 0) - overlayEdit0) / Double(count) * 1000,
                     "mean_overlay_apply_ms": ((session?.overlay.timeApplying ?? 0) - overlayApply0) / Double(count) * 1000,
                 ]
@@ -1155,7 +1426,7 @@ final class UIScriptRunner {
             later(0.01) {
                 guard let s = self.session else { return next() }
                 s.kickDebt()
-                if s.isStyled && s.selectionStateSettled && (!s.syntaxEnabled || s.pos.isSettled) { return next() }
+                if s.isStyled && s.selectionStateSettled && (!s.syntaxEnabled || s.pos.isSettled) && (self.controller?.centring.isSettled ?? true) { return next() }
                 if Date() > deadline {
                     fail("did not settle in time (styled \(s.isStyled), selection answered \(s.selectionStateSettled), tagging done \(s.pos.isSettled))")
                     return next()
@@ -1776,6 +2047,98 @@ final class UIScriptRunner {
         }
         if let v = a["chromeVisible"] as? Bool, let c = controller {
             check("chromeVisible \(v)", c.chromeVisible == v, "toolbar alpha \(c.toolbar.alphaValue)")
+        }
+        if let v = a["focusCentred"] {
+            // The caret's line is within `tolerance` points of the middle of what the reader sees.
+            let tolerance = (v as? NSNumber)?.doubleValue ?? ((v as? [String: Any])?["tolerance"] as? NSNumber)?.doubleValue ?? 2
+            if let caret = caretRectInWindow(), let middle = visibleMiddleInWindow() {
+                let d = Double(caret.midY - middle)
+                check("focusCentred (within \(tolerance) pt)", abs(d) <= tolerance, "caret line is \(String(format: "%.2f", d)) pt from the middle")
+            } else { check("focusCentred", false, "no caret or view") }
+        }
+        if let want = a["focusInsets"] as? Bool, let c = controller, let w = window {
+            let bar = w.frame.height - w.contentLayoutRect.height
+            let insets = c.scrollView.contentInsets
+            let extra = c.editorScrollView.focusInset
+            let ok = want ? (extra > 0 && abs(insets.top - bar - extra) < 0.5 && abs(insets.bottom - c.editorScrollView.baseInsetBottom - extra) < 0.5)
+                          : (extra == 0 && abs(insets.top - bar) < 0.5)
+            check("focusInsets \(want)", ok, "extra \(extra) top \(insets.top) bottom \(insets.bottom) title bar \(bar)")
+        }
+        if let want = a["userScrolling"] as? Bool, let c = controller {
+            check("userScrolling \(want)", c.centring.userScrolling == want)
+        }
+        if let want = a["sliding"] as? Bool, let c = controller {
+            check("sliding \(want)", c.centring.isSliding == want)
+        }
+        if let name = a["caretUnmoved"] as? String {
+            let tolerance = (a["tolerance"] as? NSNumber)?.doubleValue ?? 1.5
+            if let was = remembered[name]?["caretY"], let now = caretRectInWindow()?.midY {
+                check("caret line unmoved since \(name)", abs(Double(now - was)) <= tolerance, "moved \(Double(now - was)) pt")
+            } else { check("caret line unmoved since \(name)", false, "nothing remembered") }
+        }
+        if let name = a["originUnchanged"] as? String, let c = controller {
+            let was = remembered[name]?["origin"], now = c.scrollView.contentView.bounds.minY
+            check("scroll origin unchanged since \(name)", was.map { abs($0 - now) < 0.5 } ?? false, "was \(String(describing: was)) now \(now)")
+        }
+        if let name = a["originChanged"] as? String, let c = controller {
+            let was = remembered[name]?["origin"], now = c.scrollView.contentView.bounds.minY
+            check("scroll origin changed since \(name)", was.map { abs($0 - now) >= 1 } ?? false, "was \(String(describing: was)) now \(now)")
+        }
+        if let name = a["titlebarHeightSameAs"] as? String, let w = window {
+            let bar = w.frame.height - w.contentLayoutRect.height
+            let was = remembered[name]?["titlebar"]
+            check("title bar height unchanged since \(name)", was.map { abs($0 - bar) < 0.5 } ?? false, "was \(String(describing: was)) now \(bar)")
+        }
+        if a["titlebarClean"] != nil, let c = controller, let w = window {
+            // Nothing in the title bar but the window buttons, the title, and the tab strip (hidden for one tab).
+            var strays: [String] = []
+            func walk(_ v: NSView) {
+                // AppKit's own: the window buttons, the title (and its proxy icon and "Edited" label).
+                let own = c.chromeController.windowButtons.contains(v) || Swift.type(of: v) == NSTextField.self || "\(Swift.type(of: v))".hasPrefix("NSTheme")
+                    || "\(Swift.type(of: v))".hasPrefix("NSButtonTextField")
+                if v is NSControl, !own { strays.append("\(Swift.type(of: v))") }
+                for s in v.subviews where !(s is TabStripView) && !s.isHidden && s.frame.height > 0 { walk(s) }
+            }
+            for bar in c.titlebarControls where !(bar is TabStripView) { walk(bar) }
+            let accessories = w.titlebarAccessoryViewControllers.filter { !$0.isHidden }
+            let others = accessories.filter { !($0.view is TabStripView) }.count
+            check("title bar has no custom controls", strays.isEmpty && others == 0,
+                  "controls \(strays) accessories \(accessories.map { "\(Swift.type(of: $0.view))" })")
+        }
+        if let t = a["tabs"] as? [String: Any], let c = controller, let w = window {
+            let entries = TabStripModel.entries(of: w)
+            if let titles = t["titles"] as? [String] { check("tab titles \(titles)", entries.map(\.title) == titles, "\(entries.map(\.title))") }
+            if let i = t["selected"] as? Int { check("selected tab \(i)", entries.firstIndex(where: \.selected) == i, "\(entries.map(\.selected))") }
+            if let n = t["count"] as? Int { check("tab count \(n)", entries.count == n, "\(entries.count)") }
+            if let shown = t["stripShown"] as? Bool { check("tab strip shown \(shown)", c.tabs.isShown == shown && c.tabs.strip.superview != nil && !(c.tabs.strip.isHiddenOrHasHiddenAncestor) == shown, "isShown \(c.tabs.isShown)") }
+            if let native = t["nativeBarVisible"] as? Bool { check("native tab bar visible \(native)", c.tabs.nativeBarShowing == native, "showing \(c.tabs.nativeBarShowing), AppKit says \(String(describing: w.tabGroup?.isTabBarVisible)), put away \(c.tabs.nativeBarHidden) time(s)") }
+            if let n = t["documents"] as? Int { check("documents \(n)", NSDocumentController.shared.documents.count == n, "\(NSDocumentController.shared.documents.count)") }
+            if let marks = t["editedMarks"] as? [String: Bool] {
+                let wrong = marks.filter { (key, want) in Int(key).map { $0 < entries.count && entries[$0].edited != want } ?? true }
+                check("tab edited marks \(marks)", wrong.isEmpty, "\(entries.map(\.edited))")
+            }
+            if let edited = t["edited"] as? [Bool] { check("tab edited marks", entries.map(\.edited) == edited, "\(entries.map(\.edited)) this window \(w.isDocumentEdited) document \(String(describing: document?.isDocumentEdited))") }
+            if let h = t["stripHeightAtMost"] as? NSNumber {
+                let bar = w.frame.height - w.contentLayoutRect.height
+                check("tab strip fits the title bar", c.tabs.strip.frame.height <= CGFloat(truncating: h) + 0.5 && c.tabs.strip.frame.height <= bar + 0.5, "strip \(c.tabs.strip.frame.height) bar \(bar)")
+            }
+        }
+        if let menus = a["menu"] as? [String: Any] {
+            for (path, want) in menus.sorted(by: { $0.key < $1.key }) {
+                let got = menuItemState(path)
+                var ok = got.found
+                var detail = "enabled \(got.enabled) state \(got.state == .on ? "on" : "off") title \(got.title)"
+                if let w = want as? [String: Any] {
+                    if let st = w["state"] as? String { ok = ok && (got.state == .on) == (st == "on") }
+                    if let en = w["enabled"] as? Bool { ok = ok && got.enabled == en }
+                    if let t = w["title"] as? String { ok = ok && got.title == t }
+                }
+                check("menu \(path)", ok, detail)
+                detail = ""
+            }
+        }
+        if let n = a["chromeReturnsByPause"] as? Int, let c = controller {
+            check("chrome came back by itself \(n) time(s)", c.chromeController.pauseReappearances == n, "\(c.chromeController.pauseReappearances)")
         }
         if a["toolbarIgnoresClicksWhenHidden"] != nil, let c = controller {
             let bar = c.toolbar
