@@ -15,6 +15,7 @@ extension EditorTextView {
     public override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         if event.modifierFlags.contains(.command), openLink(at: p) { return }
+        if handleBadgeClick(at: p) { return }
         if handleCheckboxClick(at: p) { return }
         super.mouseDown(with: event)
     }
@@ -55,6 +56,7 @@ extension EditorTextView {
 
     public override func resetCursorRects() {
         super.resetCursorRects()
+        addBadgeCursorRects()
         guard session?.viewMode == .live, let lm = layoutManager as? EditorLayoutManager, let tc = textContainer else { return }
         let origin = textContainerOrigin
         for frame in lm.checkboxFrames(in: tc, characterRange: visibleCharacterRange()) {

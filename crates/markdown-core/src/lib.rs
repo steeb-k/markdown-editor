@@ -3,6 +3,7 @@
 mod analysis;
 pub mod authorship;
 pub mod autolink;
+mod code;
 mod conceal;
 mod dirty;
 mod document;
@@ -21,9 +22,10 @@ mod types;
 pub mod wiki;
 
 pub use document::Document;
-pub use preview_css::{preview_css, syntax_palette, PreviewStyle, SyntaxPalette, Typography};
+pub use highlight::{common_language_count, languages};
+pub use preview_css::{preview_css, PreviewStyle, Typography};
 pub use render::{slug, ImageSize, RenderOptions};
-pub use theme::{builtin_themes, contrast_ratio, theme_by_id, Color, Colors, Theme};
+pub use theme::{builtin_themes, contrast_ratio, syntax_palette, theme_by_id, Color, Colors, SyntaxPalette, Theme};
 pub use types::*;
 
 /// Version of the core crate.

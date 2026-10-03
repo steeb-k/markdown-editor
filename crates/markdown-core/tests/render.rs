@@ -1296,7 +1296,7 @@ fn aa(name: &str, fg: Color, bg: Color) {
 #[test]
 fn syntax_palettes_meet_wcag_aa_on_every_code_background() {
     for t in builtin_themes() {
-        let pal = syntax_palette(t.is_dark);
+        let pal = t.syntax;
         for (name, color) in pal.all() {
             aa(&format!("{}: {name}", t.id), color, t.colors.code_background);
             aa(&format!("{}: {name} (page)", t.id), color, t.colors.background);

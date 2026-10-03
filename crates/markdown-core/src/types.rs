@@ -463,3 +463,39 @@ pub struct SelectionState {
     /// disjoint and not touching. Empty: dim everything.
     pub focus: Option<Vec<TextRange>>,
 }
+
+/// What a run of highlighted code is, for the colour a shell gives it (the theme's `[syntax]`
+/// table). The same eight roles the preview's palette has, plus `Invalid`, which shells colour
+/// like `Tag`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CodeRole {
+    Comment,
+    Keyword,
+    String,
+    Number,
+    Function,
+    Type,
+    Tag,
+    Variable,
+    Invalid,
+}
+
+/// A run of fenced code with a role. Runs that would be plain are not reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CodeHighlight {
+    pub range: TextRange,
+    pub role: CodeRole,
+}
+
+/// The language of a fenced code block, as the highlighter understands it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeLanguage {
+    /// The token as written in the info string (`rust` in "```rust,ignore").
+    pub name: String,
+    /// The language's own name (`Rust`, `JavaScript`).
+    pub display: String,
+    /// Where the token is written; replacing it changes the language and keeps the attributes after it.
+    pub info_range: TextRange,
+    /// The block (its [`Block::range`]).
+    pub block: TextRange,
+}

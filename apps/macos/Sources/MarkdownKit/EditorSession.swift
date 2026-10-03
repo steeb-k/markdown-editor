@@ -264,7 +264,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         log.removeAll { $0.seq <= result.seq }
         if result.seq == coordinator.latestSeq {
             if let spans = result.spans, !isComposing() {
-                apply(spans, prose: result.prose, in: result.range, afterEdit: true)
+                apply(spans, prose: result.prose, code: result, in: result.range, afterEdit: true)
                 debt.subtract(result.range)
             } else {
                 debt.add(result.range)
@@ -291,7 +291,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// `afterEdit`: the result of an edit (the text changed, so Live mode asks again what to
     /// conceal). Styling owed for unchanged text (a theme change, the initial pass, a mode
     /// switch) changes no concealment and asks nothing.
-    private func apply(_ spans: [Span], prose: [Utf16Range], in range: NSRange, afterEdit: Bool) {
+    private func apply(_ spans: [Span], prose: [Utf16Range], code: AnalysisResult, in range: NSRange, afterEdit: Bool) {
         let t0 = CFAbsoluteTimeGetCurrent()
         defer {
             let d = CFAbsoluteTimeGetCurrent() - t0
@@ -299,7 +299,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             longestStyle = max(longestStyle, d)
         }
         isStyling = true
-        styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange), insideProcessing: inDelegate)
+        styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange),
+                     highlights: code.highlights, languages: code.languages, insideProcessing: inDelegate)
         isStyling = false
         textView?.refreshTypingAttributes()
         if viewMode == .live, afterEdit {
@@ -325,7 +326,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             guard let self else { return }
             debtInFlight = false
             if result.seq == coordinator.latestSeq, !isComposing(), let spans = result.spans {
-                apply(spans, prose: result.prose, in: RangeMath.clamp(result.range, toLength: storage.length), afterEdit: false)
+                apply(spans, prose: result.prose, code: result, in: RangeMath.clamp(result.range, toLength: storage.length), afterEdit: false)
                 debt.subtract(result.range)
             }
             DispatchQueue.main.async { [weak self] in self?.kickDebt() }
@@ -405,6 +406,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let token = selectionToken
         onCaretActivity?()
         tv.refreshTypingAttributes()
+        tv.codeBadgeCaretMoved()
         let selection = tv.selectedRange()
         // The table the caret has just left (the answer below replaces it).
         if let table = activeTable, !tableContains(table, selection), canRealign(tv) {

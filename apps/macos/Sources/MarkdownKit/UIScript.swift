@@ -377,6 +377,9 @@ final class UIScriptRunner {
             let ok = session?.pos.waitUntilSettled(timeout: num("waitSyntax") ?? 30) ?? false
             record(["waitSyntax": ok, "tagged units": session?.pos.taggerInvocations ?? 0], ok: ok)
             done()
+        } else if let c = step["codeBadge"] as? [String: Any] {
+            codeBadgeStep(c)
+            done()
         } else if let n = step["clickCheckbox"] as? Int {
             var ok = false
             if let tv = textView, let lm = tv.layoutManager as? EditorLayoutManager, let tc = tv.textContainer {
@@ -1274,7 +1277,7 @@ final class UIScriptRunner {
     /// a window (or actions sent from a timer) never get: one undo group per event, so undo
     /// steps and the document's edited state are real. The harness turns grouping-by-event off
     /// for its documents (AppKit's own end-of-event bookkeeping would otherwise trip over it).
-    private func asEvent(_ body: () -> Void) {
+    func asEvent(_ body: () -> Void) {
         guard let um = document?.undoManager else { body(); return }
         um.groupsByEvent = false
         um.beginUndoGrouping()
@@ -2257,6 +2260,7 @@ final class UIScriptRunner {
             }
         }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
+        if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {
             for (path, want) in menus.sorted(by: { $0.key < $1.key }) {

@@ -10,6 +10,11 @@ public struct AnalysisResult {
     public var spans: [Span]?
     /// The core's prose ranges within `range` (what spell checking may look at).
     public var prose: [Utf16Range] = []
+    /// The colour roles of the fenced code within `range`, and the known languages of the blocks
+    /// meeting it. A result for a revision the text has moved past is not applied, so these go
+    /// stale with the spans and are folded into the next result the same way.
+    public var highlights: [CodeHighlight] = []
+    public var languages: [CodeLanguage] = []
 }
 
 /// Owns the core `Document` on its own serial queue (PLAN "Threading"). The text view's
@@ -180,12 +185,18 @@ public final class AnalysisCoordinator {
         lock.unlock()
         if behind { return } // a newer edit is queued; its result will cover this one
 
-        let aligned = paragraphAligned(carry!)
+        // The colours of a code block depend on all of it: widen to the whole block (the dirty range
+        // names the edited lines when the spans did not change).
+        let aligned = codeExtended(paragraphAligned(carry!))
         carry = nil
         let fetchStart = CFAbsoluteTimeGetCurrent()
         let fetched = aligned.length <= Self.maxInlineSpanRange ? fetch(aligned) : nil
         lock.lock(); _fetchTime += CFAbsoluteTimeGetCurrent() - fetchStart; lock.unlock()
-        let result = AnalysisResult(seq: seq, range: aligned, spans: fetched?.0, prose: fetched?.1 ?? [])
+        let result = AnalysisResult(seq: seq, range: aligned, spans: fetched?.spans, prose: fetched?.prose ?? [],
+                                    highlights: fetched?.highlights ?? [], languages: fetched?.languages ?? [])
+        // Everything the fetch took (the highlighting of a big block is the long part) counts towards
+        // how long an analysis takes, which is what decides whether a keystroke waits for it.
+        lock.lock(); _lastAnalysis = CFAbsoluteTimeGetCurrent() - started; lock.unlock()
         // Idle only once the result is in the inbox: `isIdle` (and so `isStyled`) must not be
         // true while the last edit's spans are still being fetched.
         lock.lock()
@@ -204,9 +215,15 @@ public final class AnalysisCoordinator {
         return mirror.paragraphRange(for: probe)
     }
 
-    private func fetch(_ r: NSRange) -> ([Span], [Utf16Range]) {
+    /// `r` widened to the fenced code blocks it touches.
+    private func codeExtended(_ r: NSRange) -> NSRange {
+        let u = document.codeExtent(range: Utf16Range(start: UInt32(r.location), end: UInt32(NSMaxRange(r))))
+        return NSRange(location: Int(u.start), length: Int(u.end - u.start))
+    }
+
+    private func fetch(_ r: NSRange) -> (spans: [Span], prose: [Utf16Range], highlights: [CodeHighlight], languages: [CodeLanguage]) {
         let u = Utf16Range(start: UInt32(r.location), end: UInt32(NSMaxRange(r)))
-        return (document.spans(within: u), document.proseRanges(within: u))
+        return (document.spans(within: u), document.proseRanges(within: u), document.codeHighlights(within: u), document.codeLanguages(within: u))
     }
 
     // MARK: queries
@@ -233,8 +250,9 @@ public final class AnalysisCoordinator {
     public func spans(in range: NSRange, completion: @escaping (AnalysisResult) -> Void) {
         queue.async { [self] in
             let aligned = paragraphAligned(range)
-            let (spans, prose) = fetch(aligned)
-            let result = AnalysisResult(seq: processedSeq, range: aligned, spans: spans, prose: prose)
+            let f = fetch(aligned)
+            let result = AnalysisResult(seq: processedSeq, range: aligned, spans: f.spans, prose: f.prose,
+                                        highlights: f.highlights, languages: f.languages)
             DispatchQueue.main.async { completion(result) }
         }
     }

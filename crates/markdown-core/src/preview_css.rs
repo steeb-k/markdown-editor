@@ -3,13 +3,13 @@
 //!
 //! Colours come from the theme's roles (background, text, heading, link, code, quote, rule,
 //! table border, selection). The syntax-highlighter's token classes (`.s-keyword`, ...) map onto
-//! a small palette per kind of theme ([`syntax_palette`]), chosen to meet WCAG AA (4.5:1) on the
+//! the theme's `[syntax]` palette ([`crate::theme::SyntaxPalette`]), chosen to meet WCAG AA (4.5:1) on the
 //! built-in themes' code backgrounds (a test checks it). The `@media print` section always
 //! prints dark-on-white with the light palette, whatever the theme.
 
 use std::fmt::Write;
 
-use crate::theme::{builtin_themes, Color, Theme};
+use crate::theme::{builtin_themes, syntax_palette, Theme};
 
 /// How the text is set: the editor's own settings, in CSS terms.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,68 +51,11 @@ impl Default for PreviewStyle {
     }
 }
 
-/// Colours of the highlighter's token classes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SyntaxPalette {
-    pub comment: Color,
-    pub keyword: Color,
-    pub string: Color,
-    pub number: Color,
-    pub function: Color,
-    pub type_: Color,
-    pub tag: Color,
-    pub variable: Color,
-}
-
-impl SyntaxPalette {
-    /// `(role name, colour)` for every colour, in a fixed order.
-    pub fn all(&self) -> [(&'static str, Color); 8] {
-        [
-            ("comment", self.comment),
-            ("keyword", self.keyword),
-            ("string", self.string),
-            ("number", self.number),
-            ("function", self.function),
-            ("type", self.type_),
-            ("tag", self.tag),
-            ("variable", self.variable),
-        ]
-    }
-}
-
-/// The token palette for light or dark themes. Calm: the colours sit near the text's own
-/// lightness, hues do the telling-apart.
-pub fn syntax_palette(dark: bool) -> SyntaxPalette {
-    if dark {
-        SyntaxPalette {
-            comment: Color::rgb(0x8E, 0x96, 0xA3),
-            keyword: Color::rgb(0xC7, 0x92, 0xEA),
-            string: Color::rgb(0x98, 0xC3, 0x79),
-            number: Color::rgb(0xF2, 0xA0, 0x65),
-            function: Color::rgb(0x7A, 0xB7, 0xFF),
-            type_: Color::rgb(0xE5, 0xC0, 0x7B),
-            tag: Color::rgb(0xF0, 0x71, 0x78),
-            variable: Color::rgb(0xE5, 0x8A, 0x7A),
-        }
-    } else {
-        SyntaxPalette {
-            comment: Color::rgb(0x5C, 0x64, 0x70),
-            keyword: Color::rgb(0x7E, 0x34, 0x94),
-            string: Color::rgb(0x24, 0x69, 0x2E),
-            number: Color::rgb(0x9A, 0x42, 0x13),
-            function: Color::rgb(0x1D, 0x5A, 0xAB),
-            type_: Color::rgb(0x76, 0x53, 0x0A),
-            tag: Color::rgb(0xA0, 0x23, 0x50),
-            variable: Color::rgb(0x92, 0x30, 0x1F),
-        }
-    }
-}
-
 /// The preview's stylesheet for `theme` set in `typography`.
 pub fn preview_css(theme: &Theme, typography: &Typography) -> String {
     let c = &theme.colors;
     let t = typography;
-    let pal = syntax_palette(theme.is_dark);
+    let pal = theme.syntax;
     let light = syntax_palette(false);
     let mono_scale = if t.font_family == t.mono_family { 1.0 } else { 0.92 };
     let mut css = String::with_capacity(9000);

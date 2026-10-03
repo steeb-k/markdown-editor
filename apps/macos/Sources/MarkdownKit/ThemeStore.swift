@@ -9,6 +9,27 @@ public struct ThemePalette {
     public let selection, caret, focusDim, rule, tableBorder: NSColor
     public let posNoun, posVerb, posAdjective, posAdverb, posConjunction: NSColor
     public let authorAI, authorReference: NSColor
+    /// The colours of highlighted code (the theme's `[syntax]` table).
+    public let syntax: SyntaxColors
+
+    /// The code highlighter's role colours.
+    public struct SyntaxColors {
+        public let comment, keyword, string, number, function, type, tag, variable: NSColor
+
+        /// The colour of a run of code (`Invalid` is coloured like `Tag`).
+        public func color(for role: CodeRole) -> NSColor {
+            switch role {
+            case .comment: return comment
+            case .keyword: return keyword
+            case .string: return string
+            case .number: return number
+            case .function: return function
+            case .type: return type
+            case .tag, .invalid: return tag
+            case .variable: return variable
+            }
+        }
+    }
 }
 
 public final class ThemeStore {
@@ -53,7 +74,11 @@ public final class ThemeStore {
             selection: k(c.selection), caret: k(c.caret), focusDim: k(c.focusDim), rule: k(c.rule),
             tableBorder: k(c.tableBorder),
             posNoun: k(c.posNoun), posVerb: k(c.posVerb), posAdjective: k(c.posAdjective), posAdverb: k(c.posAdverb),
-            posConjunction: k(c.posConjunction), authorAI: k(c.authorAi), authorReference: k(c.authorReference))
+            posConjunction: k(c.posConjunction), authorAI: k(c.authorAi), authorReference: k(c.authorReference),
+            syntax: ThemePalette.SyntaxColors(
+                comment: k(theme.syntax.comment), keyword: k(theme.syntax.keyword), string: k(theme.syntax.string),
+                number: k(theme.syntax.number), function: k(theme.syntax.function), type: k(theme.syntax.type),
+                tag: k(theme.syntax.tag), variable: k(theme.syntax.variable)))
     }
 
     /// The window appearance that makes native chrome match the theme (nil: follow the system).

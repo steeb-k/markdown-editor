@@ -85,11 +85,25 @@ public final class EditorLayoutManager: NSLayoutManager {
         return (CGFloat(columns) * (" " as NSString).size(withAttributes: [.font: font]).width).rounded()
     }
 
+    /// A code block's panel (container coordinates), the characters it covers, the language to badge it
+    /// with and where its first visible line is (see `EditorLayoutManager+CodeBadge.swift`).
+    struct BlockPanel {
+        var rect: NSRect
+        var color: NSColor
+        var run: NSRange
+        var language: String?
+        var firstLine: (line: NSRect, textEnd: CGFloat, characters: NSRange)?
+    }
+
     /// The panel rectangles (container coordinates) of the blocks touching `glyphs`.
     func blockBackgroundRects(forGlyphRange glyphs: NSRange) -> [(NSRect, NSColor)] {
+        blockPanels(forGlyphRange: glyphs).map { ($0.rect, $0.color) }
+    }
+
+    func blockPanels(forGlyphRange glyphs: NSRange) -> [BlockPanel] {
         guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return [] }
         let chars = characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        var out: [(NSRect, NSColor)] = []
+        var out: [BlockPanel] = []
         // A little past both ends: a panel reaches beyond its lines, into a neighbour's redraw.
         var loc = max(0, chars.location - 2)
         let end = min(NSMaxRange(chars) + 2, storage.length)
@@ -104,10 +118,11 @@ public final class EditorLayoutManager: NSLayoutManager {
             let g = glyphRange(forCharacterRange: run, actualCharacterRange: nil)
             var rect = NSRect.null
             var lastLine = NSRect.null
+            var firstLine: (line: NSRect, textEnd: CGFloat, characters: NSRange)?
             // The concealed fences, for a block with nothing else (an empty fence still shows a panel).
             var fences = NSRect.null
             let concealing = !live.isEmpty
-            enumerateLineFragments(forGlyphRange: g) { [self] line, _, _, fragGlyphs, _ in
+            enumerateLineFragments(forGlyphRange: g) { [self] line, used, _, fragGlyphs, _ in
                 if concealing {
                     // Concealed fences take no part in the panel, and a fragment that only
                     // carries the next paragraph's hidden characters is not the block's.
@@ -116,6 +131,7 @@ public final class EditorLayoutManager: NSLayoutManager {
                     let inside = NSIntersectionRange(fc, run)
                     if inside.length == 0 || (inside.location..<NSMaxRange(inside)).allSatisfy({ live.isHidden($0) }) { return }
                 }
+                if firstLine == nil { firstLine = (line, used.maxX, characterRange(forGlyphRange: fragGlyphs, actualGlyphRange: nil)) }
                 rect = rect.union(line)
                 lastLine = line
             }
@@ -135,7 +151,9 @@ public final class EditorLayoutManager: NSLayoutManager {
             let indent = blockIndent(of: run, in: storage)
             rect.origin.x = indent
             rect.size.width = max(0, container.size.width - indent)
-            out.append((rect.insetBy(dx: -Self.blockOutset.width, dy: -Self.blockOutset.height), color))
+            let language = storage.attribute(.markdownCodeLanguage, at: run.location, effectiveRange: nil) as? String
+            out.append(BlockPanel(rect: rect.insetBy(dx: -Self.blockOutset.width, dy: -Self.blockOutset.height), color: color,
+                                  run: run, language: language, firstLine: firstLine))
         }
         return out
     }

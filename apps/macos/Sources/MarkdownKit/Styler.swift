@@ -6,6 +6,9 @@ extension NSAttributedString.Key {
     public static let markdownProse = NSAttributedString.Key("MarkdownProse")
     /// A block background (code blocks) drawn across the whole column by `EditorLayoutManager`.
     public static let markdownBlockBackground = NSAttributedString.Key("MarkdownBlockBackground")
+    /// The display name of a fenced block's language (a string over the block), when the core knows it:
+    /// what the layout manager draws as the badge. Absent for a block with no language or an unknown one.
+    public static let markdownCodeLanguage = NSAttributedString.Key("MarkdownCodeLanguage")
 }
 
 /// Maps core spans to text attributes. It touches exactly the range it is given (the dirty
@@ -43,8 +46,12 @@ public final class Styler {
     /// Rewrites the attributes of `range` from `spans` (which must cover it: every span that
     /// overlaps it, in the core's sorted order). `insideProcessing` is true when called from
     /// `didProcessEditing`, where begin/endEditing must not be used.
+    ///
+    /// `highlights` are the core's colour roles for the code in the range, and `languages` the fenced
+    /// blocks with a known language: stored attributes like the rest, so they survive scrolling,
+    /// selection and layout, and are written with the same run.
     public func style(_ textStorage: NSTextStorage, range requested: NSRange, spans: [Span], prose: [NSRange] = [],
-                      insideProcessing: Bool) {
+                      highlights: [CodeHighlight] = [], languages: [CodeLanguage] = [], insideProcessing: Bool) {
         let range = RangeMath.clamp(requested, toLength: textStorage.length)
         guard range.length > 0 else { return }
         if recordsTouchedRanges { touchedRanges.append(range) }
@@ -191,6 +198,18 @@ public final class Styler {
         // The core pads tables in display columns (CJK and emoji count two). Fallback fonts do
         // not draw them exactly two cells wide, so each wide character is kerned to the grid.
         for (r, font) in tables { alignWideCharacters(storage, ns, in: r, cell: font) }
+
+        // Code: the roles' colours over the block's own, and the language the badge shows. Foreground
+        // only; the font stays the code font. (Markup and the info string are dimmed after this, and
+        // are not in the runs anyway.)
+        for h in highlights {
+            let r = NSIntersectionRange(h.range.nsRange, range)
+            if r.length > 0 { storage.addAttribute(.foregroundColor, value: p.syntax.color(for: h.role), range: r) }
+        }
+        for l in languages {
+            let r = NSIntersectionRange(l.block.nsRange, range)
+            if r.length > 0 { storage.addAttribute(.markdownCodeLanguage, value: l.display as NSString, range: r) }
+        }
 
         // What spell checking may look at.
         for pr in prose {

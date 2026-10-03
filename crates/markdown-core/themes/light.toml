@@ -23,3 +23,13 @@ author_ai = "#6C47B8"
 author_reference = "#8A5F00"
 rule = "#D9DADD"
 table_border = "#C9CBCF"
+
+[syntax]
+comment = "#5C6470"
+keyword = "#7E3494"
+string = "#24692E"
+number = "#9A4213"
+function = "#1D5AAB"
+type = "#76530A"
+tag = "#A02350"
+variable = "#92301F"

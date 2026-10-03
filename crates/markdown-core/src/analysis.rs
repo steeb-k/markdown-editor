@@ -98,6 +98,18 @@ pub(crate) struct IBlock {
     pub depth: u8,
 }
 
+/// A fenced code block: where its info string is and which source ranges are its code (one per
+/// line, without the container prefix and the fence's own indentation), for the highlighter.
+#[derive(Debug, Clone)]
+pub(crate) struct ICode {
+    /// The block, as [`IBlock`] has it.
+    pub start: usize,
+    pub end: usize,
+    /// The info string, trimmed: empty (and positioned after the fence) when there is none.
+    pub info: (usize, usize),
+    pub chunks: Vec<(usize, usize)>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct IImage {
     pub start: usize,
@@ -135,6 +147,8 @@ pub(crate) struct Analysis {
     /// `prefix_max_end[i]` = max end of `spans[..=i]` (for intersection queries).
     pub prefix_max_end: Vec<usize>,
     pub blocks: Vec<IBlock>,
+    /// Fenced code blocks in document order.
+    pub codes: Vec<ICode>,
     pub prose: Vec<(usize, usize)>,
     pub images: Vec<IImage>,
     pub tables: Vec<ITable>,
@@ -207,6 +221,7 @@ struct Builder<'a> {
     lines: LineIndex,
     spans: Vec<ISpan>,
     blocks: Vec<IBlock>,
+    codes: Vec<ICode>,
     prose: Vec<(usize, usize)>,
     images: Vec<IImage>,
     tables: Vec<ITable>,
@@ -221,6 +236,8 @@ struct Builder<'a> {
     in_table: bool,
     table_range: (usize, usize),
     in_code: bool,
+    /// The open code block is fenced and recorded in `codes`.
+    code_fenced: bool,
     in_html: bool,
     in_meta: bool,
     autolink_depth: usize,
@@ -264,6 +281,7 @@ impl<'a> Builder<'a> {
             lines: LineIndex::new(text),
             spans: Vec::new(),
             blocks: Vec::new(),
+            codes: Vec::new(),
             prose: Vec::new(),
             images: Vec::new(),
             tables: Vec::new(),
@@ -275,6 +293,7 @@ impl<'a> Builder<'a> {
             in_table: false,
             table_range: (0, 0),
             in_code: false,
+            code_fenced: false,
             in_html: false,
             in_meta: false,
             autolink_depth: 0,
@@ -499,6 +518,13 @@ impl<'a> Builder<'a> {
                     }
                     self.close_fence = None;
                 }
+                if self.in_code
+                    && self.code_fenced
+                    && r.start < r.end
+                    && let Some(c) = self.codes.last_mut()
+                {
+                    c.chunks.push((r.start, r.end));
+                }
                 if self.in_code || self.in_meta || self.in_html {
                     return;
                 }
@@ -636,9 +662,13 @@ impl<'a> Builder<'a> {
                 self.push(t.0, t.1, SpanKind::CodeBlock);
                 let d = self.depth();
                 self.push_block(BlockKind::CodeBlock, t, None, d);
+                self.code_fenced = false;
                 if matches!(kind, CodeBlockKind::Fenced(_)) {
                     self.role = MarkupRole::Fence;
-                    self.fence_markup(t);
+                    if let Some(info) = self.fence_markup(t) {
+                        self.codes.push(ICode { start: t.0, end: t.1, info, chunks: Vec::new() });
+                        self.code_fenced = true;
+                    }
                     self.role = MarkupRole::Plain;
                 }
                 self.in_code = true;
@@ -789,6 +819,7 @@ self.role = MarkupRole::Plain;
             }
             TagEnd::CodeBlock => {
                 self.in_code = false;
+                self.code_fenced = false;
                 self.close_fence = None;
             }
             TagEnd::HtmlBlock => self.in_html = false,
@@ -937,7 +968,8 @@ self.role = MarkupRole::Plain;
         }
     }
 
-    fn fence_markup(&mut self, (s, e): (usize, usize)) {
+    /// Marks the fences of the block at `s..e`; the info string's range when the block is fenced.
+    fn fence_markup(&mut self, (s, e): (usize, usize)) -> Option<(usize, usize)> {
         let b = self.b;
         let (fls, fle) = self.line_owner(s);
         let fle = fle.min(e);
@@ -946,7 +978,7 @@ self.role = MarkupRole::Plain;
             i += 1;
         }
         if i >= fle || !matches!(b[i], b'`' | b'~') {
-            return;
+            return None;
         }
         let c = b[i];
         let mut j = i;
@@ -955,7 +987,7 @@ self.role = MarkupRole::Plain;
         }
         let n = j - i;
         if n < 3 {
-            return;
+            return None;
         }
         let owner = (fls, fle);
         self.markup(i, j, owner, MarkupScope::Line);
@@ -990,6 +1022,7 @@ self.role = MarkupRole::Plain;
                 }
             }
         }
+        Some((is, ie))
     }
 
     fn front_matter_markup(&mut self, (s, e): (usize, usize)) {
@@ -1381,6 +1414,7 @@ self.role = MarkupRole::Plain;
             spans,
             prefix_max_end,
             blocks: self.blocks,
+            codes: self.codes,
             prose,
             images: self.images,
             tables: self.tables,

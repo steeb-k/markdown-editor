@@ -124,6 +124,76 @@ impl std::fmt::Display for EditError {
 impl std::error::Error for EditError {}
 
 
+// ----- code highlighting -----------------------------------------------------------------------------
+
+/// What a run of highlighted code is (see `core::CodeRole`); the shell colours it from the theme's
+/// `[syntax]` palette (`Invalid` like `Tag`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum CodeRole {
+    Comment,
+    Keyword,
+    String,
+    Number,
+    Function,
+    Type,
+    Tag,
+    Variable,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct CodeHighlight {
+    pub range: Utf16Range,
+    pub role: CodeRole,
+}
+
+/// The language of a fenced block (see `core::CodeLanguage`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CodeLanguage {
+    pub name: String,
+    pub display: String,
+    pub info_range: Utf16Range,
+    pub block: Utf16Range,
+}
+
+/// One entry of the language menu: the token to write and the name to show, and whether it is one
+/// of the common languages the list starts with.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CodeLanguageChoice {
+    pub token: String,
+    pub display: String,
+    pub common: bool,
+}
+
+impl From<core::CodeRole> for CodeRole {
+    fn from(r: core::CodeRole) -> Self {
+        use core::CodeRole as R;
+        match r {
+            R::Comment => CodeRole::Comment,
+            R::Keyword => CodeRole::Keyword,
+            R::String => CodeRole::String,
+            R::Number => CodeRole::Number,
+            R::Function => CodeRole::Function,
+            R::Type => CodeRole::Type,
+            R::Tag => CodeRole::Tag,
+            R::Variable => CodeRole::Variable,
+            R::Invalid => CodeRole::Invalid,
+        }
+    }
+}
+
+impl From<core::CodeHighlight> for CodeHighlight {
+    fn from(h: core::CodeHighlight) -> Self {
+        CodeHighlight { range: h.range.into(), role: h.role.into() }
+    }
+}
+
+impl From<core::CodeLanguage> for CodeLanguage {
+    fn from(l: core::CodeLanguage) -> Self {
+        CodeLanguage { name: l.name, display: l.display, info_range: l.info_range.into(), block: l.block.into() }
+    }
+}
+
 // ----- Live mode ------------------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -324,6 +394,20 @@ pub struct Theme {
     pub name: String,
     pub is_dark: bool,
     pub colors: ThemeColors,
+    pub syntax: ThemeSyntax,
+}
+
+/// The colours of the code highlighter's roles (the theme's `[syntax]` table).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ThemeSyntax {
+    pub comment: ThemeColor,
+    pub keyword: ThemeColor,
+    pub string: ThemeColor,
+    pub number: ThemeColor,
+    pub function: ThemeColor,
+    pub type_: ThemeColor,
+    pub tag: ThemeColor,
+    pub variable: ThemeColor,
 }
 
 // ----- preview and export ----------------------------------------------------------------------
@@ -780,7 +864,7 @@ impl From<ThemeColors> for core::theme::Colors {
 
 impl From<Theme> for core::Theme {
     fn from(t: Theme) -> Self {
-        core::Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into() }
+        core::Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into(), syntax: t.syntax.into() }
     }
 }
 
@@ -818,7 +902,37 @@ impl From<RenderOptions> for core::RenderOptions {
 
 impl From<core::Theme> for Theme {
     fn from(t: core::Theme) -> Self {
-        Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into() }
+        Theme { id: t.id, name: t.name, is_dark: t.is_dark, colors: t.colors.into(), syntax: t.syntax.into() }
+    }
+}
+
+impl From<ThemeSyntax> for core::SyntaxPalette {
+    fn from(p: ThemeSyntax) -> Self {
+        core::SyntaxPalette {
+            comment: p.comment.into(),
+            keyword: p.keyword.into(),
+            string: p.string.into(),
+            number: p.number.into(),
+            function: p.function.into(),
+            type_: p.type_.into(),
+            tag: p.tag.into(),
+            variable: p.variable.into(),
+        }
+    }
+}
+
+impl From<core::SyntaxPalette> for ThemeSyntax {
+    fn from(p: core::SyntaxPalette) -> Self {
+        ThemeSyntax {
+            comment: p.comment.into(),
+            keyword: p.keyword.into(),
+            string: p.string.into(),
+            number: p.number.into(),
+            function: p.function.into(),
+            type_: p.type_.into(),
+            tag: p.tag.into(),
+            variable: p.variable.into(),
+        }
     }
 }
 
@@ -899,6 +1013,30 @@ impl Document {
             d.wikilink_at(offset)
                 .map(|w| WikilinkRef { range: w.range.into(), target: w.target, heading: w.heading, label: w.label })
         })
+    }
+
+    /// Colour roles of the fenced code meeting `within`, clipped to it (see `core::Document::code_highlights`).
+    pub fn code_highlights(&self, within: Option<Utf16Range>) -> Vec<CodeHighlight> {
+        self.with(|d| d.code_highlights(within.map(Into::into)).into_iter().map(CodeHighlight::from).collect())
+    }
+
+    /// `range` widened to whole fenced blocks.
+    pub fn code_extent(&self, range: Utf16Range) -> Utf16Range {
+        self.with(|d| d.code_extent(range.into()).into())
+    }
+
+    pub fn code_language_at(&self, offset: u32) -> Option<CodeLanguage> {
+        self.with(|d| d.code_language_at(offset).map(CodeLanguage::from))
+    }
+
+    /// The known languages of the fenced blocks meeting `within`.
+    pub fn code_languages(&self, within: Option<Utf16Range>) -> Vec<CodeLanguage> {
+        self.with(|d| d.code_languages(within.map(Into::into)).into_iter().map(CodeLanguage::from).collect())
+    }
+
+    /// The edit that makes the fenced block `block` `token`'s language, keeping its other attributes.
+    pub fn set_code_language(&self, block: Utf16Range, token: String) -> Option<TextEdit> {
+        self.with(|d| d.set_code_language(block.into(), &token).map(TextEdit::from))
     }
 
     pub fn concealment(&self, selection: Utf16Range, within: Option<Utf16Range>) -> Concealment {
@@ -991,6 +1129,17 @@ pub fn preview_css(theme: Theme, typography: Typography) -> String {
     core::preview_css(&theme.into(), &typography.into())
 }
 
+/// The languages a code block can be given, common ones first, then the rest alphabetically.
+#[uniffi::export]
+pub fn code_language_choices() -> Vec<CodeLanguageChoice> {
+    let common = core::common_language_count();
+    core::languages()
+        .iter()
+        .enumerate()
+        .map(|(i, (t, d))| CodeLanguageChoice { token: t.clone(), display: d.clone(), common: i < common })
+        .collect()
+}
+
 /// Loads the code highlighter's syntaxes now. Call once from a background thread before the first
 /// preview is shown (the work is done lazily otherwise, on the first fenced block).
 #[uniffi::export]
@@ -1038,6 +1187,25 @@ mod tests {
         assert!(t.table_command(TableCommand::SetAlignment { alignment: ColumnAlignment::Right }, Utf16Range { start: 2, end: 2 }).is_some());
         assert_eq!(builtin_themes().len(), 3);
         assert!(theme_by_id("sepia".into()).is_some());
+    }
+
+    #[test]
+    fn code_highlighting_crosses_the_boundary() {
+        let d = Document::new("\u{1F389}\n\n```rust\nlet s = \"\u{1F389}\"; // c\n```\n".into());
+        let hs = d.code_highlights(None);
+        assert!(hs.iter().any(|h| h.role == CodeRole::Keyword && h.range == Utf16Range { start: 12, end: 15 }), "{hs:?}");
+        assert!(hs.iter().any(|h| h.role == CodeRole::String));
+        let l = d.code_language_at(5).unwrap();
+        assert_eq!((l.name.as_str(), l.display.as_str()), ("rust", "Rust"));
+        assert_eq!(d.code_languages(None), vec![l.clone()]);
+        let edit = d.set_code_language(l.block, "python".into()).unwrap();
+        d.replace(edit.range, edit.replacement).unwrap();
+        assert!(d.text().contains("```python\n"));
+        assert_eq!(d.code_extent(Utf16Range { start: 14, end: 15 }).start, 4);
+        let choices = code_language_choices();
+        assert!(choices.len() > 150);
+        assert!(choices[0].common && choices[0].token == "rust" && !choices.last().unwrap().common);
+        assert!(builtin_themes()[1].syntax.keyword.r > 0xB0);
     }
 
     #[test]

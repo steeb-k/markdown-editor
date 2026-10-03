@@ -26,6 +26,12 @@ public final class EditorTextView: NSTextView {
     var verticalGoal: (selection: NSRange, x: CGFloat, placed: Bool)?
     /// The pointing hand is showing for a Command-hover over a link.
     var showsLinkCursor = false
+    /// The caret's place when the language badges were last redrawn for it (see `codeBadgeCaretMoved`).
+    var lastBadgeCaret: Int?
+    /// The block the open language menu is for.
+    var codeMenuBlock: NSRange?
+    /// Takes the language menu instead of popping it up (tests and the UI scripts: a menu that tracks the mouse never returns).
+    var codeMenuPresenter: ((NSMenu, NSPoint) -> Void)?
     /// Focus mode's centring; while it is on, what asks the view to scroll something into view
     /// asks it to centre that instead (one slide, not a jump and a slide).
     weak var centring: FocusCentring?

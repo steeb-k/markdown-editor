@@ -27,6 +27,7 @@ cargo test --workspace
 # RENDER_DIFF_CASES=1000000 cargo test --profile fuzz -p markdown-core --test render_diff   # the renderer against pulldown-cmark's own writer, additions normalised away
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture worst_case   # no 1 MB render over 100 ms (highlighting budget)
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
+# cargo test --release -p markdown-core --test code -- --ignored --nocapture            # editor code highlighting: 1 MB with 200 blocks, a 2 000-line block
 
 # Build the core: static lib + Swift bindings + XCFramework (host arch, debug)
 scripts/build-core.sh                 # or --release, or --universal (arm64+x86_64, release)
@@ -58,6 +59,7 @@ scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by e
 scripts/macos/ui-script.sh scripts/macos/ui/live-edge.json      # Live mode edge cases
 scripts/macos/ui-script.sh scripts/macos/ui/look.json           # the M2 look: the tour in three themes, Settings
 scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
+scripts/macos/ui-script.sh scripts/macos/ui/code.json           # code highlighting: theme colours, the language badge and its menu, Source and Live, focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As, typing in borrowed text, undo, save and reopen; three themes
 scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep-or-discard sheet for marks that may be misplaced
@@ -116,6 +118,10 @@ View > Notes Mode (⌃⌘L) puts a sidebar beside the editor in every window of 
 - **Wikilinks and tags**: `[[Title]]`, `[[Title|label]]`, `[[Title#Heading]]` and `#tag` are styled in the editor
   (Live mode conceals the brackets); ⌘-click opens the note, or offers to make it beside the current one; in the preview
   a click does the same. Without notes mode, a wikilink opens the note beside the document.
+
+## Code in the editor
+
+Fenced code is highlighted in the editor, in Source and Live, in the languages the preview knows and the theme's `[syntax]` colours; a small badge at the top right of a block names its language and, clicked, offers the others (the choice rewrites the info string, one undo step).
 
 ## Icons
 

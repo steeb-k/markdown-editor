@@ -128,19 +128,100 @@ impl Colors {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+/// Colours of the code highlighter's roles (the editor's and the preview's): the `[syntax]` table
+/// of a theme file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct SyntaxPalette {
+    pub comment: Color,
+    pub keyword: Color,
+    pub string: Color,
+    pub number: Color,
+    pub function: Color,
+    #[serde(rename = "type")]
+    pub type_: Color,
+    pub tag: Color,
+    pub variable: Color,
+}
+
+impl SyntaxPalette {
+    /// `(role name, colour)` for every colour, in a fixed order.
+    pub fn all(&self) -> [(&'static str, Color); 8] {
+        [
+            ("comment", self.comment),
+            ("keyword", self.keyword),
+            ("string", self.string),
+            ("number", self.number),
+            ("function", self.function),
+            ("type", self.type_),
+            ("tag", self.tag),
+            ("variable", self.variable),
+        ]
+    }
+
+    /// The built-in palette for a theme that has no `[syntax]` table, chosen by its background.
+    pub fn fallback(background: Color) -> SyntaxPalette {
+        syntax_palette(background.luminance() < 0.18)
+    }
+}
+
+/// The built-in token palette for light or dark themes. Calm: the colours sit near the text's own
+/// lightness, hues do the telling-apart. The three built-in themes carry these values in their
+/// files; this is the fallback for a theme without a `[syntax]` table, and the print palette.
+pub fn syntax_palette(dark: bool) -> SyntaxPalette {
+    if dark {
+        SyntaxPalette {
+            comment: Color::rgb(0x8E, 0x96, 0xA3),
+            keyword: Color::rgb(0xC7, 0x92, 0xEA),
+            string: Color::rgb(0x98, 0xC3, 0x79),
+            number: Color::rgb(0xF2, 0xA0, 0x65),
+            function: Color::rgb(0x7A, 0xB7, 0xFF),
+            type_: Color::rgb(0xE5, 0xC0, 0x7B),
+            tag: Color::rgb(0xF0, 0x71, 0x78),
+            variable: Color::rgb(0xE5, 0x8A, 0x7A),
+        }
+    } else {
+        SyntaxPalette {
+            comment: Color::rgb(0x5C, 0x64, 0x70),
+            keyword: Color::rgb(0x7E, 0x34, 0x94),
+            string: Color::rgb(0x24, 0x69, 0x2E),
+            number: Color::rgb(0x9A, 0x42, 0x13),
+            function: Color::rgb(0x1D, 0x5A, 0xAB),
+            type_: Color::rgb(0x76, 0x53, 0x0A),
+            tag: Color::rgb(0xA0, 0x23, 0x50),
+            variable: Color::rgb(0x92, 0x30, 0x1F),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Theme {
     pub id: String,
     pub name: String,
     pub is_dark: bool,
     pub colors: Colors,
+    /// The code highlighter's colours: the file's `[syntax]` table, or the built-in palette for
+    /// the theme's background when it has none.
+    pub syntax: SyntaxPalette,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThemeFile {
+    id: String,
+    name: String,
+    is_dark: bool,
+    colors: Colors,
+    syntax: Option<SyntaxPalette>,
 }
 
 impl Theme {
-    /// Parse a theme from TOML (`id`, `name`, `is_dark` and a `[colors]` table with every role).
+    /// Parse a theme from TOML (`id`, `name`, `is_dark`, a `[colors]` table with every role and
+    /// optionally a `[syntax]` table with the eight code colours).
     pub fn from_toml(src: &str) -> Result<Theme, String> {
-        toml::from_str(src).map_err(|e| e.to_string())
+        let f: ThemeFile = toml::from_str(src).map_err(|e| e.to_string())?;
+        let syntax = f.syntax.unwrap_or_else(|| SyntaxPalette::fallback(f.colors.background));
+        Ok(Theme { id: f.id, name: f.name, is_dark: f.is_dark, colors: f.colors, syntax })
     }
 }
 
