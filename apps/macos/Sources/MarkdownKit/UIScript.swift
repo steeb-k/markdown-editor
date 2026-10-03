@@ -548,6 +548,12 @@ final class UIScriptRunner {
             snapshot(name, which: str("window"), bitmap: step["bitmap"] as? Bool ?? false, then: done)
         } else if let d = step["doubleClickTitlebar"] as? [String: Any] {
             doubleClickTitlebar(d, then: done)
+        } else if let c = step["click"] as? [String: Any] {
+            clickStep(c, then: done)
+        } else if let d = step["drag"] as? [String: Any] {
+            dragStep(d, then: done)
+        } else if let f = num("dividerDrag") {
+            dividerDragStep(f, then: done)
         } else if let d = step["scrollWheel"] as? [String: Any] {
             scrollWheel(d)
             later((d["wait"] as? NSNumber)?.doubleValue ?? 0.2, done)

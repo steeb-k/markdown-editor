@@ -47,6 +47,33 @@ final class EditorScrollView: NSScrollView {
         onUserScroll?()
         super.scrollWheel(with: event)
     }
+
+    /// AppKit gives a click inside the content insets to the scroll view itself (or to the
+    /// background view it keeps behind the clip view), which does nothing with it. Text runs under
+    /// the title bar and the formatting bar, so those bands are text a person can see and click;
+    /// and focus mode's room makes the insets cover the whole clip view (half the visible height
+    /// above, half below), so that every click in the editor was lost: the caret did not move, and
+    /// a text view that had lost the keyboard (to the preview, the sidebar) never got it back. A
+    /// click anywhere over the clip view is the text's, except on the scrollers and the find bar.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        guard let hit, let doc = documentView, hit !== doc, !hit.isDescendant(of: doc) else { return hit }
+        if let bar = findBarView, hit.isDescendant(of: bar) { return hit }
+        var v: NSView? = hit
+        while let x = v, x !== self {
+            if x is NSScroller || x is NSRulerView { return hit }
+            v = x.superview
+        }
+        let inClip = contentView.convert(point, from: superview)
+        guard contentView.bounds.contains(inClip) else { return hit }
+        // Under the title bar the click is the title bar's (a drag, a double-click), as before: AppKit hands a
+        // click there to a content view that will not move the window, and the text view would not.
+        if let window, let superview {
+            let inWindow = superview.convert(point, to: nil)
+            if inWindow.y > window.contentLayoutRect.maxY { return hit }
+        }
+        return doc.hitTest(inClip) ?? doc
+    }
 }
 
 extension NSScrollView {
