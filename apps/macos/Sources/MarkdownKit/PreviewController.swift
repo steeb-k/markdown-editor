@@ -61,6 +61,10 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     public var onApplied: (() -> Void)?
     /// What happened to the last navigation the user asked for (tests and the UI script).
     public private(set) var lastLinkAction: LinkAction?
+    /// In notes mode a click on a link to a note (a wikilink as the page spells it) asks the window to open
+    /// the note through the library; otherwise such a link opens the file as any other.
+    var opensNotes = false
+    var onOpenNote: ((_ target: String, _ fragment: String?) -> Void)?
 
     // Chrome (title bar and toolbar) the page keeps clear of, like the editor's content insets.
     private var chrome = (top: CGFloat(0), bottom: CGFloat(0))
@@ -356,7 +360,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
             isLinkActivation: navigationAction.navigationType == .linkActivated,
             isMainFrame: navigationAction.targetFrame?.isMainFrame ?? false,
             isInitialLoad: isInitialLoad && !initialNavigationAllowed && navigationAction.navigationType == .other,
-            documentURL: session?.documentURL())
+            documentURL: session?.documentURL(), notes: opensNotes)
         if action == .allow { initialNavigationAllowed = true }
         perform(action)
         decisionHandler(action == .allow ? .allow : .cancel)
@@ -366,7 +370,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         let action = LinkPolicy.decide(url: navigationAction.request.url, isLinkActivation: true, isMainFrame: true,
-                                       isInitialLoad: false, documentURL: session?.documentURL())
+                                       isInitialLoad: false, documentURL: session?.documentURL(), notes: opensNotes)
         perform(action)
         return nil
     }
@@ -377,6 +381,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         switch action {
         case .allow, .ignore: break
         case .open(let url): LinkOpener.open(url)
+        case .openNote(let target, let fragment): onOpenNote?(target, fragment)
         case .scrollToFragment(let id):
             webView.callAsyncJavaScript("return __md.scrollToId(id);", arguments: ["id": id], in: nil, in: PreviewScripts.world) { _ in }
         }

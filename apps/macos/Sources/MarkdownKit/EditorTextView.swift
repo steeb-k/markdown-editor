@@ -262,6 +262,7 @@ public final class EditorTextView: NSTextView {
         perform(actionName: actionName, origin: nil, make)
     }
 
+    @discardableResult
     func perform(actionName: String? = nil, origin: EditOrigin?, _ make: @escaping (Document, Utf16Range) -> TextEdit?) -> Bool {
         guard let session, !hasMarkedText(), isEditable else { return false }
         let sel = selectedRange()

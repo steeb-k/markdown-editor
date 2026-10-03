@@ -53,6 +53,10 @@ Three independent aids, all in the View menu:
 - **Syntax Highlight** colours the parts of speech: adjectives, nouns, adverbs, verbs and conjunctions, each of which can be switched off. It is for rereading: long runs of one colour are where a draft is flabby.
 - **Authorship** keeps track of whose words are whose. Paste text with Edit > Paste As > AI or Reference, or select text and use Mark As, and it is coloured as borrowed. Your own writing stays the plain text colour. The marks are saved at the end of the file in the open Markdown Annotations format other editors read; a file with no borrowed text is never touched. Show Authorship hides the colours without removing the marks.
 
+## Notes mode
+
+View > Notes Mode puts a sidebar beside the editor: a folder of notes (and any others you add under Library) as a tree, with search, tags and, under the list, the notes that link to the one you are reading. A click opens a note in a tab; Option-click replaces the tab you are in. Quick Open finds a note by a few letters of its title or path. Today's Note (File menu) opens a note named for the day, made from a `Daily` template if you have one, and New from Template fills in the date, the time and the title wherever the template has them in double braces, and puts the caret where it says `cursor`. Write `[[Another note]]` to link to a note, `[[Note|a label]]` to show other words, and `#tag` anywhere in the text; Command-click a link to open it. Renaming a note that others link to offers to update their links.
+
 ## Getting it out
 
 File > Export > PDF writes the preview as a paginated PDF; File > Print prints it. Edit > Copy As puts the selection (or the whole document) on the clipboard as HTML or as rich text that pastes formatted into Mail and Pages.

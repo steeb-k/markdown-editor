@@ -108,4 +108,167 @@ public enum DocumentFileAccess {
         let parts = ups + rest
         return parts.isEmpty ? file.lastPathComponent : parts.joined(separator: "/")
     }
+
+    // MARK: notes and folders: the library's files
+
+    /// The extensions of the files the library indexes as notes.
+    public static let noteExtensions: Set<String> = ["md", "markdown", "mdown", "txt"]
+
+    /// Files bigger than this are left out of the library altogether (the editor still opens them).
+    public static let maximumNoteSize = 4 * 1024 * 1024
+
+    public static func isNote(_ url: URL) -> Bool { noteExtensions.contains(url.pathExtension.lowercased()) }
+
+    /// Whether the library skips an item of this name: hidden items and `node_modules`.
+    public static func isSkipped(name: String) -> Bool { name.hasPrefix(".") || name == "node_modules" }
+
+    /// Where the library lives unless the user chooses another folder.
+    public static var defaultLibraryURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("Markdown Notes", isDirectory: true)
+    }
+
+    /// The same location with symbolic links resolved (`/var` and `/private/var`), which is how
+    /// the file system reports paths in events and how the library compares them.
+    ///
+    /// A place that does not exist (a file just deleted, a name about to be made) is resolved through its
+    /// nearest folder that does, so it is spelled as the same place is when it exists.
+    public static func canonical(_ url: URL) -> URL {
+        var existing = url.standardizedFileURL
+        var tail: [String] = []
+        while existing.pathComponents.count > 1, !FileManager.default.fileExists(atPath: existing.path) {
+            tail.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        var out = existing.resolvingSymlinksInPath().standardizedFileURL
+        for name in tail { out.appendPathComponent(name) }
+        return out
+    }
+
+    public static func isDirectory(_ url: URL) -> Bool {
+        var d: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &d) && d.boolValue
+    }
+
+    public static func size(of url: URL) -> Int {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue ?? 0
+    }
+
+    // MARK: folders the user grants
+
+    /// A folder the user chose, as it is remembered: a security-scoped bookmark (which an
+    /// unsandboxed build creates and resolves too, so the App Store build needs nothing new)
+    /// beside the path it pointed at when it was made.
+    public struct Grant: Codable, Equatable {
+        public var id: String
+        public var path: String
+        public var bookmark: Data?
+        public init(id: String, path: String, bookmark: Data?) {
+            self.id = id
+            self.path = path
+            self.bookmark = bookmark
+        }
+    }
+
+    public static func makeGrant(id: String, folder: URL) -> Grant {
+        let data = (try? folder.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil))
+            ?? (try? folder.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
+        return Grant(id: id, path: folder.path, bookmark: data)
+    }
+
+    /// The folder a grant stands for and access to it (kept until the app ends). A moved folder
+    /// is found through its bookmark; without one, by its path.
+    public static func open(_ grant: Grant) -> URL? {
+        var url = URL(fileURLWithPath: grant.path, isDirectory: true)
+        if let data = grant.bookmark {
+            var stale = false
+            if let resolved = (try? URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale))
+                ?? (try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)) {
+                url = resolved
+            }
+        }
+        _ = url.startAccessingSecurityScopedResource()
+        return isDirectory(url) ? url : nil
+    }
+
+    /// The folder, made when it is not there.
+    public static func ensureFolder(_ url: URL) throws {
+        if !isDirectory(url) { try createDirectory(url) }
+    }
+
+    // MARK: coordinated reads and writes of the library's files
+
+    /// Reads `url` as a file coordinator would let another editor have it (a note someone else is
+    /// writing is waited for).
+    public static func readCoordinated(_ url: URL) throws -> Data {
+        var result: Result<Data, Error> = .failure(CocoaError(.fileReadUnknown))
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: url, options: [], error: &coordinationError) { u in
+            result = Result { try read(u) }
+        }
+        if let coordinationError { throw coordinationError }
+        return try result.get()
+    }
+
+    /// Writes `data` over `url` through a file coordinator, so a document that has the file open
+    /// (a file presenter) is told and reads it again.
+    public static func writeCoordinated(_ data: Data, to url: URL) throws {
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { u in
+            result = Result { try write(data, to: u) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
+    }
+
+    /// Moves a file or folder (a rename is a move in the same folder). Coordinated, which is how
+    /// an open document learns its file has a new name.
+    public static func move(_ from: URL, to: URL) throws {
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: from, options: .forMoving,
+                                                         writingItemAt: to, options: .forReplacing, error: &coordinationError) { a, b in
+            result = Result { try FileManager.default.moveItem(at: a, to: b) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
+    }
+
+    public static func copy(_ from: URL, to: URL) throws {
+        var result: Result<Void, Error> = .success(())
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: from, options: [], writingItemAt: to, options: .forReplacing,
+                                                         error: &coordinationError) { a, b in
+            result = Result { try FileManager.default.copyItem(at: a, to: b) }
+        }
+        if let coordinationError { throw coordinationError }
+        try result.get()
+    }
+
+    /// Told what was moved to the Trash and where it went (tests and the UI harness).
+    nonisolated(unsafe) public static var trashObserver: ((URL, URL?) -> Void)?
+
+    /// To the Trash. Never unlinks: what the user trashes can be put back from there.
+    @discardableResult
+    public static func trash(_ url: URL) throws -> URL? {
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+        trashObserver?(url, trashed as URL?)
+        return trashed as URL?
+    }
+
+    /// An unused name in `directory`: `base`, `base 2`, `base 3`... with the extension `ext` (empty
+    /// for a folder).
+    public static func uniqueName(in directory: URL, base: String, ext: String) -> URL {
+        var n = 1
+        while true {
+            let stem = n == 1 ? base : "\(base) \(n)"
+            let candidate = ext.isEmpty ? directory.appendingPathComponent(stem, isDirectory: true)
+                : directory.appendingPathComponent(stem).appendingPathExtension(ext)
+            if !exists(candidate) { return candidate }
+            n += 1
+        }
+    }
 }

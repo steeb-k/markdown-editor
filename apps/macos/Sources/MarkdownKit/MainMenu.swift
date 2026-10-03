@@ -49,6 +49,12 @@ enum MainMenu {
         _ = submenu(main, "File") { m in
             _ = item(m, "New", #selector(NSDocumentController.newDocument(_:)), "n")
             _ = item(m, "New Tab", #selector(NSResponder.newWindowForTab(_:)), "t")
+            _ = item(m, "New Folder", #selector(EditorWindowController.newFolder(_:)), "n", [.command, .option])
+            _ = item(m, "Today\u{2019}s Note", #selector(EditorWindowController.todaysNote(_:)), "n", [.command, .control])
+            nested(m, "New from Template") { t in
+                t.delegate = TemplateMenuDelegate.shared
+                _ = item(t, "Choose Template\u{2026}", #selector(EditorWindowController.chooseTemplate(_:)), "n", [.command, .shift])
+            }
             _ = item(m, "Open…", #selector(NSDocumentController.openDocument(_:)), "o")
             nested(m, "Open Recent") { r in
                 _ = item(r, "Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:)))
@@ -183,6 +189,20 @@ enum MainMenu {
             _ = item(m, "Re-align Table", #selector(EditorTextView.tableRealign(_:)))
         }
 
+        _ = submenu(main, "Library") { m in
+            _ = item(m, "Quick Open\u{2026}", #selector(EditorWindowController.quickOpen(_:)), "o", [.command, .shift])
+            _ = item(m, "Search Library", #selector(EditorWindowController.searchLibrary(_:)), "f", [.command, .shift])
+            m.addItem(.separator())
+            _ = item(m, "Rename", #selector(EditorWindowController.renameSelection(_:)))
+            _ = item(m, "Duplicate Note", #selector(EditorWindowController.duplicateSelection(_:)))
+            _ = item(m, "Reveal in Finder", #selector(EditorWindowController.revealSelection(_:)))
+            _ = item(m, "Move to Trash", #selector(EditorWindowController.trashSelection(_:)), "\u{8}")
+            m.addItem(.separator())
+            _ = item(m, "Add Folder\u{2026}", #selector(EditorWindowController.addFolderToLibrary(_:)))
+            _ = item(m, "Choose Library Folder\u{2026}", #selector(EditorWindowController.chooseLibraryFolder(_:)))
+            _ = item(m, "Remove Folder from Library", #selector(EditorWindowController.removeSelectedFolderFromLibrary(_:)))
+        }
+
         _ = submenu(main, "View") { m in
             _ = item(m, "Source", #selector(EditorTextView.showSourceMode(_:)), "1", [.command, .option])
             _ = item(m, "Live", #selector(EditorTextView.showLiveMode(_:)), "2", [.command, .option])
@@ -208,6 +228,13 @@ enum MainMenu {
             _ = item(m, "Show Authorship", #selector(EditorTextView.toggleAuthorshipDisplay(_:)), "a", [.command, .option])
             m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
+            m.addItem(.separator())
+            _ = item(m, "Notes Mode", #selector(EditorWindowController.toggleNotesMode(_:)), "l", [.command, .control])
+            _ = item(m, "Show Backlinks", #selector(EditorWindowController.toggleBacklinks(_:)), "b", [.command, .option])
+            nested(m, "Sort Notes") { s in
+                _ = item(s, "By Name", #selector(EditorWindowController.sortNotesByName(_:)))
+                _ = item(s, "By Date Modified", #selector(EditorWindowController.sortNotesByModified(_:)))
+            }
             m.addItem(.separator())
             _ = item(m, "Make Text Bigger", #selector(AppDelegate.biggerText(_:)), "+")
             _ = item(m, "Make Text Smaller", #selector(AppDelegate.smallerText(_:)), "-")

@@ -155,8 +155,11 @@ public final class Styler {
                 storage.addAttribute(.font, value: font, range: r)
                 storage.addAttribute(.foregroundColor, value: p.markup, range: r)
                 setParagraph(r, a.paragraphStyle(font: font, multiple: 1.4))
-            case .link, .image, .footnoteReference:
+            case .link, .image, .footnoteReference, .wikilink:
                 storage.addAttribute(.foregroundColor, value: p.link, range: r)
+            case .tag:
+                // Quiet, like a block quote: a tag is a label on the note, not part of the sentence.
+                storage.addAttribute(.foregroundColor, value: p.quote, range: r)
             case .blockQuote:
                 storage.addAttribute(.foregroundColor, value: p.quote, range: r)
                 eachParagraph(r) { pr in
@@ -176,7 +179,7 @@ public final class Styler {
                     }
                 }
             case .codeInfo, .linkDestination, .footnoteDefinition, .thematicBreak, .html, .hardBreak,
-                 .markup, .tableDelimiterRow, .wikilink, .tag:
+                 .markup, .tableDelimiterRow:
                 break
             }
         }

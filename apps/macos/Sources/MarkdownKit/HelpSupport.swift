@@ -29,6 +29,7 @@ public enum HelpDocuments {
         switch key {
         case "\t": s += "⇥"
         case "\r": s += "↩"
+        case "\u{8}", "\u{7f}": s += "⌫"
         case " ": s += "Space"
         default: s += key.uppercased()
         }

@@ -79,6 +79,10 @@ scripts/macos/ui-script.sh scripts/macos/ui/lifecycle.json      # 50 documents o
 scripts/macos/ui-script.sh scripts/macos/ui/robust.json         # 10 MB, a 5 MB line, binary, changed on disk, read-only, odd names, empty, mixed endings
 scripts/macos/ui-script.sh scripts/macos/ui/edge.json           # tiny window, documents of only front matter/table/picture/nothing, tabs, everything on at once
 scripts/macos/ui-script.sh scripts/macos/ui/scroll-limits.json  # the editor's scroll limits in every layout, resized, with the find bar
+scripts/macos/ui-script.sh scripts/macos/ui/notes.json          # notes mode: sidebar, tabs, Option-click, search, tags, backlinks within a second, tab-switch measurement
+scripts/macos/ui-script.sh scripts/macos/ui/notes-files.json    # new note and folder, rename with link updates and undo, drag, Trash, templates, today's note
+scripts/macos/ui-script.sh scripts/macos/ui/notes-links.json    # wikilinks: Cmd-click and preview clicks, plain mode and notes mode, a link to nothing
+scripts/macos/ui-script.sh scripts/macos/ui/quick-open.json     # the palette: fuzzy on titles and paths, arrows, Return, Option-Return, Escape
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
@@ -87,6 +91,31 @@ Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/Markdown
 
 `UI_BUILD=/some/dir scripts/macos/ui-script.sh ...` (and `ui-big-focus.sh`) builds and runs `/some/dir/Markdown.app`
 instead of `build/Markdown.app`, so a copy someone is using is left alone.
+
+## Notes mode
+
+View > Notes Mode (⌃⌘L) puts a sidebar beside the editor in every window of a tab group; the app is otherwise unchanged
+(a window that never used it is the same views it always was). Turn it on for new windows in Settings.
+
+- **The library** is a folder (by default `~/Documents/Markdown Notes`, made from the sidebar's first-use invitation, or any
+  folder: Library > Choose Library Folder…) plus any folders added with Library > Add Folder…, each remembered as a
+  security-scoped bookmark. Notes are `.md`, `.markdown`, `.mdown` and `.txt`; other files are listed greyed and open in
+  their own app; hidden files, `node_modules`, `.git` and anything over 4 MB are left out. The Rust core indexes them
+  (titles, tags, wikilinks, search, backlinks); the shell reads and watches the folders (FSEvents) off the main thread.
+- **Sidebar**: search (⇧⌘F; Escape clears) replaces the tree with ranked hits and snippets; roots as folder trees,
+  sorted by name or modified time (View > Sort Notes); Tags with counts, several selected filter with AND. A click opens
+  a note as a tab of the group (or brings its tab forward); Option-click replaces the current tab's document. Return
+  renames, ⌘⌫ moves to the Trash (never unlinks), drag moves, files dropped from Finder are copied in; the context
+  menu has New Note, New Folder, Rename, Duplicate, Reveal in Finder. Renaming a note that others link to asks "Update
+  N links in M notes?" and rewrites the links (undoable in each open document). Backlinks (⌥⌘B) is a panel under the
+  list for the front document.
+- **Quick Open** (⇧⌘O): type a few letters of a title or path, arrow, Return (Option-Return replaces the tab).
+- **Daily notes and templates**: File > Today's Note (⌃⌘N) opens `Daily/YYYY-MM-DD.md`, made once from
+  `Templates/Daily.md`; File > New from Template (⇧⌘N chooses) fills `{{date}}`, `{{time}}`, `{{title}}`, `{{today}}`
+  and puts the caret at `{{cursor}}`. Folder names and the file name format are in Settings.
+- **Wikilinks and tags**: `[[Title]]`, `[[Title|label]]`, `[[Title#Heading]]` and `#tag` are styled in the editor
+  (Live mode conceals the brackets); ⌘-click opens the note, or offers to make it beside the current one; in the preview
+  a click does the same. Without notes mode, a wikilink opens the note beside the document.
 
 ## Icons
 

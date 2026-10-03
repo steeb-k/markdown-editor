@@ -62,6 +62,20 @@ enum TabStripModel {
         return min(maximumTabWidth, max(minimumTabWidth, (available / CGFloat(count)).rounded(.down)))
     }
 
+    /// Which ends of the strip have tabs beyond them: some are scrolled out on the left (the offset is
+    /// positive), some lie past the right edge (the offset has not reached the end).
+    static func overflow(count: Int, tabWidth: CGFloat, available: CGFloat, offset: CGFloat) -> (left: Bool, right: Bool) {
+        let total = tabWidth * CGFloat(count)
+        guard count > 0, total > available + 0.5 else { return (false, false) }
+        return (offset > 0.5, offset < total - available - 0.5)
+    }
+
+    /// The offset after scrolling by `tabs` tabs (negative: to the left), kept within what there is.
+    static func scrolled(by tabs: Int, tabWidth: CGFloat, count: Int, available: CGFloat, from offset: CGFloat) -> CGFloat {
+        let maxOffset = max(0, tabWidth * CGFloat(count) - available)
+        return min(max(0, offset + tabWidth * CGFloat(tabs)), maxOffset)
+    }
+
     /// How far the strip is scrolled so that tab `index` is fully in view, given the offset now.
     static func scrollOffset(revealing index: Int, tabWidth: CGFloat, count: Int, available: CGFloat, current: CGFloat) -> CGFloat {
         let total = tabWidth * CGFloat(count)
@@ -91,15 +105,41 @@ final class TabStripView: NSView {
     }
     private(set) var tabViews: [TabView] = []
     private(set) var scrollOffset: CGFloat = 0
+    /// The tabs sit in a clip view; its left edge is `leadingInset` from the strip's own (notes mode: the strip
+    /// runs the width of the title bar, the tabs only above the editor, and what is scrolled out of the clip
+    /// is cut off there, never drawn over the sidebar).
+    private let clip = NSView()
     private let content = NSView()
     private var dragging: TabView?
+    var leadingInset: CGFloat = 0 {
+        didSet { if leadingInset != oldValue { needsLayout = true } }
+    }
+    /// The chevrons at the clip's two ends, over the tabs, each with the edge of the tab beneath faded out.
+    let leftChevron = TabOverflowButton(direction: -1)
+    let rightChevron = TabOverflowButton(direction: 1)
+    /// What the tab's edge fades into: the window's colour behind the title row.
+    var fadeColor: NSColor = .windowBackgroundColor {
+        didSet { leftChevron.fadeColor = fadeColor; rightChevron.fadeColor = fadeColor }
+    }
+    /// Which ends have tabs beyond them (as of the last layout).
+    private(set) var overflow: (left: Bool, right: Bool) = (false, false)
+    /// The room the tabs have.
+    var available: CGFloat { max(0, bounds.width - leadingInset) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = true
+        clip.wantsLayer = true
+        clip.layer?.masksToBounds = true
         content.wantsLayer = true
-        addSubview(content)
+        addSubview(clip)
+        clip.addSubview(content)
+        for chevron in [leftChevron, rightChevron] {
+            chevron.isHidden = true
+            chevron.onPress = { [weak self] direction in self?.scrollByOneTab(direction) }
+            addSubview(chevron)
+        }
         setAccessibilityRole(.tabGroup)
         setAccessibilityLabel("Tabs")
         autoresizingMask = [.height]
@@ -113,7 +153,7 @@ final class TabStripView: NSView {
     /// own controls do (and a drag on the strip moves the window).
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    var tabWidth: CGFloat { TabStripModel.tabWidth(count: entries.count, available: bounds.width) }
+    var tabWidth: CGFloat { TabStripModel.tabWidth(count: entries.count, available: available) }
 
     func setEntries(_ new: [TabEntry]) {
         guard new != entries || tabViews.count != new.count else { return }
@@ -125,19 +165,33 @@ final class TabStripView: NSView {
             tabViews.append(t)
         }
         for (view, entry) in zip(tabViews, new) { view.entry = entry }
-        if let i = new.firstIndex(where: \.selected) {
-            scrollOffset = TabStripModel.scrollOffset(revealing: i, tabWidth: tabWidth, count: new.count, available: bounds.width, current: scrollOffset)
-        }
+        revealSelected()
         needsLayout = true
         setAccessibilityChildren(tabViews)
     }
 
+    /// Scrolls so that the selected tab is in view.
+    private func revealSelected() {
+        guard let i = entries.firstIndex(where: \.selected) else { return }
+        scrollOffset = TabStripModel.scrollOffset(revealing: i, tabWidth: tabWidth, count: entries.count, available: available, current: scrollOffset)
+    }
+
+    /// The room the tabs had at the last layout: when it changes (a window resized, the divider dragged) the
+    /// selected tab is kept in view; a scroll of the user's own leaves where it is.
+    private var laidOutAvailable: CGFloat = -1
+
     override func layout() {
         super.layout()
+        if abs(available - laidOutAvailable) > 0.5 {
+            laidOutAvailable = available
+            revealSelected()
+        }
         let w = tabWidth
         let total = w * CGFloat(entries.count)
-        scrollOffset = min(max(0, scrollOffset), max(0, total - bounds.width))
-        content.frame = NSRect(x: -scrollOffset, y: 0, width: max(total, bounds.width), height: bounds.height)
+        scrollOffset = min(max(0, scrollOffset), max(0, total - available))
+        clip.frame = NSRect(x: leadingInset, y: 0, width: available, height: bounds.height)
+        content.frame = NSRect(x: -scrollOffset, y: 0, width: max(total, available), height: bounds.height)
+        updateChevrons()
         let h = min(bounds.height - 4, 24)
         for (i, t) in tabViews.enumerated() {
             t.frame = NSRect(x: CGFloat(i) * w, y: (bounds.height - h) / 2, width: w, height: h)
@@ -147,8 +201,8 @@ final class TabStripView: NSView {
     override func scrollWheel(with event: NSEvent) {
         let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) ? event.scrollingDeltaX : event.scrollingDeltaY
         let total = tabWidth * CGFloat(entries.count)
-        guard total > bounds.width else { return }
-        scrollOffset = min(max(0, scrollOffset - delta), total - bounds.width)
+        guard total > available else { return }
+        scrollOffset = min(max(0, scrollOffset - delta), total - available)
         needsLayout = true
     }
 
@@ -166,9 +220,41 @@ final class TabStripView: NSView {
         }
     }
 
+    /// The chevrons show on the sides that have tabs beyond them, inside the strip's own width, at the clip's edges.
+    private func updateChevrons() {
+        overflow = TabStripModel.overflow(count: entries.count, tabWidth: tabWidth, available: available, offset: scrollOffset)
+        let width = TabOverflowButton.width
+        leftChevron.frame = NSRect(x: clip.frame.minX, y: 0, width: min(width, available), height: bounds.height)
+        rightChevron.frame = NSRect(x: clip.frame.maxX - min(width, available), y: 0, width: min(width, available), height: bounds.height)
+        leftChevron.isHidden = !overflow.left
+        rightChevron.isHidden = !overflow.right
+    }
+
+    /// A press on a chevron: the tabs move by one tab towards that side.
+    func scrollByOneTab(_ direction: Int) {
+        let before = scrollOffset
+        scrollOffset = TabStripModel.scrolled(by: direction, tabWidth: tabWidth, count: entries.count, available: available, from: scrollOffset)
+        if scrollOffset != before { needsLayout = true; layoutSubtreeIfNeeded() }
+    }
+
+    /// Scrolls to a fraction of the way (0: the first tab at the left edge, 1: the last at the right edge).
+    func scroll(toFraction f: CGFloat) {
+        let maxOffset = max(0, tabWidth * CGFloat(entries.count) - available)
+        scrollOffset = min(max(0, f), 1) * maxOffset
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
     func index(at x: CGFloat) -> Int {
         let w = tabWidth
-        return min(max(0, Int((x + scrollOffset) / max(w, 1))), max(0, entries.count - 1))
+        return min(max(0, Int((x - leadingInset + scrollOffset) / max(w, 1))), max(0, entries.count - 1))
+    }
+
+    /// What can be seen of each tab, in the strip's own coordinates: the part inside the clip (a tab scrolled
+    /// out on the left shows nothing, and so takes no clicks, left of where the tabs begin).
+    var visibleTabFrames: [NSRect] {
+        let area = clip.frame
+        return tabViews.map { clip.convert($0.frame, from: content).offsetBy(dx: area.minX, dy: area.minY).intersection(area) }
     }
 
     // MARK: from the tabs
@@ -302,6 +388,55 @@ final class TabView: NSView {
     override func resetCursorRects() {}
 }
 
+/// The mark that says there are more tabs beyond this edge of the strip: a chevron in the secondary colour on
+/// a short fade of the strip's background, so that the tab under it does not end in a hard cut. Pressing it scrolls
+/// by one tab.
+final class TabOverflowButton: NSView {
+    static let width: CGFloat = 30
+    /// -1 at the left edge (earlier tabs), 1 at the right (later ones).
+    let direction: Int
+    var fadeColor: NSColor = .windowBackgroundColor { didSet { needsDisplay = true } }
+    var onPress: ((Int) -> Void)?
+
+    init(direction: Int) {
+        self.direction = direction
+        super.init(frame: .zero)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(direction < 0 ? "Show earlier tabs" : "Show later tabs")
+        toolTip = direction < 0 ? "Earlier tabs" : "Later tabs"
+    }
+
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // The fade: solid at the edge of the clip, clear where the tabs go on.
+        let solid = fadeColor.withAlphaComponent(0.95), clear = fadeColor.withAlphaComponent(0)
+        let g = direction < 0 ? NSGradient(colorsAndLocations: (solid, 0), (solid, 0.45), (clear, 1))
+                              : NSGradient(colorsAndLocations: (clear, 0), (solid, 0.55), (solid, 1))
+        g?.draw(in: bounds, angle: 0)
+        let name = direction < 0 ? "chevron.left" : "chevron.right"
+        // The secondary label colour as this view's appearance resolves it.
+        var tint = NSColor.secondaryLabelColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { tint = NSColor.secondaryLabelColor.usingColorSpace(.sRGB) ?? tint }
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold).applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+        guard let glyph = NSImage(systemSymbolName: name, accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return }
+        let size = glyph.size
+        let x = direction < 0 ? bounds.minX + 5 : bounds.maxX - size.width - 5
+        glyph.draw(in: NSRect(x: x, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
+    }
+
+    override func mouseDown(with event: NSEvent) { onPress?(direction) }
+
+    override func accessibilityPerformPress() -> Bool {
+        onPress?(direction)
+        return true
+    }
+}
+
 private extension NSImage {
     func tinted(_ color: NSColor) -> NSImage {
         let image = copy() as! NSImage
@@ -329,6 +464,16 @@ final class TabStripController: NSObject {
     private var windowObservations: [NSKeyValueObservation] = []
     /// The strip shows the tabs: two or more.
     private(set) var isShown = false
+    /// Told when this window joined, left or changed a tab group, or the group's windows changed.
+    var onGroupChange: (() -> Void)?
+    /// Where the tabs begin, as an x in the window: nil for the whole row (the strip starts after the window
+    /// buttons), the editor pane's left edge in notes mode (the row above the sidebar is the sidebar's).
+    var tabsBegin: (() -> CGFloat?)?
+    /// The strip shows even for a lone tab (notes mode: the window's title would otherwise be drawn over the
+    /// sidebar).
+    var showsSingleTab: (() -> Bool)?
+    /// Told when the group's selected tab changed (every window of the group hears it).
+    var onSelectedTabChange: (() -> Void)?
     /// Instrumentation: how often the native tab bar had to be put away again.
     private(set) var nativeBarHidden = 0
     /// Space from the window's leading edge to the strip's (the three window buttons) and from its
@@ -373,12 +518,19 @@ final class TabStripController: NSObject {
 
     private func groupChanged() {
         groupObservations.removeAll()
+        defer { onGroupChange?() }
         guard let group = window?.tabGroup else { refresh(); return }
         groupObservations.append(group.observe(\.windows, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainActor.assumeIsolated {
+                self?.refresh()
+                self?.onGroupChange?()
+            }
         })
         groupObservations.append(group.observe(\.selectedWindow, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainActor.assumeIsolated {
+                self?.refresh()
+                self?.onSelectedTabChange?()
+            }
         })
         groupObservations.append(group.observe(\.isTabBarVisible, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.putNativeBarAway() }
@@ -432,7 +584,7 @@ final class TabStripController: NSObject {
         defer { refreshDepth -= 1 }
         putNativeBarAway()
         let entries = TabStripModel.entries(of: window)
-        let shown = entries.count >= 2
+        let shown = entries.count >= 2 || (showsSingleTab?() ?? false)
         if shown != isShown {
             isShown = shown
             accessory.isHidden = !shown
@@ -448,6 +600,13 @@ final class TabStripController: NSObject {
         let width = max(0, window.frame.width - Self.leadingClearance - Self.trailingClearance)
         if abs(strip.frame.width - width) >= 0.5 {
             strip.setFrameSize(NSSize(width: width, height: strip.frame.height))
+        }
+        // Where the strip itself starts, in the window (AppKit puts it after the window buttons).
+        if let begin = tabsBegin?() {
+            let left = strip.superview != nil ? strip.convert(NSPoint.zero, to: nil).x : Self.leadingClearance
+            strip.leadingInset = max(0, (begin - left).rounded(.up))
+        } else {
+            strip.leadingInset = 0
         }
         strip.setEntries(entries)
     }

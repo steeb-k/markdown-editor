@@ -1,0 +1,3 @@
+Plain text note
+
+No heading here. It mentions banana and [[Home]].

@@ -88,7 +88,7 @@ final class ReleaseTests: XCTestCase {
         let main = MainMenu.build()
         func menu(_ title: String) throws -> NSMenu { try XCTUnwrap(main.items.first { $0.title == title }?.submenu, title) }
         func titles(_ m: NSMenu) -> [String] { m.items.map(\.title) }
-        XCTAssertEqual(main.items.map(\.title).dropFirst(), ["File", "Edit", "Format", "Table", "View", "Window", "Help"])
+        XCTAssertEqual(main.items.map(\.title).dropFirst(), ["File", "Edit", "Format", "Table", "Library", "View", "Window", "Help"])
         let app = try XCTUnwrap(main.items.first?.submenu)
         XCTAssertTrue(titles(app).contains("Services") && titles(app).contains("Settings…") && titles(app).contains { $0.hasPrefix("About") })
         XCTAssertNotNil(NSApp.servicesMenu)

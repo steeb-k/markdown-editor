@@ -1,0 +1,40 @@
+import AppKit
+import MarkdownCore
+
+extension EditorSession {
+    /// Writes the library's link edits (ranges in this text) into the document, all as one undoable
+    /// change: a rename that others link to updates them in the notes that are open. False, with the
+    /// text untouched, when an edit does not fit the text.
+    @discardableResult
+    func applyLinkEdits(_ edits: [LibraryEdit], actionName: String = "Update Links") -> Bool {
+        guard let tv = textView, !edits.isEmpty else { return false }
+        let ordered = edits.sorted { $0.range.start > $1.range.start }
+        var last = storage.length
+        for e in ordered {
+            let end = Int(e.range.end)
+            guard Int(e.range.start) <= end, end <= last else { return false }
+            last = Int(e.range.start)
+        }
+        let selection = tv.selectedRange()
+        tv.undoManager?.beginUndoGrouping()
+        tv.breakUndoCoalescing()
+        isApplyingEdit = true
+        for e in ordered {
+            _ = tv.replaceThroughUndo(range: NSRange(location: Int(e.range.start), length: Int(e.range.end - e.range.start)), with: e.replacement)
+        }
+        isApplyingEdit = false
+        tv.breakUndoCoalescing()
+        tv.undoManager?.setActionName(actionName)
+        tv.undoManager?.endUndoGrouping()
+        // The caret stays with the text it was in.
+        let moved = ordered.reduce(selection) { sel, e in
+            let change = TextChange(old: NSRange(location: Int(e.range.start), length: Int(e.range.end - e.range.start)),
+                                    newLength: (e.replacement as NSString).length)
+            let a = RangeMath.shiftPoint(sel.location, through: change), b = RangeMath.shiftPoint(NSMaxRange(sel), through: change)
+            return NSRange(location: a, length: b - a)
+        }
+        if moved != tv.selectedRange(), NSMaxRange(moved) <= storage.length { tv.setSelectedRange(moved) }
+        selectionChanged(in: tv)
+        return true
+    }
+}

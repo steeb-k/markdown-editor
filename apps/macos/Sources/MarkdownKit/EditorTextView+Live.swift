@@ -334,10 +334,20 @@ extension EditorTextView {
         return session.coordinator.sync { $0.linkAt(offset: UInt32(i)) }
     }
 
+    /// The wikilink (`[[Title]]`) under the point.
+    func wikilink(atViewPoint viewPoint: NSPoint) -> WikilinkRef? {
+        guard let session, let i = characterIndex(atViewPoint: viewPoint) else { return nil }
+        return session.coordinator.sync { $0.wikilinkAt(offset: UInt32(i)) }
+    }
+
     /// Cmd-click: opens the link under the point (web links in the browser, relative links to
     /// local files with their default app). Returns whether there was one.
     @discardableResult
     func openLink(at viewPoint: NSPoint) -> Bool {
+        if link(atViewPoint: viewPoint) == nil, let wiki = wikilink(atViewPoint: viewPoint) {
+            session?.onOpenWikilink?(wiki)
+            return true
+        }
         guard let target = link(atViewPoint: viewPoint) else { return false }
         guard let url = LinkOpener.url(for: target.destination, documentURL: session?.documentURL()) else { return true }
         LinkOpener.open(url)
@@ -360,7 +370,7 @@ extension EditorTextView {
     func updateLinkCursor(modifiers: NSEvent.ModifierFlags, at point: NSPoint? = nil) -> Bool {
         guard let window else { return false }
         let p = point ?? convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        let overLink = modifiers.contains(.command) && bounds.contains(p) && link(atViewPoint: p) != nil
+        let overLink = modifiers.contains(.command) && bounds.contains(p) && (link(atViewPoint: p) != nil || wikilink(atViewPoint: p) != nil)
         if overLink {
             NSCursor.pointingHand.set()
         } else if showsLinkCursor, bounds.contains(p) {
@@ -536,9 +546,12 @@ public enum LinkOpener {
             guard let url, let scheme = url.scheme?.lowercased(), ["http", "https", "mailto", "tel", "file"].contains(scheme) else { return nil }
             return url
         }
-        var path = d.removingPercentEncoding ?? d
-        if let hash = path.firstIndex(of: "#") { path = String(path[..<hash]) }
-        if let q = path.firstIndex(of: "?") { path = String(path[..<q]) }
+        // The fragment and the query are cut off before the escapes are decoded: `%23` and `%3F` are
+        // characters of the file's name (a note called `Why?`), not the start of either.
+        var written = d
+        if let hash = written.firstIndex(of: "#") { written = String(written[..<hash]) }
+        if let q = written.firstIndex(of: "?") { written = String(written[..<q]) }
+        let path = written.removingPercentEncoding ?? written
         guard !path.isEmpty else { return nil }
         if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
         if path.hasPrefix("~/") { return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath) }

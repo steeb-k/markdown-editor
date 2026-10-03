@@ -26,7 +26,7 @@ import WebKit
 /// reopen before it) otherwise outlived the close by however long the next event took, which made
 /// `close`'s check that everything was freed fail at random. A person's next keystroke or pointer
 /// move drains it at once.
-private func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
+func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
     // And it ends the way the handling of an event ends: windows are updated (`NSWindow.update`,
     // which is when a document's edited state reaches its windows and their tabs).
     let t = Timer(timeInterval: max(0, delay), repeats: false) { _ in
@@ -125,7 +125,7 @@ final class UIScriptRunner {
     }
 
     /// The last URL a Cmd-click asked to open (nothing is really opened while a script runs).
-    private static var opened: URL?
+    static var opened: URL?
     /// Whether the last `pasteImage` inserted a picture (nil while it waits, e.g. on the save panel).
     private static var pasted: Bool?
 
@@ -149,13 +149,15 @@ final class UIScriptRunner {
     // MARK: state
 
     private let scriptURL: URL
-    private let outDir: URL
+    let outDir: URL
     private var steps: [[String: Any]] = []
     private var index = 0
     private var log: [[String: Any]] = []
     private var failures = 0
-    private var document: MarkdownDocument?
+    var document: MarkdownDocument?
     private var weakProbes: [(String, () -> AnyObject?)] = []
+    /// The last Trash move a notes step made: whether the file is in the Trash, and whether the original is still there.
+    var lastTrashed: (landed: Bool, original: Bool, path: String)?
 
     private init(script: URL) {
         scriptURL = script
@@ -163,10 +165,10 @@ final class UIScriptRunner {
             ?? script.deletingLastPathComponent().appendingPathComponent("out")
     }
 
-    private var controller: EditorWindowController? { document?.windowControllers.first as? EditorWindowController }
-    private var window: NSWindow? { controller?.window }
-    private var textView: EditorTextView? { controller?.textView }
-    private var session: EditorSession? { document?.session }
+    var controller: EditorWindowController? { document?.windowControllers.first as? EditorWindowController }
+    var window: NSWindow? { controller?.window }
+    var textView: EditorTextView? { controller?.textView }
+    var session: EditorSession? { document?.session }
 
     // MARK: running
 
@@ -200,7 +202,7 @@ final class UIScriptRunner {
         }
     }
 
-    private func record(_ entry: [String: Any], ok: Bool) {
+    func record(_ entry: [String: Any], ok: Bool) {
         var e = entry
         e["step"] = index
         e["ok"] = ok
@@ -212,7 +214,7 @@ final class UIScriptRunner {
         FileHandle.standardError.write(Data(("[ui-script] " + line + "\n").utf8))
     }
 
-    private func check(_ name: String, _ ok: Bool, _ detail: String = "") {
+    func check(_ name: String, _ ok: Bool, _ detail: String = "") {
         record(["assert": name, "detail": detail], ok: ok)
     }
 
@@ -232,7 +234,11 @@ final class UIScriptRunner {
         func str(_ k: String) -> String? { step[k] as? String }
         func num(_ k: String) -> Double? { (step[k] as? NSNumber)?.doubleValue }
 
-        if let path = str("open") {
+        if let n = step["notes"] as? [String: Any] {
+            notesStep(n, then: done)
+        } else if let p = step["palette"] {
+            paletteStep(p, then: done)
+        } else if let path = str("open") {
             open(path, folder: step["folder"] as? Bool ?? false, then: done)
         } else if let m = step["makeFile"] as? [String: Any], let name = m["name"] as? String {
             // A file made here and opened: `prefix` + `text` x `repeat` + `suffix` (UTF-8), or
@@ -393,7 +399,7 @@ final class UIScriptRunner {
                     ok = tv.openLink(at: NSPoint(x: b.midX + o.x, y: b.midY + o.y))
                 }
             }
-            record(["cmdClickLink": needle, "opened": Self.opened.map { $0.absoluteString }], ok: ok)
+            record(["cmdClickLink": needle, "opened": Self.opened?.absoluteString ?? ""], ok: ok)
             done()
         } else if let dir = str("httpServe") {
             // A tiny local web server for remote pictures (no internet needed).
@@ -571,6 +577,27 @@ final class UIScriptRunner {
         } else if let i = step["tabClick"] as? Int {
             tabClick(i, close: false)
             later(0.4, done)
+        } else if let f = num("tabScroll") {
+            // The strip scrolled to a fraction of its range (a person's scroll wheel on it).
+            let strip = controller?.tabs.strip
+            strip?.scroll(toFraction: CGFloat(f))
+            record(["tabScroll": f, "offset": strip.map { Double($0.scrollOffset) } ?? 0, "overflow": strip.map { "left \($0.overflow.left) right \($0.overflow.right)" } ?? ""], ok: strip != nil)
+            later(0.2, done)
+        } else if let side = str("tabChevron") {
+            // A click on a chevron at one end of the strip: it scrolls by one tab.
+            guard let strip = controller?.tabs.strip, let w = window else { record(["tabChevron": side, "error": "no strip"], ok: false); done(); return }
+            let chevron = side == "left" ? strip.leftChevron : strip.rightChevron
+            let before = strip.scrollOffset
+            let hidden = chevron.isHidden
+            let point = chevron.convert(NSPoint(x: chevron.bounds.midX, y: chevron.bounds.midY), to: strip)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let e = tabEvent(type, at: point, in: strip) { w.sendEvent(e) }
+            }
+            let moved = strip.scrollOffset - before
+            let want = (side == "left" ? -1 : 1) * strip.tabWidth
+            record(["tabChevron": side, "was_hidden": hidden, "moved": Double(moved), "one_tab": Double(want), "overflow": "left \(strip.overflow.left) right \(strip.overflow.right)"],
+                   ok: !hidden && abs(moved - want) < 1.5)
+            later(0.2, done)
         } else if let i = step["tabClose"] as? Int {
             tabClick(i, close: true)
             later(0.6, done)
@@ -588,7 +615,7 @@ final class UIScriptRunner {
             w.setFrame(f, display: true)
             record(["resize": size, "size": [w.frame.width, w.frame.height]], ok: true)
             done()
-        } else if let on = step["fullscreen"] as? Bool, let w = window, !NSApp.isActive {
+        } else if let on = step["fullscreen"] as? Bool, window != nil, !NSApp.isActive {
             // Full screen needs an active app; a script launched while the session is locked
             // or another app is frontmost cannot get there.
             record(["fullscreen": on, "skipped": "the app is not active"], ok: true)
@@ -901,7 +928,7 @@ final class UIScriptRunner {
         }
     }
 
-    private func resolve(_ path: String) -> URL {
+    func resolve(_ path: String) -> URL {
         if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "--ui-root"), i + 1 < args.count {
@@ -984,7 +1011,7 @@ final class UIScriptRunner {
     /// Sends an action as the menu would: along the responder chain, then to the window's own
     /// objects (the app need not be active while a script runs, and then no window is key).
     @discardableResult
-    private func menuAction(_ sel: Selector, tag: Int = 0) -> Bool {
+    func menuAction(_ sel: Selector, tag: Int = 0) -> Bool {
         let sender = NSMenuItem()
         sender.tag = tag
         var ok = NSApp.sendAction(sel, to: nil, from: sender)
@@ -1160,7 +1187,7 @@ final class UIScriptRunner {
     }
 
     /// The script's document becomes the one in the selected tab (what a person would now be typing into).
-    private func followSelectedTab() {
+    func followSelectedTab() {
         if let w = window?.tabGroup?.selectedWindow ?? NSApp.keyWindow, let d = (w.windowController as? EditorWindowController)?.document as? MarkdownDocument { document = d }
         else if let d = NSDocumentController.shared.documents.last as? MarkdownDocument { document = d }
     }
@@ -1989,7 +2016,9 @@ final class UIScriptRunner {
             if let web, !c.previewPane.isHidden {
                 web.draw(in: c.previewController.webView.convert(c.previewController.webView.bounds, to: frameView))
             }
+            if let sb = c.sidebar?.view { draw(sb) }
             for v in c.overlayViews { draw(v) }
+            if let p = c.palette, p.isOpen { draw(p.panel) }
             // Title bar: its controls one by one (the bar itself is transparent).
             for v in c.titlebarControls { draw(v) }
         } else {
@@ -2008,16 +2037,16 @@ final class UIScriptRunner {
         for o: AnyObject in [doc, doc.session, doc.session.coordinator] { seenObjects.add(o) }
         if let tv = textView { seenObjects.add(tv) }
         if let w = window { seenObjects.add(w) }
-        weak var s = doc.session
-        weak var c = doc.session.coordinator
-        weak var tv = textView
-        weak var wc = controller
-        weak var win = window
-        weak var d = doc
+        weak let s = doc.session
+        weak let c = doc.session.coordinator
+        weak let tv = textView
+        weak let wc = controller
+        weak let win = window
+        weak let d = doc
         // Also the preview's web view and preview controller, and the session's picture cache.
-        weak var web = controller?.previewController.webView
-        weak var pc = controller?.previewController
-        weak var images = doc.session.imageController
+        weak let web = controller?.previewController.webView
+        weak let pc = controller?.previewController
+        weak let images = doc.session.imageController
         document = nil
         doc.updateChangeCount(.changeCleared)
         doc.close()
@@ -2070,9 +2099,9 @@ final class UIScriptRunner {
 
     private func assertions(_ a: [String: Any]) {
         let text = session?.text ?? ""
-        if let v = a["textEquals"] as? String { check("textEquals", text == v, text) }
-        if let v = a["textContains"] as? String { check("textContains \(v)", text.contains(v), text) }
-        if let v = a["textLacks"] as? String { check("textLacks \(v)", !text.contains(v), text) }
+        if let v = (a["textEquals"] as? String).map(expandVars) { check("textEquals", text == v, text) }
+        if let v = (a["textContains"] as? String).map(expandVars) { check("textContains \(v)", text.contains(v), text) }
+        if let v = (a["textLacks"] as? String).map(expandVars) { check("textLacks \(v)", !text.contains(v), text) }
         if let v = a["fileEqualsMade"] as? String {
             // The document's file, byte for byte, is the file `makeFile` made (opened and saved untouched).
             let made = try? Data(contentsOf: outDir.appendingPathComponent("made").appendingPathComponent(v))
@@ -2166,6 +2195,22 @@ final class UIScriptRunner {
             if let titles = t["titles"] as? [String] { check("tab titles \(titles)", entries.map(\.title) == titles, "\(entries.map(\.title))") }
             if let i = t["selected"] as? Int { check("selected tab \(i)", entries.firstIndex(where: \.selected) == i, "\(entries.map(\.selected))") }
             if let n = t["count"] as? Int { check("tab count \(n)", entries.count == n, "\(entries.count)") }
+            if let o = t["overflow"] as? [String: Bool] {
+                let strip = c.tabs.strip
+                for (side, want) in o.sorted(by: { $0.key < $1.key }) {
+                    let chevron = side == "left" ? strip.leftChevron : strip.rightChevron
+                    let shown = side == "left" ? strip.overflow.left : strip.overflow.right
+                    check("\(side) chevron \(want ? "shown" : "hidden")", shown == want && chevron.isHidden == !want,
+                          "overflow left \(strip.overflow.left) right \(strip.overflow.right), offset \(strip.scrollOffset), tabs \(strip.tabViews.count) of \(strip.tabWidth) in \(strip.available)")
+                }
+            }
+            if t["chevronsInside"] as? Bool == true {
+                // Over the tabs' own room, never beyond the strip or into the part above the sidebar.
+                let strip = c.tabs.strip
+                let room = NSRect(x: strip.leadingInset, y: 0, width: strip.available, height: strip.bounds.height)
+                let ok = [strip.leftChevron, strip.rightChevron].allSatisfy { room.insetBy(dx: -0.5, dy: -0.5).contains($0.frame) }
+                check("chevrons inside the strip's tabs room", ok, "left \(strip.leftChevron.frame) right \(strip.rightChevron.frame) room \(room)")
+            }
             if let shown = t["stripShown"] as? Bool { check("tab strip shown \(shown)", c.tabs.isShown == shown && c.tabs.strip.superview != nil && !(c.tabs.strip.isHiddenOrHasHiddenAncestor) == shown, "isShown \(c.tabs.isShown)") }
             if let native = t["nativeBarVisible"] as? Bool { check("native tab bar visible \(native)", c.tabs.nativeBarShowing == native, "showing \(c.tabs.nativeBarShowing), AppKit says \(String(describing: w.tabGroup?.isTabBarVisible)), put away \(c.tabs.nativeBarHidden) time(s)") }
             if let n = t["documents"] as? Int { check("documents \(n)", NSDocumentController.shared.documents.count == n, "\(NSDocumentController.shared.documents.count)") }
@@ -2185,6 +2230,8 @@ final class UIScriptRunner {
                 check("tab strip fits the title bar", c.tabs.strip.frame.height <= CGFloat(truncating: h) + 0.5 && c.tabs.strip.frame.height <= bar + 0.5, "strip \(c.tabs.strip.frame.height) bar \(bar)")
             }
         }
+        if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
+        if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {
             for (path, want) in menus.sorted(by: { $0.key < $1.key }) {
                 let got = menuItemState(path)

@@ -91,6 +91,13 @@ public final class Settings: NSObject {
         static let syntaxHighlight = "syntaxHighlight"
         static let authorshipDisplay = "authorshipDisplay"
         static let authorName = "authorName"
+        static let notesMode = "notesModeByDefault"
+        static let libraryGrants = "libraryFolders"
+        static let dailyFolder = "dailyNoteFolder"
+        static let dailyFormat = "dailyNoteFormat"
+        static let templatesFolder = "templatesFolder"
+        static let noteSort = "noteSort"
+        static let sidebarWidth = "sidebarWidth"
         static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
@@ -116,6 +123,12 @@ public final class Settings: NSObject {
             Key.syntaxHighlight: false,
             Key.authorshipDisplay: true,
             Key.authorName: "",
+            Key.notesMode: false,
+            Key.dailyFolder: "Daily",
+            Key.dailyFormat: "YYYY-MM-DD",
+            Key.templatesFolder: "Templates",
+            Key.noteSort: NoteSort.name.rawValue,
+            Key.sidebarWidth: 240.0,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -242,6 +255,52 @@ public final class Settings: NSObject {
         if !chosen.isEmpty { return chosen }
         let full = NSFullUserName().trimmingCharacters(in: .whitespacesAndNewlines)
         return full.isEmpty ? "Me" : full
+    }
+
+    // MARK: the library and notes mode
+
+    /// Whether new windows open in notes mode (the sidebar showing the library).
+    public var notesModeByDefault: Bool {
+        get { defaults.bool(forKey: Key.notesMode) }
+        set { defaults.set(newValue, forKey: Key.notesMode); changed() }
+    }
+
+    /// The folders the library is made of: first the library itself, then the ones the user added,
+    /// each remembered as a bookmark (see `DocumentFileAccess.Grant`). Setting them posts nothing:
+    /// the library controller is told by whoever changes them.
+    public var libraryGrants: [DocumentFileAccess.Grant] {
+        get { (defaults.data(forKey: Key.libraryGrants)).flatMap { try? JSONDecoder().decode([DocumentFileAccess.Grant].self, from: $0) } ?? [] }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.libraryGrants) }
+    }
+
+    /// Where today's note goes, relative to the library.
+    public var dailyFolder: String {
+        get { defaults.string(forKey: Key.dailyFolder) ?? "Daily" }
+        set { defaults.set(newValue, forKey: Key.dailyFolder); changed() }
+    }
+
+    /// The daily note's file name (without `.md`): `YYYY`, `MM`, `DD` and friends, see `DailyNote`.
+    public var dailyFormat: String {
+        get { defaults.string(forKey: Key.dailyFormat) ?? "YYYY-MM-DD" }
+        set { defaults.set(newValue, forKey: Key.dailyFormat); changed() }
+    }
+
+    /// Where the templates are, relative to the library.
+    public var templatesFolder: String {
+        get { defaults.string(forKey: Key.templatesFolder) ?? "Templates" }
+        set { defaults.set(newValue, forKey: Key.templatesFolder); changed() }
+    }
+
+    /// How the sidebar orders notes: remembered, not announced (the sidebar is told directly).
+    public var noteSort: NoteSort {
+        get { NoteSort(rawValue: defaults.string(forKey: Key.noteSort) ?? "") ?? .name }
+        set { defaults.set(newValue.rawValue, forKey: Key.noteSort) }
+    }
+
+    /// The sidebar's width; setting it posts nothing (a drag would be a storm of them).
+    public var sidebarWidth: Double {
+        get { min(max(defaults.double(forKey: Key.sidebarWidth), 160), 480) }
+        set { defaults.set(min(max(newValue, 160), 480), forKey: Key.sidebarWidth) }
     }
 
     /// The classes of words that are coloured, in every window.

@@ -24,6 +24,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onLayoutChange: (() -> Void)?
     /// Told after every edit of the text (a keystroke, a load, an undo): the preview schedules a render.
     public var onTextChange: (() -> Void)?
+    /// Told after every edit, for a window in notes mode: the library hears of the new text.
+    public var onLibraryTextChange: (() -> Void)?
+    /// Command-click on a wikilink: the window opens the note it names.
+    public var onOpenWikilink: ((WikilinkRef) -> Void)?
     /// The text range the layout manager's live state was last computed for.
     var liveWindow = NSRange(location: 0, length: 0)
     /// The text range focus mode's ranges were last asked for.
@@ -249,6 +253,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         coordinator.waitForResult(seq: seq)
         inDelegate = false
         onTextChange?()
+        if !isLoading { onLibraryTextChange?() }
     }
 
     // MARK: results

@@ -391,5 +391,155 @@
  {
   "snapshot": "11-after-full-screen",
   "bitmap": true
+ },
+ {
+  "log": "--- fifteen tabs: tabs past either edge of the strip say so with a chevron, which scrolls by one tab"
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "newTab": true
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "tabs": {
+    "count": 15,
+    "stripShown": true,
+    "nativeBarVisible": false,
+    "chevronsInside": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "12-fifteen-tabs-new-tab-selected",
+  "bitmap": true
+ },
+ {
+  "tabScroll": 0
+ },
+ {
+  "assert": {
+   "tabs": {
+    "overflow": {
+     "left": false,
+     "right": true
+    },
+    "chevronsInside": true
+   }
+  }
+ },
+ {
+  "snapshot": "13-fifteen-tabs-start",
+  "bitmap": true
+ },
+ {
+  "tabScroll": 0.5
+ },
+ {
+  "assert": {
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": true
+    },
+    "chevronsInside": true
+   }
+  }
+ },
+ {
+  "snapshot": "14-fifteen-tabs-middle-both-chevrons",
+  "bitmap": true
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "assert": {
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": true
+    }
+   }
+  }
+ },
+ {
+  "tabChevron": "left"
+ },
+ {
+  "tabScroll": 1
+ },
+ {
+  "assert": {
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": false
+    }
+   }
+  }
+ },
+ {
+  "tabScroll": 0
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "tabChevron": "left"
+ },
+ {
+  "tabChevron": "left"
+ },
+ {
+  "assert": {
+   "tabs": {
+    "overflow": {
+     "left": false,
+     "right": true
+    }
+   }
+  }
  }
 ]

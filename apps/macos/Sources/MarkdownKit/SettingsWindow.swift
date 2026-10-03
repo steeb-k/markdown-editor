@@ -79,6 +79,10 @@ struct SettingsView: View {
             Toggle("Show authorship colours in new windows", isOn: Binding(get: { s.authorshipDisplay }, set: { s.authorshipDisplay = $0 }))
             TextField("Name for my text", text: Binding(get: { s.authorNameSetting }, set: { s.authorNameSetting = $0 }),
                       prompt: Text(s.authorName))
+            Toggle("Open new windows in Notes mode", isOn: Binding(get: { s.notesModeByDefault }, set: { s.notesModeByDefault = $0 }))
+            TextField("Daily notes folder", text: Binding(get: { s.dailyFolder }, set: { s.dailyFolder = $0 }), prompt: Text("Daily"))
+            TextField("Daily note name", text: Binding(get: { s.dailyFormat }, set: { s.dailyFormat = $0 }), prompt: Text("YYYY-MM-DD"))
+            TextField("Templates folder", text: Binding(get: { s.templatesFolder }, set: { s.templatesFolder = $0 }), prompt: Text("Templates"))
             Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
             Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
             Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))

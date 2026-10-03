@@ -118,16 +118,45 @@ public enum LinkAction: Equatable {
     case scrollToFragment(String)
     /// Hand to the default application (a browser, Mail, the app that owns a file).
     case open(URL)
+    /// A note of the library: a wikilink's target (`Title.md` as the page spells it, decoded) and its
+    /// heading's anchor, if it has one. Only in notes mode: the window finds the note.
+    case openNote(target: String, fragment: String?)
     /// Do nothing.
     case ignore
 }
 
 public enum LinkPolicy {
+    /// A link to a note as the preview writes a wikilink's: a relative path to a note file, `./` in
+    /// front when the first folder would read as a scheme (`Note: Title.md`) or the path as a host
+    /// (`.//host/x.md`), `%25` and `%3F` for the `%` and `?` a file name has, `#slug` for a heading.
+    /// The target comes back as the name of the note (escapes decoded, prefix gone). Nil for anything
+    /// else: a web address, a path out of the folder (`../`, `/`, `~/`), a file that is not a note.
+    public static func noteLink(href: String) -> (target: String, fragment: String?)? {
+        var raw = href.trimmingCharacters(in: .whitespacesAndNewlines)
+        var fragment: String?
+        if let hash = raw.firstIndex(of: "#") {
+            fragment = String(raw[raw.index(after: hash)...]).removingPercentEncoding
+            raw = String(raw[..<hash])
+        }
+        var prefixed = false
+        while raw.hasPrefix("./") {
+            raw.removeFirst(2)
+            prefixed = true
+        }
+        // `.//host/x` is `//host/x` written so that it is not another host: it names `host/x`.
+        if prefixed { while raw.hasPrefix("/") { raw.removeFirst() } }
+        guard !raw.isEmpty, !raw.hasPrefix("/"), !raw.hasPrefix("~") else { return nil }
+        if !prefixed, let colon = raw.firstIndex(of: ":"), !raw[..<colon].contains("/") { return nil }
+        let name = raw.removingPercentEncoding ?? raw
+        guard !name.hasPrefix("../"), !name.contains("/../"), DocumentFileAccess.noteExtensions.contains((name as NSString).pathExtension.lowercased()) else { return nil }
+        return (name, fragment)
+    }
+
     /// - `isLinkActivation`: the user clicked a link (a drop, a script or a redirect is not).
     /// - `isMainFrame`: the navigation targets the page, not a frame a document's raw HTML made.
     /// - `isInitialLoad`: the app's own `loadHTMLString` for the page.
     public static func decide(url: URL?, isLinkActivation: Bool, isMainFrame: Bool, isInitialLoad: Bool,
-                              documentURL: URL?) -> LinkAction {
+                              documentURL: URL?, notes: Bool = false) -> LinkAction {
         guard let url else { return .ignore }
         // The app's own load of the page, and nothing else that happens to use the scheme (a
         // `<meta refresh>` or a frame in the document's raw HTML).
@@ -146,6 +175,7 @@ public enum LinkPolicy {
             // A link the page's script routed here, as written: the editor's own rule (Cmd-click).
             if case .link(let href) = PreviewURL.resolve(url, documentURL: documentURL) {
                 if href.hasPrefix("#") { return href.count > 1 ? .scrollToFragment(String(href.dropFirst()).removingPercentEncoding ?? String(href.dropFirst())) : .ignore }
+                if notes, let note = noteLink(href: href) { return .openNote(target: note.target, fragment: note.fragment) }
                 return LinkOpener.url(for: href, documentURL: documentURL).map { .open($0) } ?? .ignore
             }
             return .ignore
@@ -457,6 +487,8 @@ public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
             reply(task, id: id, url: url, mime: mime, data: entry.value.data)
             return
         }
+        // The task is only touched again on the main actor, where it came from.
+        nonisolated(unsafe) let task = task
         queue.async { [weak self] in
             let data = try? DocumentFileAccess.read(file)
             DispatchQueue.main.async {

@@ -9,6 +9,8 @@ public final class MarkdownDocument: NSDocument {
     var isPreparingPrint = false
     /// The print operation File > Print last ran (tests end its panel).
     weak var lastPrintOperation: NSPrintOperation?
+    /// A document the app made for itself (Help): never opened in notes mode.
+    var isBundled = false
 
     public override init() {
         session = EditorSession(settings: .shared)
@@ -49,7 +51,11 @@ public final class MarkdownDocument: NSDocument {
     public override func makeWindowControllers() {
         session.requestSave = { [weak self] done in self?.saveForAssets(done) ?? done(false) }
         session.onAuthorshipDiscarded = { [weak self] in self?.updateChangeCount(.changeDone) }
-        addWindowController(EditorWindowController(document: self))
+        let controller = EditorWindowController(document: self)
+        addWindowController(controller)
+        // New windows start in notes mode when the setting says so (the library is the app's: the sidebar
+        // is drawn from the same index as every other window's).
+        if session.settings.notesModeByDefault, !isBundled { controller.startNotesMode() }
     }
 
     // MARK: reading and writing (all file access through DocumentFileAccess)

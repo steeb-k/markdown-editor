@@ -86,6 +86,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     static func openBundledDocument(named name: String, text: String, mode: ViewMode) -> MarkdownDocument? {
         let controller = NSDocumentController.shared
         guard let doc = try? controller.makeUntitledDocument(ofType: controller.defaultType ?? "net.daringfireball.markdown") as? MarkdownDocument else { return nil }
+        doc.isBundled = true
         doc.session.load(text)
         doc.session.setViewMode(mode)
         doc.displayName = name

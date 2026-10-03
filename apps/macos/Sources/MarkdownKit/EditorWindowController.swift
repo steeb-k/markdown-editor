@@ -23,8 +23,21 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// The tabs, drawn in the title-bar row (see `TabStripController`).
     private(set) var tabs: TabStripController!
     private var fadeHeight: NSLayoutConstraint!
-    private let root = EditorRootView()
+    let root = EditorRootView()
     private var chrome: ChromeController!
+    /// The notes of this window's tab group (see `EditorWindowController+Notes`): nil until notes mode
+    /// has been turned on in the group. A plain window never makes one.
+    var workspace: Workspace?
+    var sidebar: SidebarController?
+    var notesSplit: NotesSplitView?
+    /// The window's content view in notes mode: the split view, and the palette over it.
+    var notesContainer: EditorRootView?
+    /// The narrowest the window may be without notes mode's sidebar.
+    var baseMinWidth: CGFloat = 360
+    /// The document whose note the sidebar last selected (a tab switch selects it again).
+    var syncedSelectionURL: URL?
+    var palette: PaletteController?
+    var applyingSidebarWidth = false
     private var observers: [NSObjectProtocol] = []
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
@@ -145,6 +158,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             self?.previewController.appearanceChanged()
         }
         session.onTextChange = { [weak self] in self?.previewController.textChanged() }
+        session.onOpenWikilink = { [weak self] ref in self?.openWikilink(target: ref.target, heading: ref.heading) }
         session.onLayoutChange = { [weak self] in self?.applyLayout() }
         observers.append(NotificationCenter.default.addObserver(
             forName: Settings.didChangeNotification, object: settings, queue: .main
@@ -166,6 +180,16 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         // Never narrower than the formatting bar, and room for the window buttons and a tab or two.
         window.minSize = NSSize(width: max(window.minSize.width, (toolbar.fittingSize.width + 40).rounded(), 360),
                                 height: window.minSize.height)
+        baseMinWidth = window.minSize.width
+        tabs.onGroupChange = { [weak self] in self?.tabGroupChanged() }
+        tabs.tabsBegin = { [weak self] in self?.editorPaneLeft }
+        tabs.showsSingleTab = { [weak self] in self?.notesSplit != nil }
+        tabs.onSelectedTabChange = { [weak self] in
+            // The tab now in front tells the sidebar which note is open (the window becoming key does the same
+            // when the app is active).
+            guard let self, self.window?.tabGroup?.selectedWindow === self.window else { return }
+            documentBecameFront(force: true)
+        }
         session.onFocusToolsChange = { [weak self] in self?.focusToolsChanged() }
         session.onAuthorshipDecisionNeeded = { [weak self] in
             DispatchQueue.main.async { self?.presentAuthorshipSheetIfNeeded() }
@@ -368,7 +392,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             guard let r = textView.validateEditorAction(action, tag: item.tag) else { return true }
             item.state = r.on ? .on : .off
             return r.enabled
-        default: return true
+        default: return validateNotesItem(item)
         }
     }
 
@@ -407,6 +431,16 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         window.backgroundColor = session.appearance.palette.background
         titlebarFade.color = session.appearance.palette.background
         splitView.dividerTint = session.appearance.palette.rule
+        tabs?.strip.fadeColor = session.appearance.palette.background
+        if let sidebar {
+            // Only a change of colours redraws the rows (this runs on every window activation too).
+            let style = SidebarStyle(session.appearance.palette)
+            if style != sidebar.view.style {
+                sidebar.view.style = style
+                sidebar.styleChanged()
+            }
+        }
+        notesSplit?.tint = session.appearance.palette.rule
         updateFadeGeometry()
         let appearance = ThemeStore.windowAppearance(for: session.settings.theme)
         if window.appearance?.name != appearance?.name { window.appearance = appearance }
@@ -491,11 +525,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     public func windowWillClose(_ notification: Notification) {
         previewController.tearDown()
+        leaveWorkspace(closing: true)
     }
 
     public func windowDidBecomeKey(_ notification: Notification) {
         session.refreshAppearance()
         tabs?.refresh()
+        documentBecameFront()
         // Pictures another app changed while this window was in the background.
         session.imageController.revalidate()
     }
