@@ -1,0 +1,949 @@
+[
+ {
+  "log": "--- Clicks and drags as real mouse events posted to the app's queue (NSApplication.sendEvent, NSWindow.sendEvent, the text view's own tracking loop); each click logs the view the window hit-tests at its point, the first responder and the selection"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "chromeReturnsAfterPause": false,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "new": true
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- source, Editor layout, chrome and formatting bar shown: the caret goes where the click is, typing lands there"
+ },
+ {
+  "click": {
+   "needle": "bravo",
+   "offset": 2,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Z"
+ },
+ {
+  "assert": {
+   "textContains": "brZavo"
+  }
+ },
+ {
+  "click": {
+   "needle": "juliet",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Q"
+ },
+ {
+  "assert": {
+   "textContains": "Qjuliet"
+  }
+ },
+ {
+  "log": "--- source: a line beside the formatting bar (inside the scroll view's bottom content inset) is the text's; the bar is the bar's"
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 120,
+   "y": 22,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "toolbar",
+   "probe": true,
+   "expectHitIn": "toolbar"
+  }
+ },
+ {
+  "log": "--- source: the chrome faded by typing"
+ },
+ {
+  "click": {
+   "needle": "oscar",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "k"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "click": {
+   "at": "toolbar",
+   "probe": true,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "needle": "tango",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Y"
+ },
+ {
+  "assert": {
+   "textContains": "tYango"
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "log": "--- source: the formatting bar hidden"
+ },
+ {
+  "setting": {
+   "showFormattingToolbar": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 0.5,
+   "y": 22,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "needle": "kilo",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "setting": {
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- source: a double-click selects a word, a triple-click a paragraph, a drag selects"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "needle": "charlie",
+   "offset": 2,
+   "expectResponder": "text",
+   "expectHitIn": "text",
+   "count": 2,
+   "expectSelectedText": "charlie"
+  }
+ },
+ {
+  "click": {
+   "needle": "lima",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text",
+   "count": 3,
+   "expectSelectedText": "Hotel india juliet kilo lima mike.\n"
+  }
+ },
+ {
+  "drag": {
+   "from": "india",
+   "to": "lima",
+   "expectSelectedText": "india juliet kilo "
+  }
+ },
+ {
+  "log": "--- source: focus mode (its room for centring is content inset: it covered the whole clip view, and every click was lost)"
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.5,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.35,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.65,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "W"
+ },
+ {
+  "assert": {
+   "textContains": "W"
+  }
+ },
+ {
+  "log": "--- source: focus mode, Editor and Preview: the preview takes the keyboard, a click in the editor takes it back"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 15
+ },
+ {
+  "click": {
+   "at": "preview",
+   "expectResponder": "preview",
+   "expectHitIn": "preview"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.5,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "V"
+ },
+ {
+  "assert": {
+   "textContains": "V"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "--- source: Editor and Preview without focus mode"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "preview",
+   "expectResponder": "preview",
+   "expectHitIn": "preview"
+  }
+ },
+ {
+  "click": {
+   "needle": "whiskey",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "X"
+ },
+ {
+  "assert": {
+   "textContains": "Xwhiskey"
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- live, Editor layout, chrome and formatting bar shown: the caret goes where the click is, typing lands there"
+ },
+ {
+  "click": {
+   "needle": "bravo",
+   "offset": 2,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Z"
+ },
+ {
+  "assert": {
+   "textContains": "brZavo"
+  }
+ },
+ {
+  "click": {
+   "needle": "juliet",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Q"
+ },
+ {
+  "assert": {
+   "textContains": "Qjuliet"
+  }
+ },
+ {
+  "log": "--- live: a line beside the formatting bar (inside the scroll view's bottom content inset) is the text's; the bar is the bar's"
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 120,
+   "y": 22,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "toolbar",
+   "probe": true,
+   "expectHitIn": "toolbar"
+  }
+ },
+ {
+  "log": "--- live: the chrome faded by typing"
+ },
+ {
+  "click": {
+   "needle": "oscar",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "k"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "click": {
+   "at": "toolbar",
+   "probe": true,
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "needle": "tango",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "Y"
+ },
+ {
+  "assert": {
+   "textContains": "tYango"
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "chromeVisible": true
+  }
+ },
+ {
+  "log": "--- live: the formatting bar hidden"
+ },
+ {
+  "setting": {
+   "showFormattingToolbar": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 0.5,
+   "y": 22,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "needle": "kilo",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "setting": {
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- live: a double-click selects a word, a triple-click a paragraph, a drag selects"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "needle": "charlie",
+   "offset": 2,
+   "expectResponder": "text",
+   "expectHitIn": "text",
+   "count": 2,
+   "expectSelectedText": "charlie"
+  }
+ },
+ {
+  "click": {
+   "needle": "lima",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text",
+   "count": 3,
+   "expectSelectedText": "Hotel india juliet kilo lima mike.\n"
+  }
+ },
+ {
+  "drag": {
+   "from": "india",
+   "to": "lima",
+   "expectSelectedText": "india juliet kilo "
+  }
+ },
+ {
+  "log": "--- live: focus mode (its room for centring is content inset: it covered the whole clip view, and every click was lost)"
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.5,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.35,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.65,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "W"
+ },
+ {
+  "assert": {
+   "textContains": "W"
+  }
+ },
+ {
+  "log": "--- live: focus mode, Editor and Preview: the preview takes the keyboard, a click in the editor takes it back"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 15
+ },
+ {
+  "click": {
+   "at": "preview",
+   "expectResponder": "preview",
+   "expectHitIn": "preview"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 150,
+   "y": 0.5,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "V"
+ },
+ {
+  "assert": {
+   "textContains": "V"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "--- live: Editor and Preview without focus mode"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "preview",
+   "expectResponder": "preview",
+   "expectHitIn": "preview"
+  }
+ },
+ {
+  "click": {
+   "needle": "whiskey",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "X"
+ },
+ {
+  "assert": {
+   "textContains": "Xwhiskey"
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- Live: a click on a checkbox toggles it and leaves the caret; a Command-click opens a link"
+ },
+ {
+  "load": "# Clicks\n\nAlpha bravo charlie delta echo foxtrot golf.\n\nHotel india juliet kilo lima mike.\n\n- [ ] An open task\n- [x] A done task\n\nA link to [the site](https://example.com/clicks) here.\n\nNovember oscar papa quebec romeo.\n\nSierra tango uniform victor whiskey.\n"
+ },
+ {
+  "select": [
+   0,
+   0
+  ]
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "needle": "Sierra",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "checkbox",
+   "index": 0,
+   "expectHitIn": "text",
+   "expectSelection": [
+    221,
+    0
+   ]
+  }
+ },
+ {
+  "assert": {
+   "textContains": "- [x] An open task"
+  }
+ },
+ {
+  "click": {
+   "needle": "the site",
+   "offset": 4,
+   "mods": [
+    "cmd"
+   ],
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "assert": {
+   "linkOpened": "https://example.com/clicks"
+  }
+ },
+ {
+  "log": "--- The split divider drags; the title bar double-clicks"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 15
+ },
+ {
+  "dividerDrag": 0.4
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectHitIn": "titlebar",
+   "expectWindowAction": true,
+   "wait": 1.2
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectHitIn": "titlebar",
+   "expectWindowAction": true,
+   "wait": 1.2
+  }
+ },
+ {
+  "log": "--- Notes mode: the sidebar takes the keyboard, a click in the editor takes it back"
+ },
+ {
+  "notes": {
+   "library": "scripts/macos/ui/fixtures/library"
+  }
+ },
+ {
+  "notes": {
+   "mode": true
+  }
+ },
+ {
+  "notes": {
+   "waitLoaded": 10
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "click": {
+   "needle": "victor",
+   "offset": 0,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "click": {
+   "at": "search",
+   "expectResponder": "sidebar",
+   "expectHitIn": "sidebar"
+  }
+ },
+ {
+  "click": {
+   "needle": "victor",
+   "offset": 1,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "type": "U"
+ },
+ {
+  "assert": {
+   "textContains": "vUictor"
+  }
+ },
+ {
+  "click": {
+   "at": "sidebar",
+   "row": 0,
+   "expectResponder": "sidebar",
+   "expectHitIn": "sidebar"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 0.6,
+   "y": 0.6,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "click": {
+   "at": "search",
+   "expectResponder": "sidebar",
+   "expectHitIn": "sidebar"
+  }
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 0.6,
+   "y": 0.5,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "log": "--- Plain mode again after notes mode"
+ },
+ {
+  "click": {
+   "at": "window",
+   "x": 0.5,
+   "y": 0.6,
+   "expectCaret": true,
+   "expectResponder": "text",
+   "expectHitIn": "text"
+  }
+ }
+]
