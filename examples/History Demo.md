@@ -2,6 +2,8 @@
 
 > **Try this:** open View ▸ History (⌃⌘H). Versions are grouped by day (Today, Yesterday, then dates). Each row says why it was taken (Pause, Close, Save, Restore, Draft), and some carry a message. Select one to see its diff, then Restore or Copy it; ⌘Z undoes a Restore.
 
+Testing testing testing.
+
 ## Why
 
 A small build I can finish in two days with tools I already own. The birdhouse goes on the fence by the kitchen window, so the hole faces east, away from the weather.

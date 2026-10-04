@@ -1,4 +1,4 @@
----
+	---
 title: Showcase
 tags: [showcase, demo/everything]
 author: You
@@ -17,6 +17,8 @@ This document exercises everything the editor knows about. Open it in Source and
 ##### Level five
 
 ###### Level six
+
+Testing 1 2 3. 
 
 Setext style
 ============
