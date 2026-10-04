@@ -67,7 +67,10 @@ struct SettingsView: View {
             Picker("Default layout", selection: Binding(get: { s.defaultLayout }, set: { s.defaultLayout = $0 })) {
                 ForEach(LayoutMode.allCases, id: \.self) { Text($0.title).tag($0) }
             }
-            Toggle("Show outline in new windows", isOn: Binding(get: { s.showOutlineInNewWindows }, set: { s.showOutlineInNewWindows = $0 }))
+            Toggle("Show side column in new windows", isOn: Binding(get: { s.showSideColumnInNewWindows }, set: { s.showSideColumnInNewWindows = $0 }))
+            Picker("Side column starts on", selection: Binding(get: { s.sideColumnPane }, set: { s.sideColumnPane = $0 })) {
+                ForEach(SideColumnPane.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             Toggle("Start windows in focus mode", isOn: Binding(get: { s.focusMode }, set: { s.focusMode = $0 }))
             Picker("Focus on", selection: Binding(get: { s.focusScope }, set: { s.focusScope = $0 })) {
                 ForEach(FocusScopeChoice.allCases, id: \.self) { Text($0.title).tag($0) }

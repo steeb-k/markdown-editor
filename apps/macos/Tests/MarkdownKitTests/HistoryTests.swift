@@ -725,7 +725,7 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(doc.session.text, "original\n")
     }
 
-    func testTheOutlineAndTheHistoryShareTheColumnEachWithItsOwnToggleAndWidth() throws {
+    func testTheOutlineAndTheHistoryShareOneColumnWithOneWidthAndOneToggle() throws {
         let (doc, wc, _) = try open("# A\n\ntext\n")
         wc.showWindow(nil)
         wc.window?.setContentSize(NSSize(width: 1000, height: 700))
@@ -733,17 +733,18 @@ final class AutosaveTests: XCTestCase {
         s.setOutlineShown(true)
         XCTAssertNotNil(wc.outline)
         XCTAssertNil(wc.history)
+        let width = wc.columnView?.frame.width ?? 0
         s.setHistoryShown(true)
-        XCTAssertNil(wc.outline, "the outline gives the column up")
+        XCTAssertNil(wc.outline, "the outline gives the content area up")
         XCTAssertNotNil(wc.history)
         XCTAssertFalse(s.outlineShown)
-        XCTAssertEqual(wc.history?.view.frame.width ?? 0, s.historyWidth, accuracy: 1.5, "the history's own width, 300 to start with")
-        XCTAssertEqual(wc.columnLeft ?? 0, (wc.window?.frame.width ?? 0) - s.historyWidth, accuracy: 1.5)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, width, accuracy: 0.5, "one width: switching panes leaves it")
+        XCTAssertEqual(wc.columnLeft ?? 0, (wc.window?.frame.width ?? 0) - s.columnWidth, accuracy: 1.5)
         s.setOutlineShown(true)
         XCTAssertNil(wc.history)
         XCTAssertNotNil(wc.outline)
         XCTAssertFalse(s.historyShown)
-        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, s.outlineWidth, accuracy: 1.5)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, width, accuracy: 0.5)
         s.setOutlineShown(false)
         XCTAssertNil(wc.columnView)
         XCTAssertNil(wc.paneHost)

@@ -22,15 +22,15 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// Whether this window shows the editor, the preview or both. Set through `setLayout`.
     public internal(set) var layout: LayoutMode
     public var onLayoutChange: (() -> Void)?
-    /// Whether this window shows the outline column, and how wide it is here. Set through `setOutlineShown`.
-    public internal(set) var outlineShown: Bool
-    public var outlineWidth: CGFloat
-    public var onOutlineVisibilityChange: (() -> Void)?
-    /// Whether this window shows the history column instead (the two share the column on the right), and how wide
-    /// it is here. Set through `setHistoryShown`.
-    public internal(set) var historyShown = false
-    public var historyWidth: CGFloat
-    public var onHistoryVisibilityChange: (() -> Void)?
+    /// Whether this window shows the side column on the right, which pane it shows, and how wide it is here (one width
+    /// for both panes). Set through `setColumnShown`, `selectColumnPane` and `showHistory`.
+    public internal(set) var columnShown: Bool
+    public internal(set) var columnPane: SideColumnPane
+    public var columnWidth: CGFloat
+    public var onColumnChange: (() -> Void)?
+    /// The column showing the outline, or the history (it holds one of them).
+    public var outlineShown: Bool { columnShown && columnPane == .outline }
+    public var historyShown: Bool { columnShown && columnPane == .history }
     /// The headings as the core last gave them, while the outline is shown, and who hears of a change
     /// (see `EditorSession+Outline`).
     public internal(set) var outlineEntries: [OutlineEntry] = []
@@ -160,9 +160,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         styler = Styler(appearance: appearance)
         viewMode = settings.defaultViewMode
         layout = settings.defaultLayout
-        outlineShown = settings.showOutlineInNewWindows
-        outlineWidth = CGFloat(settings.outlineWidth)
-        historyWidth = CGFloat(settings.historyWidth)
+        columnShown = settings.showSideColumnInNewWindows
+        columnPane = settings.sideColumnPane
+        columnWidth = CGFloat(settings.sideColumnWidth)
         focusEnabled = settings.focusMode
         syntaxEnabled = settings.syntaxHighlight
         authorship = Authorship(me: settings.authorName)

@@ -1,0 +1,994 @@
+[
+ {
+  "log": "--- A titled document shows \"Edited\" only for the two seconds before the autosave (AppKit's own title kept it, so the title is the app's now): examples/Showcase.md, in plain mode and in notes mode with the library prompt showing, in every layout and in Source and Live"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "open": "examples/Showcase.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1000,
+   720
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false,
+    "titleShown": true,
+    "title": "Showcase.md"
+   },
+   "titlebarClean": true,
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   }
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainEditorSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "documentEdited": true,
+   "title": {
+    "inPane": true,
+    "edited": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainEditorSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-editor-source",
+  "bitmap": true
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainEditorLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainEditorLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-editor-live",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainSplitSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainSplitSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-split-source",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainSplitLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainSplitLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-split-live",
+  "bitmap": true
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainPreviewSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainPreviewSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-preview-source",
+  "bitmap": true
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainPreviewLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainPreviewLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-preview-live",
+  "bitmap": true
+ },
+ {
+  "log": "--- the same window in notes mode, with no library yet: the sidebar shows its first-run prompt"
+ },
+ {
+  "notes": {
+   "mode": true
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "notes": {
+    "sidebarShown": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false
+   }
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesEditorSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesEditorSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-editor-source",
+  "bitmap": true
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesEditorLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesEditorLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-editor-live",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesSplitSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesSplitSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-split-source",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesSplitLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesSplitLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-split-live",
+  "bitmap": true
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesPreviewSource ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesPreviewSource",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-preview-source",
+  "bitmap": true
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "NotesPreviewLive ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "NotesPreviewLive",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-preview-live",
+  "bitmap": true
+ },
+ {
+  "log": "--- with the side column showing too (Outline, then History), and a library"
+ },
+ {
+  "column": {
+   "toggle": true
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "ColumnOutline ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "ColumnOutline",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-column-outline",
+  "bitmap": true
+ },
+ {
+  "column": {
+   "segment": "history"
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "ColumnHistory ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "ColumnHistory",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-notes-column-history",
+  "bitmap": true
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "PlainColumnHistory ",
+  "interval": 0.04
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "windows": {
+    "editedDot": false
+   },
+   "documentFile": {
+    "contains": "PlainColumnHistory",
+    "equalsText": true
+   },
+   "title": {
+    "inPane": true,
+    "edited": false,
+    "text": "Showcase.md",
+    "systemHidden": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "edited-plain-column-history",
+  "bitmap": true
+ },
+ {
+  "log": "--- an edit that does not come with a keystroke (a change of the attribution) is written too: no \"Edited\" is left standing"
+ },
+ {
+  "selectText": "every element",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "select": [
+   100,
+   40
+  ]
+ },
+ {
+  "action": "markAsAI:",
+  "edits": true
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "title": {
+    "followsDocument": true
+   }
+  }
+ },
+ {
+  "wait": 3.2
+ },
+ {
+  "assert": {
+   "documentEdited": false,
+   "title": {
+    "edited": false
+   },
+   "titlebarClean": true
+  }
+ }
+]

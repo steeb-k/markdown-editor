@@ -87,9 +87,10 @@ scripts/macos/ui-script.sh scripts/macos/ui/notes-files.json    # new note and f
 scripts/macos/ui-script.sh scripts/macos/ui/notes-links.json    # wikilinks: Cmd-click and preview clicks, plain mode and notes mode, a link to nothing
 scripts/macos/ui-script.sh scripts/macos/ui/quick-open.json     # the palette: fuzzy on titles and paths, arrows, Return, Command-Return, Escape
 scripts/macos/ui-script.sh scripts/macos/ui/windows.json        # one document per window: no tabs, the title in the title bar, a click replaces the document, Command-click and Command-Option-click open windows
+scripts/macos/ui-script.sh scripts/macos/ui/edited.json         # a titled document shows "Edited" only before its autosave: plain and notes mode, every layout and mode, the side column on either pane
 scripts/macos/ui-script.sh scripts/macos/ui/autosave.json       # written 2 s after the last keystroke, no edited dot, nothing asked on close, another app's newer file, drafts
 scripts/macos/ui-script.sh scripts/macos/ui/history.json        # snapshots after a pause, Save, the panel, diff colours, Restore and Copy, rename, a draft
-scripts/macos/ui-script.sh scripts/macos/ui/outline.json        # the outline column: real clicks jump the editor and the preview, the mark follows caret and page, keys, folds, divider, notes mode
+scripts/macos/ui-script.sh scripts/macos/ui/outline.json        # the outline in the side column: real clicks jump the editor and the preview, the mark follows the scroll (real wheel events) and the page, keys, folds, divider, notes mode
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/outline-big.json   # 1000 headings: main-thread cost of each kind of update (under 10 ms but one rare shape)
 ```
 
@@ -100,18 +101,41 @@ Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/Markdown
 `UI_BUILD=/some/dir scripts/macos/ui-script.sh ...` (and `ui-big-focus.sh`) builds and runs `/some/dir/Markdown.app`
 instead of `build/Markdown.app`, so a copy someone is using is left alone.
 
-## Outline
+## Side Column
 
-View > Outline (⌃⌘O) puts a column of the document's headings on the right, 220 points wide and resizable, in every
-layout (Preview too), beside the notes sidebar when that is on (neither makes the window larger). It lists ATX and setext
-headings, in lists and quotes too, with their inline markup stripped (never what only looks like a heading inside code or
-HTML), indented by level with a disclosure triangle per level. The heading the caret is in is marked (in the Preview layout,
-the heading at the top of the page) and kept in view without taking the keyboard. A click, or Return on the selected row,
-moves the caret there and scrolls the editor so the heading is at the top (in the middle with focus centring on), and the
-preview to the same heading by its source line; the arrow keys move through the list and fold. It comes from the core
-(`Document::outline()`, built from the blocks the analysis already has), is asked for a quarter of a second after the last
-analysis (typing only moves a timer), and shares the column with the History panel (showing one hides the other). Each window keeps
-its own visibility and width; Settings has "Show outline in new windows" (the last width dragged is where new windows start).
+View > Side Column (⌃⌘O) shows and hides one column on the right, in every layout (Preview too), beside the notes sidebar when
+that is on (neither makes the window larger). It has a segmented header at its top, the system's small segmented control
+(Outline | History), and one content area that holds the outline's view or the history's: the pane not showing is not
+alive (it is made when selected and freed when another takes its place), and switching never changes the width. One width
+(260 points to start, 200 to 480, dragged by the divider, remembered per window and as the default for new ones) and one
+toggle. View > Show History (⌃⌘H) shows the column with History selected, and hides it when History is what it already shows
+(as ⌃⌘O does; ⌥⌘H is Hide Others). The column comes back on the pane it had. A click on a segment is remembered per window and as the
+default pane; Settings has "Show side column in new windows" and "Side column starts on" (an outline width or an
+"outline on by default" stored by an earlier version is read once as the start of the new settings). The title over the
+editor ends at the column's left edge whichever pane shows.
+
+The **outline** lists ATX and setext headings, in lists and quotes too, with their inline markup stripped (never what only
+looks like a heading inside code or HTML), indented by level with a disclosure triangle per level. The marked entry is where
+the reader is, **not the caret**: the heading at, or the last one above, the first visible line of the editor (a dozen points
+under the title bar's edge count as the top, so a heading just under the bar is the one), updated once per display refresh
+as the editor scrolls and when the headings or the layout change, in Editor, Split and Live; in the Preview layout, the
+heading at the top of the page. It is kept in view without taking the keyboard. A click, or Return on the selected row,
+moves the caret there, marks the entry and scrolls the editor so the heading is at the top (in the middle with focus centring
+on), and the preview to the same heading by its source line; the arrow keys move through the list and fold. It comes from the
+core (`Document::outline()`, built from the blocks the analysis already has) and is asked for a quarter of a second after
+the last analysis (typing only moves a timer). The history pane is described under History.
+
+## Title
+
+The title over the editor is the app's own (`TitlebarTitleView`): the file name and, while there is an edit not yet
+written, "— Edited", centred over the editor's pane (from the sidebar's right edge to the side column's left edge, in
+every layout, following divider drags, the column and the window), in the system's title font, middle-truncated, and fading
+with the title bar. AppKit's own title views are kept hidden; the window's `title` and `representedURL` stay set for the
+Dock, Mission Control and VoiceOver. There is no document icon. A double-click on the name renames the document (File >
+Rename, as AppKit's title did), a Command-click shows the folders the file is in (each opens in the Finder), and the rest
+of the row drags and zooms the window. What the icon gave is gone: dragging the file from the title bar.
+"Edited" follows the document's own state: AppKit's title kept it after every autosave in place (the change count is
+cleared by `updateChangeCount(withToken:for:)`, which never reaches `updateChangeCount(_:)` or the window's flag).
 
 ## Notes mode
 
@@ -147,7 +171,7 @@ its own sidebar state; a window opened from another's sidebar starts with a copy
 
 ## One document per window
 
-There are no tabs: a window shows one document, the title and the window's own "Edited" label are in the title bar, and the
+There are no tabs: a window shows one document, the title and its "Edited" mark are in the title bar, and the
 window refuses tabbing (no Merge All Windows, no tab items anywhere). A note chosen in the sidebar, a backlink, a
 wikilink, Quick Open, Today's Note, a template or a link in the preview replaces the window's document, which is written
 and snapshotted first; the new document takes the old one's place and size, its workspace (so the sidebar is as it was),
@@ -176,8 +200,8 @@ are kept for 24 hours, then one per hour for a week, then one per day, at most 1
 a message is never thinned. The key is the note in the library (so a rename or a move keeps the history) or a hash of the
 file's path.
 
-View > History (⌃⌘H) puts the timeline on the right, in the outline's column (showing one hides the other; each has its
-own toggle and width): versions grouped by day, each with its time, the reason (pause, close, save, restore, draft),
+View > Show History (⌃⌘H) puts the timeline on the right, in the side column (the History segment; the outline is the
+other): versions grouped by day, each with its time, the reason (pause, close, save, restore, draft),
 the lines added and removed and its message. A version shows its diff against the text as it is now below the list
 (removed lines in the theme's reference colour, added lines in its AI colour, both muted); Restore records the text as
 it is, then puts the version's text in as one undoable edit, "Restore Version"; Copy puts the version's text on the

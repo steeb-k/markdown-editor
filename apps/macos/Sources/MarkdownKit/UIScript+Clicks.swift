@@ -123,9 +123,9 @@ extension UIScriptRunner {
         if hit.isDescendant(of: wc.toolbar) { return "toolbar" }
         if hit.isDescendant(of: wc.previewController.webView) { return "preview" }
         if let bar = wc.sidebar?.view, hit.isDescendant(of: bar) { return hit === bar.band ? "titlebar" : "sidebar" }
-        if let column = wc.outline?.view, hit.isDescendant(of: column) { return hit === column.band ? "titlebar" : "outline" }
+        if let column = wc.sideColumn?.view, hit.isDescendant(of: column) { return hit === column.band ? "titlebar" : "outline" }
         if hit === wc.splitView { return "divider" }
-        if !hit.isDescendant(of: content) || hit === wc.titlebarBand { return "titlebar" }
+        if !hit.isDescendant(of: content) || hit === wc.titlebarBand || hit === wc.titleView { return "titlebar" }
         return "other"
     }
 

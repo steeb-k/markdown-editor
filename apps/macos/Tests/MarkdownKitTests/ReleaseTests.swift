@@ -131,7 +131,10 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(table["View > Enter Full Screen"], "⌃⌘F")
         XCTAssertNil(table["Window > Show Tab Bar"], "no tabs: no switch for them")
         XCTAssertNil(table["Window > Show Next Tab"])
-        XCTAssertEqual(table["View > History"], "⌃⌘H", "⌥⌘H is Hide Others")
+        XCTAssertEqual(table["View > Show History"], "⌃⌘H", "⌥⌘H is Hide Others")
+        XCTAssertEqual(table["View > Side Column"], "⌃⌘O")
+        XCTAssertNil(table["View > Outline"], "one column, one toggle: the outline and the history are its two panes")
+        XCTAssertNil(table["View > History"])
         XCTAssertNil(table["View > Keep Focused Line Centred"], "no key of its own")
         XCTAssertEqual(table["View > Hide Formatting Toolbar"], "⌃⌘T")
     }
@@ -194,7 +197,7 @@ final class ReleaseTests: XCTestCase {
         let iconJSON = try Data(contentsOf: assets.appendingPathComponent("Markdown.icon/icon.json"))
         let icon = try XCTUnwrap(try JSONSerialization.jsonObject(with: iconJSON) as? [String: Any])
         let layers = (icon["groups"] as? [[String: Any]] ?? []).flatMap { $0["layers"] as? [[String: Any]] ?? [] }
-        XCTAssertEqual(layers.compactMap { $0["image-name"] as? String }, ["glyph.svg", "background.svg"])
+        XCTAssertEqual(layers.compactMap { $0["image-name"] as? String }, ["glyph.png", "background.png"])
         for layer in layers {
             let name = try XCTUnwrap(layer["image-name"] as? String)
             XCTAssertTrue(FileManager.default.fileExists(atPath: assets.appendingPathComponent("Markdown.icon/Assets/\(name)").path), name)
@@ -232,7 +235,7 @@ final class ReleaseTests: XCTestCase {
 
     func testAcknowledgementsNameEveryKindOfComponent() throws {
         let text = try String(contentsOf: resources.appendingPathComponent("Acknowledgements.md"), encoding: .utf8)
-        for needle in ["SIL OPEN FONT LICENSE", "Reserved Font Name", "Fira Mono", "Reserved Font Name < Fira >", "pulldown-cmark", "syntect", "two-face", "unicode-segmentation", "unicode-width",
+        for needle in ["SIL OPEN FONT LICENSE", "Reserved Font Name", "IBM Plex Mono", "Reserved Font Name \"Plex\"", "pulldown-cmark", "syntect", "two-face", "unicode-segmentation", "unicode-width",
                        "sha2", "toml ", "serde ", "uniffi ", "Mozilla Public License", "Apache License", "MIT License"] {
             XCTAssertTrue(text.contains(needle), "Acknowledgements.md does not mention \(needle)")
         }

@@ -1,6 +1,6 @@
 [
  {
-  "log": "--- The outline column: View > Outline, in every layout, clicks jump the editor and the preview, the mark follows the caret and the page, keys, folding, the divider, tabs, notes mode, 1000 headings"
+  "log": "--- The outline in the side column: View > Side Column, in every layout, clicks jump the editor and the preview, the mark follows the scroll position (never the caret) and the page, keys, folding, the divider, notes mode, 1000 headings"
  },
  {
   "setting": {
@@ -48,7 +48,7 @@
     "plain": true
    },
    "menu": {
-    "View > Outline": {
+    "View > Side Column": {
      "enabled": true,
      "state": "off"
     }
@@ -112,12 +112,12 @@
      1,
      2
     ],
-    "width": 220,
+    "width": 260,
     "accessible": true,
     "marked": "Field notes"
    },
    "menu": {
-    "View > Outline": {
+    "View > Side Column": {
      "enabled": true,
      "state": "on"
     }
@@ -178,29 +178,26 @@
   "bitmap": true
  },
  {
-  "log": "--- the mark follows the caret"
+  "log": "--- the mark follows the scroll position, never the caret"
  },
  {
-  "selectText": "Evening",
-  "offset": 2,
-  "length": 0
- },
- {
-  "wait": 0.3
+  "outline": {
+   "scrollToText": "Evening"
+  }
  },
  {
   "assert": {
    "outline": {
-    "marked": "Evening"
+    "marked": "Evening",
+    "markedAtEditorTop": true
    }
   }
  },
  {
-  "scroll": "start"
- },
- {
-  "selectText": "quick brown fox",
-  "offset": 3
+  "select": [
+   60,
+   0
+  ]
  },
  {
   "wait": 0.3
@@ -208,23 +205,463 @@
  {
   "assert": {
    "outline": {
+    "marked": "Evening",
+    "caretIn": "Field notes"
+   }
+  }
+ },
+ {
+  "outline": {
+   "scrollToText": "Not a heading in a fence"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Afternoon",
+    "caretIn": "Field notes"
+   }
+  }
+ },
+ {
+  "selectText": "Last words",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "outline": {
+   "scrollToText": "Field notes"
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Field notes",
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "snapshot": "outline-03b-caret-at-the-end-view-at-the-top",
+  "bitmap": true
+ },
+ {
+  "log": "--- real wheel events: the mark moves through the headings as the text goes by, once a display refresh; the caret stays where it was"
+ },
+ {
+  "remember": "wheel-start"
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": -420,
+   "wait": 0.15
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words"
+   }
+  }
+ },
+ {
+  "assert": {
+   "originChanged": "wheel-start"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true
+   }
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "scrollWheel": {
+   "dy": 420,
+   "wait": 0.05
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "outline": {
+   "scrollToText": "Field notes"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtEditorTop": true,
+    "caretIn": "Last words",
     "marked": "Field notes"
    }
   }
  },
  {
-  "selectText": "Not a heading in a fence",
-  "offset": 3
- },
- {
-  "wait": 0.3
- },
- {
-  "assert": {
-   "outline": {
-    "marked": "Afternoon"
-   }
-  }
+  "snapshot": "outline-03c-wheel-back-at-the-top",
+  "bitmap": true
  },
  {
   "log": "--- typing a heading adds an entry within one analysis"
@@ -251,7 +688,7 @@
   "assert": {
    "outline": {
     "count": 15,
-    "marked": "Freshly added"
+    "markedAtEditorTop": true
    }
   }
  },
@@ -270,8 +707,8 @@
  {
   "assert": {
    "outline": {
-    "marked": "Freshly addedZed",
-    "count": 15
+    "count": 15,
+    "markedAtEditorTop": true
    }
   }
  },
@@ -342,6 +779,11 @@
   "selectText": "Deep one",
   "offset": 8,
   "length": 0
+ },
+ {
+  "outline": {
+   "scrollToText": "Deep one"
+  }
  },
  {
   "wait": 0.3
@@ -482,9 +924,9 @@
   "wait": 0.5
  },
  {
-  "selectText": "Morning",
-  "offset": 2,
-  "length": 0
+  "outline": {
+   "scrollToText": "Morning"
+  }
  },
  {
   "wait": 0.3
@@ -765,7 +1207,7 @@
  {
   "assert": {
    "outline": {
-    "width": 300,
+    "width": 340,
     "windowWidth": 1100
    }
   }
@@ -785,7 +1227,7 @@
  {
   "assert": {
    "outline": {
-    "width": 220
+    "width": 260
    }
   }
  },
@@ -867,7 +1309,7 @@
    },
    "outline": {
     "shown": true,
-    "width": 220,
+    "width": 260,
     "windowWidth": 1100
    }
   }
@@ -879,7 +1321,10 @@
  {
   "assert": {
    "titlebarClean": true,
-   "edited": true
+   "title": {
+    "inPane": true,
+    "followsDocument": true
+   }
   }
  },
  {
@@ -914,7 +1359,7 @@
  {
   "assert": {
    "outline": {
-    "width": 280,
+    "width": 320,
     "windowWidth": 1100
    },
    "notes": {
@@ -945,7 +1390,7 @@
    },
    "outline": {
     "shown": true,
-    "width": 220
+    "width": 260
    }
   }
  },
@@ -1024,7 +1469,7 @@
     "plain": true
    },
    "menu": {
-    "View > Outline": {
+    "View > Side Column": {
      "state": "off"
     }
    }

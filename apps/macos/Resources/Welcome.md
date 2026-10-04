@@ -10,7 +10,7 @@ Markdown is plain text with a few marks that mean something: `#` makes a heading
 
 Beside the editor you can have a preview: **Editor and Preview** puts the two side by side and keeps them scrolled together; **Preview** shows the finished page alone. Pictures, tables, footnotes and highlighted code blocks look as they will when you print or export.
 
-View > Outline puts the document's headings in a column on the right, in every layout: click one to go there (the editor and the preview both scroll to it), use the arrow keys and Return, and fold a level with its triangle. The heading you are in, or at the top of the preview, is marked. Which windows start with it is a setting.
+View > Side Column puts one column on the right, in every layout, with two panes you switch between at its top: **Outline** lists the document's headings (click one to go there, and the editor and the preview both scroll to it; use the arrow keys and Return; fold a level with its triangle) and marks the one you are reading, following the scroll rather than the caret, and **History** (see below). One width, one toggle; View > Show History shows the column on History. Which windows start with it, and on which pane, are settings.
 
 ## Writing
 
@@ -59,7 +59,7 @@ Three independent aids, all in the View menu:
 
 There is nothing to remember to save: a document with a file is written two seconds after you stop typing, and when you close it or open another note in its window. File > Save (Command-S) writes at once. A new document you have not saved is kept in the `Drafts` folder of your library when you have one, and asks when you close it when you do not. If another app changes the file you have open, what you had is kept and the file is read again.
 
-Every pause also keeps a snapshot of the text, so nothing you looked at is lost. View > History puts the list of them in the column on the right (in place of the outline): pick one to see what changed since, Restore to put it back (Edit > Undo takes the restore back), or Copy to take its text. Snapshots are kept for a day, then one an hour for a week, then one a day; plain files under `~/Library/Application Support/Markdown/history`.
+Every pause also keeps a snapshot of the text, so nothing you looked at is lost. View > Show History puts the list of them in the side column on the right (the History pane; Command-Control-H again hides the column): pick one to see what changed since, Restore to put it back (Edit > Undo takes the restore back), or Copy to take its text. Snapshots are kept for a day, then one an hour for a week, then one a day; plain files under `~/Library/Application Support/Markdown/history`.
 
 ## Notes mode
 

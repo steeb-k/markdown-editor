@@ -20,6 +20,7 @@ public final class MarkdownDocument: NSDocument {
     var baselineRecorded = false
     /// Autosave (see `MarkdownDocument+Autosave`): the timer that writes 2 s after the last edit, and the saves in flight.
     var autosaveTimer: Timer?
+    var titleRefreshPending = false
     var savesInFlight = 0
     /// Why the next write's snapshot is taken, when not the usual (a draft).
     var nextSnapshotReason: HistoryReason?

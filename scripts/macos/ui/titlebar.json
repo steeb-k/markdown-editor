@@ -232,11 +232,11 @@
   }
  },
  {
-  "log": "--- a double-click on the title bar, chrome showing"
+  "log": "--- a double-click on the title bar, chrome showing (the title is the app's own, centred over the pane, and a double-click on its icon or name renames the document, as AppKit's did: the points here are clear of it)"
  },
  {
   "doubleClickTitlebar": {
-   "x": 0.5
+   "x": 0.65
   }
  },
  {
@@ -276,7 +276,7 @@
  },
  {
   "doubleClickTitlebar": {
-   "x": 0.5
+   "x": 0.65
   }
  },
  {
@@ -540,7 +540,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -552,7 +552,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -664,7 +664,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -676,7 +676,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -788,7 +788,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -800,7 +800,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -927,7 +927,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -939,7 +939,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -1054,7 +1054,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -1066,7 +1066,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -1171,7 +1171,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -1183,7 +1183,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.5,
+   "x": 0.65,
    "count": 2,
    "expectWindowAction": true,
    "wait": 1.0
@@ -3135,6 +3135,206 @@
  },
  {
   "snapshot": "titlebar-notes-outline",
+  "bitmap": true
+ },
+ {
+  "log": "--- the title is the app's own and sits centred over the editor's pane: from the sidebar's right edge to the column's left edge, in every layout, chrome showing and faded (AppKit centred it in the whole window and ran it across the sidebar's edge)"
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "chromeVisible": true,
+   "title": {
+    "inPane": true,
+    "text": "tour.md",
+    "edited": false,
+    "visible": true,
+    "systemHidden": true,
+    "xRange": [
+     240,
+     700
+    ],
+    "noIcon": true
+   }
+  }
+ },
+ {
+  "snapshot": "title-sidebar-column-editor",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "chromeVisible": true,
+   "title": {
+    "inPane": true,
+    "text": "tour.md",
+    "edited": false,
+    "visible": true,
+    "systemHidden": true,
+    "xRange": [
+     240,
+     700
+    ],
+    "noIcon": true
+   }
+  }
+ },
+ {
+  "snapshot": "title-sidebar-column-split",
+  "bitmap": true
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "chromeVisible": true,
+   "title": {
+    "inPane": true,
+    "text": "tour.md",
+    "edited": false,
+    "visible": true,
+    "systemHidden": true,
+    "xRange": [
+     240,
+     700
+    ],
+    "noIcon": true
+   }
+  }
+ },
+ {
+  "snapshot": "title-sidebar-column-preview",
+  "bitmap": true
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "quiet page",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "type": "x"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "title": {
+    "inPane": true,
+    "visible": false,
+    "xRange": [
+     240,
+     700
+    ]
+   }
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "title": {
+    "inPane": true,
+    "xRange": [
+     240,
+     700
+    ]
+   }
+  }
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "outline": {
+   "show": false
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "title": {
+    "inPane": true,
+    "xRange": [
+     240,
+     900
+    ]
+   }
+  }
+ },
+ {
+  "snapshot": "title-sidebar-only",
+  "bitmap": true
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "titlebarClean": true,
+   "title": {
+    "inPane": true,
+    "xRange": [
+     0,
+     700
+    ]
+   }
+  }
+ },
+ {
+  "snapshot": "title-column-only",
   "bitmap": true
  },
  {

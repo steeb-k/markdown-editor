@@ -1,11 +1,9 @@
 import AppKit
 import MarkdownCore
 
-/// The history column of a window (View > History) and what the window does with it: Restore, and the bar that says
+/// The history pane of a window (View > Show History) and what the window does with it: Restore, and the bar that says
 /// another app changed the file.
 extension EditorWindowController {
-    @objc func toggleHistory(_ sender: Any?) { session.setHistoryShown(!session.historyShown) }
-
     /// The diff's colours and font: the theme's own, in the editor's monospaced face at a size the column holds.
     var historyDiffStyle: HistoryModel.DiffStyle {
         let palette = session.appearance.palette

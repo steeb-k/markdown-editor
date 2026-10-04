@@ -381,9 +381,9 @@ final class SidebarTests: XCTestCase {
     func testTheTitleShowsInNotesModeAndTheSidebarsTitleRowStaysTheWindows() throws {
         let ws = try makeWorkspace()
         let (_, wc) = try makeWindow("# Alone\n")
-        XCTAssertEqual(wc.window?.titleVisibility, .visible)
+        XCTAssertEqual(wc.window?.titleVisibility, .hidden)
         wc.adopt(ws)
-        XCTAssertEqual(wc.window?.titleVisibility, .visible, "the title is shown again; no strip takes its place")
+        XCTAssertEqual(wc.window?.titleVisibility, .hidden, "the title is the app's own, over the editor; no strip takes its place")
         XCTAssertTrue(wc.window?.titlebarAccessoryViewControllers.isEmpty ?? false)
         let sb = try XCTUnwrap(wc.sidebar)
         sb.view.layoutSubtreeIfNeeded()
@@ -391,7 +391,7 @@ final class SidebarTests: XCTestCase {
         XCTAssertEqual(sb.view.band.frame.height, bar, accuracy: 0.5, "the sidebar's band is the title bar's row")
         XCTAssertTrue(sb.view.band.mouseDownCanMoveWindow)
         ws.setNotesMode(false)
-        XCTAssertEqual(wc.window?.titleVisibility, .visible)
+        XCTAssertEqual(wc.window?.titleVisibility, .hidden)
         wc.leaveWorkspace()
     }
 

@@ -123,7 +123,7 @@ final class ClickHitTestTests: XCTestCase {
             let t = try hit(wc, title)
             XCTAssertNotNil(t)
             let content = try XCTUnwrap(window.contentView)
-            XCTAssertTrue(t === wc.titlebarBand || !(t?.isDescendant(of: content) ?? true), "focus \(focus): the title bar")
+            XCTAssertTrue(t === wc.titlebarBand || t === wc.titleView || !(t?.isDescendant(of: content) ?? true), "focus \(focus): the title bar")
             // Nor does the scroll view hand a point under the title bar to the text (AppKit gives a click there to a
             // content view that will not move the window: the title bar's drag and double-click would be lost).
             let scroll = wc.editorScrollView

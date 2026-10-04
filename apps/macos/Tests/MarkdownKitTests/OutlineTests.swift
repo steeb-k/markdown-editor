@@ -240,10 +240,11 @@ final class OutlineTests: XCTestCase {
 
     // MARK: the window
 
-    private func open(_ text: String, layout: LayoutMode = .editor, outline: Bool = false, settings: Settings = isolatedSettings()) throws -> (MarkdownDocument, EditorWindowController) {
+    private func open(_ text: String, layout: LayoutMode = .editor, mode: ViewMode = .source, outline: Bool = false, settings: Settings = isolatedSettings()) throws -> (MarkdownDocument, EditorWindowController) {
         _ = NSApplication.shared
         settings.defaultLayout = layout
-        settings.showOutlineInNewWindows = outline
+        settings.defaultViewMode = mode
+        settings.showSideColumnInNewWindows = outline
         let doc = MarkdownDocument(settings: settings)
         try doc.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
         doc.makeWindowControllers()
@@ -266,32 +267,33 @@ final class OutlineTests: XCTestCase {
         defer { doc.close() }
         XCTAssertNil(wc.outline)
         XCTAssertTrue(wc.window?.contentView === wc.root, "off: the window is exactly the editor's own view")
-        let item = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu?.items.first { $0.title == "Outline" })
-        XCTAssertEqual(item.action, #selector(EditorWindowController.toggleOutline(_:)))
+        let item = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu?.items.first { $0.title == "Side Column" })
+        XCTAssertEqual(item.action, #selector(EditorWindowController.toggleSideColumn(_:)))
         XCTAssertEqual(item.keyEquivalent, "o")
         XCTAssertEqual(item.keyEquivalentModifierMask, [.command, .control])
         XCTAssertTrue(wc.validateMenuItem(item))
         XCTAssertEqual(item.state, .off)
-        wc.toggleOutline(nil)
+        wc.toggleSideColumn(nil)
         XCTAssertTrue(waitEntries(wc, 4))
         XCTAssertNotNil(wc.outline)
         XCTAssertTrue(wc.window?.contentView === wc.paneHost, "on: the editor's pane and the column in a split of their own")
-        XCTAssertTrue(wc.root.superview === wc.paneHost && wc.outline?.view.superview === wc.paneHost)
-        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, 220, accuracy: 1)
+        XCTAssertTrue(wc.root.superview === wc.paneHost && wc.columnView?.superview === wc.paneHost && wc.outline?.view.superview === wc.columnView)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, 260, accuracy: 1)
+        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, 260, accuracy: 1, "the outline fills the column")
         XCTAssertTrue(wc.validateMenuItem(item))
         XCTAssertEqual(item.state, .on)
         XCTAssertEqual(wc.outline?.entries.map(\.text), ["One", "Two", "Three", "Four"])
         XCTAssertEqual(wc.window?.contentView?.bounds.width ?? 0, wc.window?.contentLayoutRect.width ?? 0, accuracy: 0.5)
-        wc.toggleOutline(nil)
+        wc.toggleSideColumn(nil)
         XCTAssertNil(wc.outline)
         XCTAssertTrue(wc.window?.contentView === wc.root)
         XCTAssertEqual(wc.root.frame.width, wc.window?.contentView?.bounds.width ?? 0, accuracy: 0.5)
-        // The default setting opens new windows with it, 220 points wide.
-        XCTAssertFalse(Settings(defaults: UserDefaults(suiteName: "outline-\(UUID().uuidString)")!).showOutlineInNewWindows, "off by default")
+        // The default setting opens new windows with it, 260 points wide.
+        XCTAssertFalse(Settings(defaults: UserDefaults(suiteName: "outline-\(UUID().uuidString)")!).showSideColumnInNewWindows, "off by default")
         let (doc2, wc2) = try open(Self.sample, outline: true)
         defer { doc2.close() }
         XCTAssertNotNil(wc2.outline)
-        XCTAssertEqual(wc2.session.outlineWidth, 220)
+        XCTAssertEqual(wc2.session.columnWidth, 260)
         XCTAssertTrue(waitEntries(wc2, 4))
     }
 
@@ -299,7 +301,7 @@ final class OutlineTests: XCTestCase {
         let settings = isolatedSettings()
         let (doc, wc) = try open(Self.sample, outline: true, settings: settings)
         defer { doc.close() }
-        XCTAssertEqual(settings.outlineWidth, 220)
+        XCTAssertEqual(settings.sideColumnWidth, 260)
         let host = try XCTUnwrap(wc.paneHost)
         // A drag of the divider (an event in the mouse's hands) is the user's: the width is remembered.
         let drag = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDragged, location: .zero, modifierFlags: [], timestamp: 0,
@@ -307,23 +309,23 @@ final class OutlineTests: XCTestCase {
         let width = host.bounds.width
         host.setPosition(width - 300, ofDividerAt: 0)
         host.layoutSubtreeIfNeeded()
-        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, 300, accuracy: 1)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, 300, accuracy: 1)
         _ = drag
         // (A window's resize leaves the column's width alone.)
         wc.window?.setContentSize(NSSize(width: 1200, height: 700))
         wc.window?.layoutIfNeeded()
-        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, 300, accuracy: 1)
-        XCTAssertEqual(wc.root.frame.width + 1 + (wc.outline?.view.frame.width ?? 0), host.bounds.width, accuracy: 1)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, 300, accuracy: 1)
+        XCTAssertEqual(wc.root.frame.width + 1 + (wc.columnView?.frame.width ?? 0), host.bounds.width, accuracy: 1)
         // Another window starts from the setting.
-        settings.outlineWidth = 260
+        settings.sideColumnWidth = 340
         let (doc2, wc2) = try open(Self.sample, outline: true, settings: settings)
         defer { doc2.close() }
-        XCTAssertEqual(wc2.outline?.view.frame.width ?? 0, 260, accuracy: 1)
-        XCTAssertEqual(wc.outline?.view.frame.width ?? 0, 300, accuracy: 1, "each window keeps its own")
-        settings.outlineWidth = 9_000
-        XCTAssertEqual(settings.outlineWidth, 480)
-        settings.outlineWidth = 3
-        XCTAssertEqual(settings.outlineWidth, 160)
+        XCTAssertEqual(wc2.columnView?.frame.width ?? 0, 340, accuracy: 1)
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, 300, accuracy: 1, "each window keeps its own")
+        settings.sideColumnWidth = 9_000
+        XCTAssertEqual(settings.sideColumnWidth, 480)
+        settings.sideColumnWidth = 3
+        XCTAssertEqual(settings.sideColumnWidth, 200)
     }
 
     func testTheWindowNeverGrowsAndItsNarrowestMakesRoomForTheColumn() throws {
@@ -332,10 +334,10 @@ final class OutlineTests: XCTestCase {
         let window = try XCTUnwrap(wc.window)
         let before = window.frame.width
         let minBefore = window.minSize.width
-        wc.toggleOutline(nil)
+        wc.toggleSideColumn(nil)
         XCTAssertEqual(window.frame.width, before, accuracy: 0.5, "the column takes the editor's room, not more window")
-        XCTAssertEqual(window.minSize.width, minBefore + 221, accuracy: 0.5)
-        wc.toggleOutline(nil)
+        XCTAssertEqual(window.minSize.width, minBefore + 261, accuracy: 0.5)
+        wc.toggleSideColumn(nil)
         XCTAssertEqual(window.minSize.width, minBefore, accuracy: 0.5)
     }
 
@@ -348,30 +350,160 @@ final class OutlineTests: XCTestCase {
         XCTAssertFalse(column.scroll.frame.minY < column.topInset, "the list begins below the title bar")
     }
 
-    func testTypingAHeadingAddsAnEntryWithinAnAnalysisAndTheMarkFollowsTheCaret() throws {
+    /// Scrolls the editor so that `character`'s line is `into` points below the bottom of the title bar (negative: its top
+    /// edge is under the bar), the way a wheel would.
+    private func scroll(_ wc: EditorWindowController, toCharacter character: Int, into: CGFloat = 0) {
+        let tv = wc.textView
+        let lm = tv.layoutManager!
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: min(tv.string.utf16.count, character + 1)))
+        let glyph = lm.glyphIndexForCharacter(at: character)
+        let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let clip = wc.scrollView.contentView
+        let y = fragment.minY + tv.textContainerOrigin.y - wc.editorScrollView.baseInsetTop - into
+        clip.scroll(to: NSPoint(x: 0, y: max(-wc.scrollView.contentInsets.top, y)))
+        wc.scrollView.reflectScrolledClipView(clip)
+    }
+
+    private func marked(_ wc: EditorWindowController) -> String? {
+        guard let o = wc.outline, o.view.list.selectedRow >= 0 else { return nil }
+        return (o.view.list.item(atRow: o.view.list.selectedRow) as? OutlineNode)?.entry.text
+    }
+
+    func testTypingAHeadingAddsAnEntryWithinAnAnalysisAndTheCaretDoesNotMoveTheMark() throws {
         let (doc, wc) = try open(Self.sample, outline: true)
         defer { doc.close() }
         XCTAssertTrue(waitEntries(wc, 4))
         let tv = wc.textView
-        func marked() -> String? {
-            guard let o = wc.outline, o.view.list.selectedRow >= 0 else { return nil }
-            return (o.view.list.item(atRow: o.view.list.selectedRow) as? OutlineNode)?.entry.text
-        }
         let ns = tv.string as NSString
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "One", "the view is at the top")
         tv.setSelectedRange(NSRange(location: ns.range(of: "more text").location, length: 0))
         pump(0.1)
-        XCTAssertEqual(marked(), "Two")
+        XCTAssertEqual(marked(wc), "One", "the caret moved to Two's text; the mark is where the reader is")
         tv.setSelectedRange(NSRange(location: ns.range(of: "end").location, length: 0))
         pump(0.1)
-        XCTAssertEqual(marked(), "Four")
+        XCTAssertEqual(marked(wc), "One")
         tv.setSelectedRange(NSRange(location: 0, length: 0))
         tv.insertText("## Fresh\n\nintro\n\n", replacementRange: tv.selectedRange())
-        tv.setSelectedRange(NSRange(location: 14, length: 0))
         XCTAssertTrue(waitEntries(wc, 5), "within one analysis (and the pause that follows it)")
         XCTAssertEqual(wc.outline?.entries.map(\.text), ["Fresh", "One", "Two", "Three", "Four"])
-        XCTAssertEqual(marked(), "Fresh", "the caret is in it")
+        XCTAssertEqual(marked(wc), "Fresh", "the view is at the top of the document, where the new heading is")
         // The core's answer is the same as the shell's list.
         XCTAssertEqual(doc.session.coordinator.sync { $0.outline() }.map(\.text), wc.outline?.entries.map(\.text))
+    }
+
+    // MARK: following the scroll
+
+    func testScrollingThroughALongDocumentMarksEachHeadingInTurn() throws {
+        for (layout, mode) in [(LayoutMode.editor, ViewMode.source), (.split, .source), (.editor, .live), (.split, .live)] {
+            let (doc, wc) = try open(Self.sample, layout: layout, mode: mode, outline: true)
+            defer { doc.close() }
+            XCTAssertTrue(waitEntries(wc, 4))
+            let entries = try XCTUnwrap(wc.outline?.entries)
+            for (i, e) in entries.enumerated() {
+                scroll(wc, toCharacter: Int(e.range.start))
+                pump(0.1)
+                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): \(e.text) at the top")
+                // The heading's line just under the bar is visible: it counts, with its top edge a few points below the bar's.
+                scroll(wc, toCharacter: Int(e.range.start), into: 8)
+                pump(0.1)
+                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): \(e.text) just under the bar")
+                // Midway to the next heading: still this one.
+                let next = i + 1 < entries.count ? Int(entries[i + 1].range.start) : (wc.textView.string as NSString).length - 1
+                scroll(wc, toCharacter: (Int(e.range.start) + next) / 2)
+                pump(0.1)
+                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): between \(e.text) and the next")
+            }
+            // Back above the first heading's text: the first stays (nothing above it).
+            scroll(wc, toCharacter: 0)
+            pump(0.1)
+            XCTAssertEqual(marked(wc), "One")
+        }
+    }
+
+    func testTheCaretAtTheEndWithTheViewAtTheTopMarksTheFirstHeading() throws {
+        let (doc, wc) = try open(Self.sample, outline: true)
+        defer { doc.close() }
+        XCTAssertTrue(waitEntries(wc, 4))
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        scroll(wc, toCharacter: 0)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "One", "the caret is under Four; the reader is at the top")
+        // And the other way round: the caret at the top, the view at the end.
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
+        scroll(wc, toCharacter: (tv.string as NSString).length - 1)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "Four")
+    }
+
+    func testAJumpMarksTheChosenHeadingEvenWhereTheDocumentCannotScrollItToTheTop() throws {
+        let (doc, wc) = try open("# One\n\n" + String(repeating: "filler line\n\n", count: 30) + "## Two\n\nend\n", outline: true)
+        defer { doc.close() }
+        XCTAssertTrue(waitEntries(wc, 2))
+        let two = try XCTUnwrap(wc.outline?.entries.last)
+        wc.jump(to: two)
+        pump(0.3)
+        XCTAssertEqual(marked(wc), "Two", "a click marks it, and the scroll that follows does not take the mark off it")
+        // A scroll of the reader's own after the jump does move it.
+        pump(0.8)
+        scroll(wc, toCharacter: 0)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "One")
+    }
+
+    func testReduceMotionAndFocusCentringDoNotChangeWhatTheScrollMarks() throws {
+        for reduce in [true, false] {
+            let (doc, wc) = try open(Self.sample, outline: true)
+            defer { doc.close() }
+            XCTAssertTrue(waitEntries(wc, 4))
+            wc.centring.reduceMotion = { reduce }
+            doc.session.setFocusEnabled(true)
+            pump(0.8)
+            let entries = try XCTUnwrap(wc.outline?.entries)
+            let three = try XCTUnwrap(entries.first { $0.text == "Three" })
+            scroll(wc, toCharacter: Int(three.range.start))
+            pump(0.5)
+            XCTAssertEqual(marked(wc), "Three", "reduce motion \(reduce)")
+            // Clicking an entry still jumps and marks it, centred or not.
+            let two = try XCTUnwrap(entries.first { $0.text == "Two" })
+            wc.jump(to: two)
+            pump(0.9)
+            XCTAssertEqual(marked(wc), "Two", "reduce motion \(reduce), after a jump")
+        }
+    }
+
+    func testAStreamOfScrollEventsIsOneUpdateARefreshAndAThousandHeadingsKeepATickUnderTwoMilliseconds() throws {
+        let text = (1...1000).map { "## Heading \($0)\n\nsome words under heading \($0)\n" }.joined(separator: "\n")
+        let (doc, wc) = try open(text, outline: true)
+        defer { doc.close() }
+        XCTAssertTrue(waitEntries(wc, 1000))
+        // The text is laid out once, as it would be after a first scroll through it: a tick is then what it costs itself.
+        wc.textView.layoutManager?.ensureLayout(forCharacterRange: NSRange(location: 0, length: (text as NSString).length))
+        let coalescer = try XCTUnwrap(wc.outlineScrollCoalescer)
+        let runs = coalescer.runs, requests = coalescer.requests
+        let clip = wc.scrollView.contentView
+        for i in 0..<300 {
+            clip.scroll(to: NSPoint(x: 0, y: CGFloat(i) * 9))
+            wc.scrollView.reflectScrolledClipView(clip)
+        }
+        XCTAssertGreaterThanOrEqual(coalescer.requests - requests, 300, "every scroll asks")
+        XCTAssertEqual(coalescer.runs, runs, "and nothing runs before the display's next refresh")
+        XCTAssertTrue(spin { coalescer.runs > runs })
+        XCTAssertEqual(coalescer.runs, runs + 1, "one update for the whole stream")
+        // A tick: the top character, the heading, the mark (a different heading each time).
+        var worst: TimeInterval = 0
+        var total: TimeInterval = 0
+        let ticks = 150
+        for i in 0..<ticks {
+            clip.scroll(to: NSPoint(x: 0, y: CGFloat(i) * 140))
+            wc.outlineFollowScroll()
+            worst = max(worst, wc.lastOutlineScrollUpdate)
+            total += wc.lastOutlineScrollUpdate
+        }
+        XCTAssertEqual(marked(wc).map { $0.hasPrefix("Heading ") }, true)
+        let mean = total / Double(ticks) * 1000
+        XCTAssertLessThan(mean, 2, "a tick takes \(mean) ms on average (a debug build), worst \(worst * 1000)")
     }
 
     func testAKeystrokeCostsATimerNotAnOutlineUpdate() throws {
@@ -421,7 +553,7 @@ final class OutlineTests: XCTestCase {
     func testTheTitleBarStaysTheWindowsOwnWithTheColumnShown() throws {
         _ = NSApplication.shared
         let settings = isolatedSettings()
-        settings.showOutlineInNewWindows = true
+        settings.showSideColumnInNewWindows = true
         let doc = MarkdownDocument(settings: settings)
         try doc.read(from: Data("# Doc\n\ntext\n".utf8), ofType: "net.daringfireball.markdown")
         doc.makeWindowControllers()
@@ -432,11 +564,11 @@ final class OutlineTests: XCTestCase {
         window.setContentSize(NSSize(width: 1000, height: 700))
         window.layoutIfNeeded()
         pump(0.2)
-        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertNotNil(wc.columnLeft)
-        XCTAssertEqual(wc.columnLeft ?? 0, window.frame.width - 221, accuracy: 1.5, "the column is at its width, on the right")
-        wc.toggleOutline(nil)
+        XCTAssertEqual(wc.columnLeft ?? 0, window.frame.width - 261, accuracy: 1.5, "the column is at its width, on the right")
+        wc.toggleSideColumn(nil)
         XCTAssertNil(wc.columnLeft)
     }
 

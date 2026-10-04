@@ -18,8 +18,8 @@ extension UIScriptRunner {
         guard let wc = historyController else { record(["history": "no window"], ok: false); done(); return }
         func num(_ k: String) -> Double? { (h[k] as? NSNumber)?.doubleValue }
         if let on = h["show"] as? Bool {
-            // The View menu's item, as the window's action.
-            if wc.session.historyShown != on { _ = NSApp.sendAction(#selector(EditorWindowController.toggleHistory(_:)), to: wc, from: nil) }
+            // View > Show History, as the window's action (it also hides the column when History is what it shows).
+            showColumnPane(.history, on, wc)
             later(0.3) {
                 self.record(["history": on ? "shown" : "hidden", "width": wc.history?.view.frame.width ?? 0], ok: wc.session.historyShown == on)
                 done()

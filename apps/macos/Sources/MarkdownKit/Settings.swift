@@ -98,9 +98,12 @@ public final class Settings: NSObject {
         static let templatesFolder = "templatesFolder"
         static let noteSort = "noteSort"
         static let sidebarWidth = "sidebarWidth"
+        /// The side column's own keys; the outline's and the history's (M8d, M8e) are read once if these are not set.
+        static let sideColumnByDefault = "sideColumnByDefault"
+        static let sideColumnPane = "sideColumnPane"
+        static let sideColumnWidth = "sideColumnWidth"
         static let outlineByDefault = "outlineByDefault"
         static let outlineWidth = "outlineWidth"
-        static let historyWidth = "historyWidth"
         static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
@@ -132,9 +135,6 @@ public final class Settings: NSObject {
             Key.templatesFolder: "Templates",
             Key.noteSort: NoteSort.name.rawValue,
             Key.sidebarWidth: 240.0,
-            Key.outlineByDefault: false,
-            Key.outlineWidth: 220.0,
-            Key.historyWidth: 300.0,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -206,23 +206,31 @@ public final class Settings: NSObject {
         set { defaults.set(min(max(newValue, 0.25), 0.75), forKey: Key.splitRatio) }
     }
 
-    /// Whether new windows open with the outline column on the right (each window keeps its own after that).
-    public var showOutlineInNewWindows: Bool {
-        get { defaults.bool(forKey: Key.outlineByDefault) }
-        set { defaults.set(newValue, forKey: Key.outlineByDefault); changed() }
+    /// Whether new windows open with the side column on the right (each window keeps its own after that). A person who
+    /// had the outline column on by default (before the column held two panes) keeps it.
+    public var showSideColumnInNewWindows: Bool {
+        get { (defaults.object(forKey: Key.sideColumnByDefault) as? Bool) ?? defaults.bool(forKey: Key.outlineByDefault) }
+        set { defaults.set(newValue, forKey: Key.sideColumnByDefault); changed() }
     }
 
-    /// The outline column's width in points: the last one the user dragged it to, where new windows start.
-    /// Setting it posts no change notification (a drag would be a storm of them).
-    public var outlineWidth: Double {
-        get { min(max(defaults.double(forKey: Key.outlineWidth), 160), 480) }
-        set { defaults.set(min(max(newValue, 160), 480), forKey: Key.outlineWidth) }
+    /// The pane the column shows first in a new window, and the one chosen last in any (the header's segments).
+    public var sideColumnPane: SideColumnPane {
+        get { SideColumnPane(rawValue: defaults.string(forKey: Key.sideColumnPane) ?? "") ?? .outline }
+        set { defaults.set(newValue.rawValue, forKey: Key.sideColumnPane); changed() }
     }
 
-    /// The history column's width in points: the last one the user dragged it to, where new windows start.
-    public var historyWidth: Double {
-        get { min(max(defaults.double(forKey: Key.historyWidth), 200), 480) }
-        set { defaults.set(min(max(newValue, 200), 480), forKey: Key.historyWidth) }
+    static let sideColumnWidthRange: ClosedRange<Double> = 200...480
+    static let sideColumnWidthDefault = 260.0
+
+    /// The side column's width in points: the last one the user dragged it to, where new windows start; one width for
+    /// both panes. The outline's stored width (M8d) is the start when none was set since. Setting it posts no change
+    /// notification (a drag would be a storm of them).
+    public var sideColumnWidth: Double {
+        get {
+            let stored = (defaults.object(forKey: Key.sideColumnWidth) as? Double) ?? (defaults.object(forKey: Key.outlineWidth) as? Double) ?? Self.sideColumnWidthDefault
+            return min(max(stored, Self.sideColumnWidthRange.lowerBound), Self.sideColumnWidthRange.upperBound)
+        }
+        set { defaults.set(min(max(newValue, Self.sideColumnWidthRange.lowerBound), Self.sideColumnWidthRange.upperBound), forKey: Key.sideColumnWidth) }
     }
 
     public var autoHideChrome: Bool {

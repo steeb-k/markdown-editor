@@ -257,10 +257,11 @@ extension EditorWindowController {
         session.setFocusEnabled(was.focusEnabled)
         session.setSyntaxEnabled(was.syntaxEnabled)
         session.setAuthorshipDisplay(was.authorshipDisplay)
-        if old.session.outlineShown != session.outlineShown { session.setOutlineShown(old.session.outlineShown) }
-        if old.session.historyShown != session.historyShown { session.setHistoryShown(old.session.historyShown) }
-        session.outlineWidth = old.session.outlineWidth
-        session.historyWidth = old.session.historyWidth
+        // The column: its width first, then which pane and whether it shows (the pane without touching the default setting).
+        session.columnWidth = was.columnWidth
+        session.columnPane = was.columnPane
+        if was.columnShown != session.columnShown { session.setColumnShown(was.columnShown) }
+        else if session.columnShown { applyColumn() }
         replacedFullScreen = oldWindow.styleMask.contains(.fullScreen)
     }
 

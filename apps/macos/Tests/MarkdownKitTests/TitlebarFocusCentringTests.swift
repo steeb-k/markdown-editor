@@ -107,7 +107,7 @@ final class TitlebarTests: XCTestCase {
         let window = try XCTUnwrap(wc.window)
         // No accessory of ours: the title bar is the window's own.
         XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
-        XCTAssertEqual(window.titleVisibility, .visible, "the window's own title")
+        XCTAssertEqual(window.titleVisibility, .hidden, "AppKit's title is hidden: the app draws its own, over the editor")
         // Nothing else: no segmented control, no buttons but the window's.
         func controls(in view: NSView) -> [NSView] {
             var found: [NSView] = []
@@ -118,7 +118,7 @@ final class TitlebarTests: XCTestCase {
             }
             return found
         }
-        let strays = wc.titlebarControls.flatMap { controls(in: $0) }.filter { !wc.chromeController.windowButtons.contains($0) }
+        let strays = wc.titlebarControls.filter { $0 !== wc.titleView }.flatMap { controls(in: $0) }.filter { !wc.chromeController.windowButtons.contains($0) }
         XCTAssertTrue(strays.isEmpty, "stray controls in the title bar: \(strays)")
         XCTAssertFalse(wc.titlebarControls.contains { v in v.subviews.contains { $0 is NSSegmentedControl } })
         doc.close()
@@ -143,7 +143,7 @@ final class TitlebarTests: XCTestCase {
         let hit = frameView.hitTest(NSPoint(x: window.frame.width / 2, y: window.frame.height - 10))
         XCTAssertNotNil(hit)
         // AppKit's own title bar views, or the band (which drags and zooms like it): never the text.
-        XCTAssertTrue(hit === wc.titlebarBand || !(hit?.isDescendant(of: window.contentView!) ?? true), "the click does not fall through to the text view")
+        XCTAssertTrue(hit === wc.titlebarBand || hit === wc.titleView || !(hit?.isDescendant(of: window.contentView!) ?? true), "the click does not fall through to the text view")
         wc.chromeController.send(.pointerMoved)
         pump(ChromeController.fadeDuration + 0.3)
         XCTAssertTrue(wc.chromeVisible)
@@ -261,7 +261,7 @@ final class TitlebarTests: XCTestCase {
             // Beside the title bar's own views, where nothing of theirs lies, the band is what a click finds.
             let p = wc.root.convert(NSPoint(x: wc.root.frame.width - 3, y: wc.root.frame.maxY - bar / 2), to: nil)
             let hit = wc.root.hitTest(wc.root.convert(p, from: nil))
-            XCTAssertTrue(hit === band, "\(layout): \(String(describing: hit))")
+            XCTAssertTrue(hit === band || hit === wc.titleView, "\(layout): \(String(describing: hit))")
             // Below the row the text and the page are theirs again.
             let below = wc.root.hitTest(NSPoint(x: wc.root.frame.width - 20, y: wc.root.frame.maxY - bar - 20))
             XCTAssertFalse(below === band, "\(layout)")
@@ -453,16 +453,16 @@ final class OneDocumentPerWindowTests: XCTestCase {
         defer { doc.close() }
         let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
         let window = try XCTUnwrap(wc.window)
-        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertTrue(window.titlebarAccessoryViewControllers.allSatisfy { $0.isHidden } || window.titlebarAccessoryViewControllers.isEmpty)
         XCTAssertFalse(window.isDocumentEdited)
         // Notes mode puts a sidebar beside the editor and the title stays: the title row is the 32 point row over both.
         wc.startNotesMode()
         pump(0.2)
-        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertEqual(window.titleVisibility, .hidden)
         XCTAssertTrue(window.titlebarAccessoryViewControllers.allSatisfy { $0.isHidden } || window.titlebarAccessoryViewControllers.isEmpty)
-        let hidden = wc.titlebarControls.flatMap { $0.subviews }.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
-        XCTAssertFalse(hidden.isEmpty, "the title's own label is there")
+        XCTAssertFalse(wc.titleView.isHidden, "the app's own title is there")
+        XCTAssertTrue(SystemTitle.views(in: window).allSatisfy { $0.isHidden }, "and AppKit's is not")
     }
 }
 

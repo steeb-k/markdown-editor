@@ -298,6 +298,8 @@ final class UIScriptRunner {
             outlineStep(o, then: done)
         } else if let h = step["history"] as? [String: Any] {
             historyStep(h, then: done)
+        } else if let c = step["column"] as? [String: Any] {
+            columnStep(c, then: done)
         } else if let a = step["autosave"] as? [String: Any] {
             autosaveStep(a, then: done)
         } else if let p = step["palette"] {
@@ -635,7 +637,7 @@ final class UIScriptRunner {
         } else if step["dumpTitlebar"] != nil {
             var lines: [String] = []
             func walk(_ v: NSView, _ depth: Int) {
-                lines.append(String(repeating: " ", count: depth) + "\(Swift.type(of: v)) \(NSStringFromRect(v.frame)) hidden=\(v.isHidden) alpha=\(v.alphaValue)")
+                lines.append(String(repeating: " ", count: depth) + "\(Swift.type(of: v)) \(NSStringFromRect(v.frame)) hidden=\(v.isHidden) alpha=\(v.alphaValue)" + ((v as? NSTextField).map { " text=\($0.stringValue.debugDescription)" } ?? ""))
                 if depth < 6 { for s in v.subviews { walk(s, depth + 1) } }
             }
             if let f = window?.contentView?.superview { for s in f.subviews where !(s === window?.contentView) { walk(s, 0) } }
@@ -1274,12 +1276,13 @@ final class UIScriptRunner {
         return (top + bottom) / 2
     }
 
-    private var remembered: [String: [String: CGFloat]] = [:]
+    var remembered: [String: [String: CGFloat]] = [:]
 
     private func remember(_ name: String) {
         var v: [String: CGFloat] = [:]
         if let r = caretRectInWindow() { v["caretY"] = r.midY }
         if let c = controller { v["origin"] = c.scrollView.contentView.bounds.minY }
+        if let w = controller?.columnView?.frame.width { v["columnWidth"] = w }
         if let w = window { v["titlebar"] = w.frame.height - w.contentLayoutRect.height; rememberedFrames[name] = w.frame }
         remembered[name] = v
         record(["remember": name, "values": v.mapValues { Double($0) }], ok: true)
@@ -2274,20 +2277,25 @@ final class UIScriptRunner {
             check("title bar height unchanged since \(name)", was.map { abs($0 - bar) < 0.5 } ?? false, "was \(String(describing: was)) now \(bar)")
         }
         if a["titlebarClean"] != nil, let c = controller, let w = window {
-            // Nothing in the title bar but the window buttons and the title (with its proxy icon and "Edited" label).
+            // The title bar holds the window buttons and the app's own title, and nothing else: AppKit's title views (the
+            // title, its icon, the "Edited" button and the dash) are hidden, no accessory is showing, and the title is
+            // drawn, with the window's own name, inside the editor's pane.
             var strays: [String] = []
             func walk(_ v: NSView) {
-                // AppKit's own: the window buttons, the title (and its proxy icon and "Edited" label).
-                let own = c.chromeController.windowButtons.contains(v) || Swift.type(of: v) == NSTextField.self || "\(Swift.type(of: v))".hasPrefix("NSTheme")
-                    || "\(Swift.type(of: v))".hasPrefix("NSButtonTextField")
+                // AppKit's own: the window buttons; its title views are checked below.
+                let own = c.chromeController.windowButtons.contains(v) || SystemTitle.isSystemTitleView(v) || "\(Swift.type(of: v))".hasPrefix("NSTheme")
                 if v is NSControl, !own { strays.append("\(Swift.type(of: v))") }
                 for s in v.subviews where !s.isHidden && s.frame.height > 0 { walk(s) }
             }
-            for bar in c.titlebarControls { walk(bar) }
+            for bar in c.titlebarControls where bar !== c.titleView { walk(bar) }
             let accessories = w.titlebarAccessoryViewControllers.filter { !$0.isHidden }
-            check("title bar has no custom controls", strays.isEmpty && accessories.isEmpty && w.titleVisibility == .visible,
-                  "controls \(strays) accessories \(accessories.map { "\(Swift.type(of: $0.view))" }) title visibility \(w.titleVisibility.rawValue)")
+            let systemShowing = SystemTitle.views(in: w).filter { !$0.isHidden }.map { "\(Swift.type(of: $0))" }
+            let tv = c.titleView
+            let problem = titleProblem(c, w)
+            check("title bar has no custom controls", strays.isEmpty && accessories.isEmpty && systemShowing.isEmpty && w.titleVisibility == .hidden && problem == nil,
+                  "controls \(strays) accessories \(accessories.map { "\(Swift.type(of: $0.view))" }) system title showing \(systemShowing) title visibility \(w.titleVisibility.rawValue) title view \(tv.name.debugDescription) \(problem ?? "")")
         }
+        if let t = a["title"] as? [String: Any], let c = controller, let w = window { titleAssertions(t, c, w) }
         if let t = a["windows"] as? [String: Any], let w = window {
             // The editor windows, front to back: one document each.
             let fronts = NSApp.orderedWindows.filter { $0.isVisible && $0.windowController is EditorWindowController }
@@ -2299,8 +2307,9 @@ final class UIScriptRunner {
                 let ok = fronts.allSatisfy { $0.tabbingMode == .disallowed && ($0.tabGroup?.windows.count ?? 1) <= 1 } && !NSWindow.allowsAutomaticWindowTabbing
                 check("tabbing disallowed", ok, "modes \(fronts.map { $0.tabbingMode.rawValue }) automatic \(NSWindow.allowsAutomaticWindowTabbing)")
             }
-            if let v = t["titleShown"] as? Bool {
-                check("title shown \(v)", (w.titleVisibility == .visible) == v, "visibility \(w.titleVisibility.rawValue) title \(w.title.debugDescription)")
+            if let v = t["titleShown"] as? Bool, let c = controller {
+                let shown = c.titleView.superview != nil && !c.titleView.isHidden && c.titleView.name == w.title && !w.title.isEmpty
+                check("title shown \(v)", shown == v, "title view \(c.titleView.name.debugDescription) window title \(w.title.debugDescription)")
             }
             if let v = t["title"] as? String { check("window title \(v)", w.title == v, w.title.debugDescription) }
             // The red button's dot: the window's own flag. The title's "Edited" follows the document's.
@@ -2311,6 +2320,7 @@ final class UIScriptRunner {
             }
         }
         if let h = a["history"] as? [String: Any] { historyAssertions(h) }
+        if let c = a["column"] as? [String: Any] { columnAssertions(c) }
         if let f = a["documentFile"] as? [String: Any] { fileAssertions(f) }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }

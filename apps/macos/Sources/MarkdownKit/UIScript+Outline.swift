@@ -9,9 +9,9 @@ extension UIScriptRunner {
         guard let wc = notesController ?? controller else { record(["outline": "no window"], ok: false); done(); return }
         func num(_ k: String) -> Double? { (o[k] as? NSNumber)?.doubleValue }
         if let on = o["show"] as? Bool {
-            // The View menu's item, as the window's action.
-            if wc.session.outlineShown != on { _ = NSApp.sendAction(#selector(EditorWindowController.toggleOutline(_:)), to: wc, from: nil) }
-            record(["outline": on ? "shown" : "hidden", "width": wc.outline?.view.frame.width ?? 0], ok: wc.session.outlineShown == on)
+            // The outline showing in the column: View > Side Column, and the header's segment when the column was on History.
+            showColumnPane(.outline, on, wc)
+            record(["outline": on ? "shown" : "hidden", "width": wc.columnView?.frame.width ?? 0], ok: wc.session.outlineShown == on)
             done()
         } else if let n = o["waitEntries"] as? Int {
             let t0 = Date()
@@ -19,6 +19,14 @@ extension UIScriptRunner {
                 self.record(["outline": "waitEntries", "entries": wc.outline?.entries.count ?? -1, "ms": Int(Date().timeIntervalSince(t0) * 1000)], ok: ok)
                 done()
             }
+        } else if let needle = o["scrollToText"] as? String {
+            // The editor scrolled so that the line holding `needle` is at its top, as a reader's scroll would leave it
+            // (not the caret's doing: the selection stays where it is).
+            let text = wc.session.text as NSString
+            let r = text.range(of: needle)
+            if r.location != NSNotFound { wc.restoreEditorTop(EditorTopAnchor(character: text.lineRange(for: NSRange(location: r.location, length: 0)).location, intoLine: 0)) }
+            record(["outline": "scrollToText", "needle": needle], ok: r.location != NSNotFound)
+            later(0.3, done)
         } else if let key = o["key"] as? String {
             let codes: [String: (UInt16, String)] = ["down": (125, "\u{F701}"), "up": (126, "\u{F700}"), "left": (123, "\u{F702}"), "right": (124, "\u{F703}"),
                                                       "return": (36, "\r"), "space": (49, " ")]
@@ -60,8 +68,8 @@ extension UIScriptRunner {
     /// The divider between the editor's pane and the column dragged by `delta` points (negative: to the left, the
     /// column wider): real mouse events through the window, as a person's drag, the tracking loop AppKit's own.
     private func outlineDividerDrag(_ delta: Double, _ wc: EditorWindowController, then done: @escaping () -> Void) {
-        guard let host = wc.paneHost, let w = wc.window, let o = wc.outline else { record(["outline": "dragDivider", "error": "no column"], ok: false); done(); return }
-        let before = o.view.frame.width
+        guard let host = wc.paneHost, let w = wc.window, let o = wc.columnView else { record(["outline": "dragDivider", "error": "no column"], ok: false); done(); return }
+        let before = o.frame.width
         makeKey(w) { [self] in
             let x = wc.root.frame.maxX + 0.5
             let start = host.convert(NSPoint(x: x, y: host.bounds.midY), to: nil)
@@ -75,11 +83,35 @@ extension UIScriptRunner {
                 if let e = ev(type, p) { NSApp.postEvent(e, atStart: false) }
             }
             later(0.5) {
-                self.record(["outline": "dragDivider", "from": before, "to": o.view.frame.width, "hit": hit, "remembered": wc.session.outlineWidth,
-                             "default": Settings.shared.outlineWidth], ok: abs(o.view.frame.width - (before - CGFloat(delta))) < 2 || o.view.frame.width <= 160 || o.view.frame.width >= 480)
+                self.record(["outline": "dragDivider", "from": before, "to": o.frame.width, "hit": hit, "remembered": wc.session.columnWidth,
+                             "default": Settings.shared.sideColumnWidth], ok: abs(o.frame.width - (before - CGFloat(delta))) < 2 || o.frame.width <= 200 || o.frame.width >= 480)
                 done()
             }
         }
+    }
+
+    /// The side column as a person sets it: View > Side Column (or View > Show History) for the column, the header's segment
+    /// for the pane. `on` false hides the column when it shows `pane`.
+    func showColumnPane(_ pane: SideColumnPane, _ on: Bool, _ wc: EditorWindowController) {
+        let shows = pane == .outline ? wc.session.outlineShown : wc.session.historyShown
+        if !on {
+            if shows { _ = NSApp.sendAction(#selector(EditorWindowController.toggleSideColumn(_:)), to: wc, from: nil) }
+            return
+        }
+        if shows { return }
+        if pane == .history, !wc.session.columnShown {
+            _ = NSApp.sendAction(#selector(EditorWindowController.showHistory(_:)), to: wc, from: nil)
+            return
+        }
+        if !wc.session.columnShown { _ = NSApp.sendAction(#selector(EditorWindowController.toggleSideColumn(_:)), to: wc, from: nil) }
+        if wc.session.columnPane != pane { chooseSegment(pane, wc) }
+    }
+
+    /// A click on the header's segment.
+    func chooseSegment(_ pane: SideColumnPane, _ wc: EditorWindowController) {
+        guard let header = wc.sideColumn?.view.header, let i = SideColumnPane.allCases.firstIndex(of: pane) else { return }
+        header.selectedSegment = i
+        if let action = header.action { _ = NSApp.sendAction(action, to: header.target, from: header) }
     }
 
     private func outlineResponder(_ wc: EditorWindowController) -> String {
@@ -179,6 +211,19 @@ extension UIScriptRunner {
             var got: String?
             if let o, o.view.list.selectedRow >= 0, let node = o.view.list.item(atRow: o.view.list.selectedRow) as? OutlineNode { got = node.entry.text }
             check("outline marks \(want ?? "nothing")", got == want, "\(got ?? "nothing")")
+        }
+        if a["markedAtEditorTop"] as? Bool == true, let o {
+            // The marked heading is the one at, or the last above, the top of the visible text (what a reader's scroll decides).
+            let want = OutlineModel.index(containing: wc.visibleTopCharacter() ?? 0, in: o.entries) ?? (o.entries.isEmpty ? nil : 0)
+            var got: Int?
+            if o.view.list.selectedRow >= 0, let node = o.view.list.item(atRow: o.view.list.selectedRow) as? OutlineNode { got = node.index }
+            check("the marked heading is the editor's top (character \(wc.visibleTopCharacter() ?? -1))", want == got || (want != nil && got != nil && got! < want! && o.entries[got!].level < o.entries[want!].level), "wanted \(String(describing: want)) marked \(String(describing: got))")
+        }
+        if let heading = a["caretIn"] as? String {
+            // The heading the caret is in is this one, whatever the mark says.
+            let i = OutlineModel.index(containing: wc.textView.selectedRange().location, in: wc.session.outlineEntries)
+            let got = i.map { wc.session.outlineEntries[$0].text }
+            check("the caret is in \(heading.debugDescription)", got == heading, "\(got ?? "nothing")")
         }
         if let want = a["width"] as? NSNumber, let o {
             check("outline is \(want) wide", abs(o.view.frame.width - CGFloat(truncating: want)) <= 1, "\(o.view.frame.width)")

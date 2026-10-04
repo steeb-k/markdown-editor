@@ -364,6 +364,7 @@ final class HistoryView: NSView {
         restoreButton.setAccessibilityLabel("Restore this version")
         copyButton.setAccessibilityLabel("Copy this version's text")
         for v in [scroll, diffScroll, empty, hint, restoreButton, copyButton, band] as [NSView] { addSubview(v) }
+        band.isHidden = embedded
         apply()
     }
 
@@ -375,7 +376,13 @@ final class HistoryView: NSView {
     /// Whether a version is selected (the hint shows when none is).
     var showsHint = true { didSet { hint.isHidden = !showsHint } }
 
+    /// In the side column, which has the title bar's row and the header above its panes: this view starts where its room
+    /// does, and has no band of its own.
+    var embedded = true { didSet { band.isHidden = embedded; needsLayout = true } }
+
+    /// What the title bar takes from the top (the view runs under it when it is the window's own column).
     var topInset: CGFloat {
+        if embedded { return 0 }
         guard let w = window else { return 28 }
         return max(0, w.frame.height - w.contentLayoutRect.height)
     }

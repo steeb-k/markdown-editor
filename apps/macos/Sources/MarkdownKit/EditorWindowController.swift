@@ -16,6 +16,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// Stands in for the title bar where AppKit's own views do not take the click (see `TitlebarBandView`).
     let titlebarBand = TitlebarBandView()
     private var bandHeight: NSLayoutConstraint!
+    /// The window's title, over the editor's pane (see `TitlebarTitleView`).
+    let titleView = TitlebarTitleView(frame: .zero)
+    private var titleHeight: NSLayoutConstraint!
     /// The editor and the preview side by side (either may be collapsed away).
     let splitView = PreviewSplitView()
     let previewPane = NSView()
@@ -40,11 +43,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     var syncedSelectionURL: URL?
     var palette: PaletteController?
     var applyingSidebarWidth = false
-    /// The outline column (see `EditorWindowController+Outline`), and the split view that holds it beside the
-    /// editor's pane while it is shown.
-    var outline: OutlineController?
-    /// The history column, in the outline's place (see `EditorWindowController+History`).
-    var history: HistoryController?
+    /// The right-hand column with its two panes, the outline and the history (see `EditorWindowController+SideColumn`),
+    /// and the split view that holds it beside the editor's pane while it is shown.
+    var sideColumn: SideColumnController?
     /// The window this one replaced was full screen: it enters full screen once the old one has closed.
     var replacedFullScreen = false
     /// The bar that says another app changed the file (see `ExternalChangeBar`).
@@ -56,6 +57,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     var jumps = 0
     /// Instrumentation: the main-thread seconds the last arrival of the headings took.
     var lastOutlineArrival: TimeInterval = 0
+    /// The editor's scroll moves the outline's mark, once a display refresh (see `outlineScrolled`).
+    var outlineScrollCoalescer: DisplayCoalescer?
+    /// Scrolls the outline itself made (a jump) do not move the mark until then.
+    var outlineScrollQuietUntil: CFAbsoluteTime = 0
+    /// Instrumentation: main-thread seconds of the last update of the mark from the scroll, and how many there were.
+    var lastOutlineScrollUpdate: TimeInterval = 0
+    var outlineScrollUpdates = 0
     var observers: [NSObjectProtocol] = []
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
@@ -76,7 +84,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
+        // The title is the app's own (`titleView`); the window's `title` and `representedURL` stay set.
+        window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 360, height: 280)
@@ -114,7 +123,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         root.addSubview(titlebarFade)
         root.addSubview(toolbar)
         root.addSubview(titlebarBand)
+        root.addSubview(titleView)
         titlebarBand.translatesAutoresizingMaskIntoConstraints = false
+        titleView.translatesAutoresizingMaskIntoConstraints = false
+        titleHeight = titleView.heightAnchor.constraint(equalToConstant: 0)
         bandHeight = titlebarBand.heightAnchor.constraint(equalToConstant: 0)
         titlebarFade.translatesAutoresizingMaskIntoConstraints = false
         fadeHeight = titlebarFade.heightAnchor.constraint(equalToConstant: 52)
@@ -142,6 +154,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             titlebarBand.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             titlebarBand.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             bandHeight,
+            titleView.topAnchor.constraint(equalTo: root.topAnchor),
+            titleView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            titleView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            titleHeight,
             // Centred under the editor, unless the editor's pane (in Split) is narrower than the bar:
             // then it moves over just enough to stay inside the window.
             toolbarCentre,
@@ -169,6 +185,15 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome,
                                   reappearsAfterPause: settings.chromeReturnsAfterPause)
+        chrome.titleViews = [titleView]
+        titleView.onRename = { [weak self] in self?.markdownDocument?.rename(nil) }
+        titleView.canRename = { [weak self] in
+            guard let self, let doc = markdownDocument else { return false }
+            return chrome.state.isVisible && doc.fileURL != nil && !doc.isBundled
+        }
+        observers.append(NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { if let w = self?.window { SystemTitle.hide(in: w) } }
+        })
         splitView.onRatioChange = { [weak self] ratio in self?.session.settings.splitRatio = Double(ratio) }
         // When the editor's pane changes width (the divider, the window), its top character stays.
         splitView.captureTop = { [weak self] in self?.scrollView.isHidden == false ? self?.keptTopAnchor() : nil }
@@ -179,6 +204,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             if centring.isActive && !centring.userScrolling { centring.update() } else { restoreEditorTop(anchor) }
         }
         previewController.observeEditor(scroll)
+        outlineScrollCoalescer = DisplayCoalescer(view: scroll) { [weak self] in self?.outlineFollowScroll() }
+        observers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.outlineScrolled() }
+        })
         installTitlebar(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
         textView.onTyping = { [weak self] in self?.chrome.send(.typingStarted) }
@@ -197,8 +226,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             self?.applyLayout()
             self?.outlineLayoutChanged()
         }
-        session.onOutlineVisibilityChange = { [weak self] in self?.applyOutline() }
-        session.onHistoryVisibilityChange = { [weak self] in self?.applyColumn() }
+        session.onColumnChange = { [weak self] in self?.applyColumn() }
         session.onOutline = { [weak self] entries in self?.outlineArrived(entries) }
         previewController.onPageLine = { [weak self] line in self?.outlinePageScrolled(to: line) }
         observers.append(NotificationCenter.default.addObserver(
@@ -207,7 +235,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         toolbar.isHidden = !settings.showFormattingToolbar
         applyChrome()
         applyLayout()
-        if session.outlineShown { applyOutline() }
+        if session.columnShown { applyColumn() }
         observeChangesOnDisk()
     }
 
@@ -232,10 +260,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         centring.editorShown = { [weak self] in self?.scrollView.isHidden == false && self?.window?.isVisible == true }
         centring.layoutAllows = { [weak self] in self?.session.layout != .split }
         textView.centring = centring
-        session.onCaretActivity = { [weak self] in
-            self?.centring.request()
-            self?.outlineFollowCaret()
-        }
+        // The caret does not move the outline's mark; the scroll does (`outlineScrolled`).
+        session.onCaretActivity = { [weak self] in self?.centring.request() }
         session.onLayoutSettled = { [weak self] in self?.centring.layoutChanged() }
         centring.update()
     }
@@ -420,8 +446,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showEditorLayout(_:)): item.state = session.layout == .editor ? .on : .off; return true
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
-        case #selector(toggleOutline(_:)): item.state = session.outlineShown ? .on : .off; return true
-        case #selector(toggleHistory(_:)): item.state = session.historyShown ? .on : .off; return markdownDocument?.isBundled == false
+        case #selector(toggleSideColumn(_:)): item.state = session.columnShown ? .on : .off; return true
+        case #selector(showHistory(_:)):
+            item.state = session.historyShown ? .on : .off
+            // The history is of a document with a file of its own; a Help page has none.
+            return markdownDocument?.isBundled == false
         case #selector(copyAsHTML(_:)), #selector(copyAsRichText(_:)): return session.storage.length > 0
         case #selector(exportPDF(_:)): return true
         case .some(let action) where Self.forwardedToEditor.contains(action):
@@ -478,14 +507,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         }
         notesSplit?.tint = session.appearance.palette.rule
         paneHost?.tint = session.appearance.palette.rule
-        if let outline {
-            let style = SidebarStyle(session.appearance.palette)
-            if style != outline.view.style {
-                outline.view.style = style
-                outline.styleChanged()
-            }
-        }
-        history?.styleChanged(style: SidebarStyle(session.appearance.palette), diffStyle: historyDiffStyle)
+        styleSideColumn()
         updateFadeGeometry()
         let appearance = ThemeStore.windowAppearance(for: session.settings.theme)
         if window.appearance?.name != appearance?.name { window.appearance = appearance }
@@ -501,6 +523,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         titlebarFade.solid = max(0, bar - 6)
         fadeHeight.constant = bar + 22
         bandHeight.constant = bar
+        titleHeight.constant = bar
         positionChangeBar()
         titlebarFade.isHidden = bar == 0
         previewController.setChrome(top: bar, bottom: 0)
@@ -540,6 +563,25 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         updateFadeGeometry()
         if centring.isActive { window?.contentView?.layoutSubtreeIfNeeded() }
         centring.update()
+    }
+
+    /// The title view shows what the document's name, file and state are now.
+    func updateTitleView() {
+        guard let window else { return }
+        titleView.name = window.title
+        titleView.fileURL = markdownDocument?.isBundled == true ? nil : markdownDocument?.fileURL
+        titleView.edited = markdownDocument?.isDocumentEdited ?? false
+        SystemTitle.hide(in: window)
+    }
+
+    public override func synchronizeWindowTitleWithDocumentName() {
+        super.synchronizeWindowTitleWithDocumentName()
+        updateTitleView()
+    }
+
+    public override func setDocumentEdited(_ dirtyFlag: Bool) {
+        super.setDocumentEdited(dirtyFlag)
+        updateTitleView()
     }
 
     public override func showWindow(_ sender: Any?) {

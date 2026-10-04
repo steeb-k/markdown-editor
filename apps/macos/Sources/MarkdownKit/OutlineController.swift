@@ -132,6 +132,7 @@ final class OutlineView: NSView {
         empty.font = .systemFont(ofSize: 12)
         empty.isHidden = true
         for v in [scroll, empty, band] as [NSView] { addSubview(v) }
+        band.isHidden = embedded
         apply()
     }
 
@@ -141,8 +142,13 @@ final class OutlineView: NSView {
 
     var showsEmptyState = false { didSet { empty.isHidden = !showsEmptyState; needsLayout = true } }
 
-    /// What the title bar takes from the top (the column runs under it).
+    /// In the side column, which has the title bar's row and the header above its panes: this view starts where its room
+    /// does, and has no band of its own.
+    var embedded = true { didSet { band.isHidden = embedded; needsLayout = true } }
+
+    /// What the title bar takes from the top (the view runs under it when it is the window's own column).
     var topInset: CGFloat {
+        if embedded { return 0 }
         guard let w = window else { return 28 }
         return max(0, w.frame.height - w.contentLayoutRect.height)
     }

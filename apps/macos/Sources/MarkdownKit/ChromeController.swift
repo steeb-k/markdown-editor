@@ -75,9 +75,13 @@ final class ChromeController {
     /// which appears with the very keystroke that hides the chrome) fade with it.
     var titlebarViews: [NSView] {
         guard let window else { return [] }
-        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] }
-        return windowButtons
+        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] + titleViews }
+        return windowButtons + titleViews
     }
+
+    /// The app's own title (see `TitlebarTitleView`): it lives in the content view, over the editor's pane, and fades
+    /// with the title bar.
+    var titleViews: [NSView] = []
 
     /// The three window buttons.
     var windowButtons: [NSView] {

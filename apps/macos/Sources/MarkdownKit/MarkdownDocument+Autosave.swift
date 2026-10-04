@@ -51,6 +51,7 @@ extension MarkdownDocument {
     /// The text changed (not a load): the write and the snapshot are owed 2 s after the last change.
     func textChanged() {
         guard !isBundled else { return }
+        refreshTitleSoon()
         let due = Date(timeIntervalSinceNow: Self.autosaveDelay)
         // A keystroke moves the one timer on; it makes none.
         if let t = autosaveTimer, t.isValid { t.fireDate = due; return }
@@ -61,9 +62,42 @@ extension MarkdownDocument {
         autosaveTimer = timer
     }
 
+    /// The title says "Edited" by the change count, which NSDocument moves (when an undo group closes, when a write is done)
+    /// without always telling: one look after the edit's own event, which a burst of keys shares.
+    func refreshTitleSoon() {
+        guard !titleRefreshPending else { return }
+        titleRefreshPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.titleRefreshPending = false
+                (self?.windowControllers.first as? EditorWindowController)?.updateTitleView()
+            }
+        }
+    }
+
     func cancelAutosave() {
         autosaveTimer?.invalidate()
         autosaveTimer = nil
+    }
+
+    /// Every change of the change count: the window's title says "Edited" while it is on, and an edit that did not come
+    /// with a change of the text (Mark As, a discarded authorship check) still owes its write: without the timer the
+    /// document stayed edited until it was closed.
+    public override func updateChangeCount(_ change: NSDocument.ChangeType) {
+        super.updateChangeCount(change)
+        (windowControllers.first as? EditorWindowController)?.updateTitleView()
+        switch change {
+        case .changeDone, .changeRedone, .changeUndone:
+            if isDocumentEdited, autosaveTimer?.isValid != true { textChanged() }
+        default: break
+        }
+    }
+
+    /// A write's own clearing of the change count goes through here, not through `updateChangeCount(_:)`: nothing else says
+    /// the document is clean again (AppKit's own title kept "Edited" after every autosave in place).
+    public override func updateChangeCount(withToken changeCountToken: Any, for saveOperation: NSDocument.SaveOperationType) {
+        super.updateChangeCount(withToken: changeCountToken, for: saveOperation)
+        (windowControllers.first as? EditorWindowController)?.updateTitleView()
     }
 
     /// The pause: another app's newer version of the file first, then the snapshot and the write.
@@ -97,6 +131,10 @@ extension MarkdownDocument {
             savesInFlight -= 1
             if error == nil, explicit || saveOperation == .autosaveInPlaceOperation { recordSnapshot(reason, text: text) }
             completionHandler(error)
+            // NSDocument clears the change count after this returns, and tells nobody when it does for a save in place.
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated { (self?.windowControllers.first as? EditorWindowController)?.updateTitleView() }
+            }
         }
     }
 
