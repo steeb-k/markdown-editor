@@ -594,7 +594,7 @@
   "bitmap": true
  },
  {
-  "log": "--- Split: the editor pane centres and the preview follows it"
+  "log": "--- Split: dimming stays, the centring and its room are off, and the preview's lines pair exactly"
  },
  {
   "log": "--- split"
@@ -632,31 +632,34 @@
   "bitmap": true
  },
  {
-  "observeScroll": {
-   "do": "toggleFocusMode:",
-   "seconds": 0.8,
-   "expectFrames": 5,
-   "expectDuration": [
-    0.15,
-    0.5
-   ],
-   "monotonic": true
-  }
+  "action": "toggleFocusMode:",
+  "edits": false
  },
  {
-  "wait": 0.1
+  "wait": 0.6
  },
  {
   "assert": {
-   "focusInsets": true,
-   "focusCentred": 2,
+   "focusInsets": false,
    "sliding": false,
    "userScrolling": false,
-   "originChanged": "split-off"
+   "originUnchanged": "split-off",
+   "colors": {
+    "Second, also numbered": "dim"
+   },
+   "menu": {
+    "View > Keep Focused Line Centred": {
+     "enabled": false
+    },
+    "View > Focus Mode": {
+     "enabled": true,
+     "state": "on"
+    }
+   }
   }
  },
  {
-  "snapshot": "split-2-focus-on-middle",
+  "snapshot": "split-2-focus-on-dims-only",
   "bitmap": true
  },
  {
@@ -669,7 +672,11 @@
  },
  {
   "assert": {
-   "focusCentred": 2
+   "focusInsets": false,
+   "sliding": false,
+   "colors": {
+    "Lists that wrap": "dim"
+   }
   }
  },
  {
@@ -681,36 +688,8 @@
  },
  {
   "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "observeScroll": {
-   "type": "\n",
-   "seconds": 0.5,
-   "expectFrames": 2,
-   "expectDuration": [
-    0.05,
-    0.3
-   ],
-   "monotonic": true
-  }
- },
- {
-  "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "type": "\n\n\n",
-  "interval": 0.15
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "focusCentred": 2
+   "focusInsets": false,
+   "sliding": false
   }
  },
  {
@@ -726,90 +705,56 @@
  },
  {
   "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "snapshot": "split-4-first-line",
-  "bitmap": true
- },
- {
-  "command": "moveToEndOfDocument:",
-  "edits": false
- },
- {
-  "wait": 0.5
- },
- {
-  "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "snapshot": "split-5-last-line",
-  "bitmap": true
- },
- {
-  "selectText": "Second, also numbered",
-  "offset": 0,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "remember": "split-pre-scroll"
- },
- {
-  "scrollWheel": {
-   "dy": -260,
-   "wait": 0.1
-  }
- },
- {
-  "assert": {
-   "userScrolling": true,
-   "originChanged": "split-pre-scroll"
-  }
- },
- {
-  "remember": "split-scrolled"
- },
- {
-  "wait": 0.6
- },
- {
-  "assert": {
-   "originUnchanged": "split-scrolled",
-   "userScrolling": true,
+   "focusInsets": false,
    "sliding": false
   }
  },
  {
-  "snapshot": "split-6-scrolled-away",
-  "bitmap": true
+  "waitPreview": 30
  },
  {
-  "type": "x",
-  "interval": 0.05
- },
- {
-  "wait": 0.5
+  "log": "(at the top the page starts at the first element, line 5, after the front matter)"
  },
  {
   "assert": {
-   "focusCentred": 2,
-   "userScrolling": false
+   "preview": {
+    "scrollSynced": 6
+   },
+   "coreMatchesText": true,
+   "overlayConsistent": true
   }
  },
  {
-  "snapshot": "split-7-recentred-by-keystroke",
-  "bitmap": true
+  "editorScroll": 0.5
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "preview": {
+    "scrollSynced": 1
+   }
+  }
+ },
+ {
+  "previewScroll": 0.3
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "preview": {
+    "scrollSynced": 1
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "log": "--- the Editor layout turns centring on (the slide), Split turns it off again without moving the text"
  },
  {
   "selectText": "Second, also numbered",
@@ -820,51 +765,33 @@
   "wait": 0.4
  },
  {
-  "remember": "split-pre-off"
+  "layout": "editor"
  },
  {
-  "focus": {
-   "on": false
-  }
- },
- {
-  "wait": 0.6
+  "wait": 0.7
  },
  {
   "assert": {
-   "focusInsets": false,
-   "caretUnmoved": "split-pre-off",
-   "tolerance": 1
+   "focusInsets": true,
+   "focusCentred": 2,
+   "sliding": false,
+   "menu": {
+    "View > Keep Focused Line Centred": {
+     "enabled": true,
+     "state": "on"
+    }
+   }
   }
  },
  {
-  "snapshot": "split-8-focus-off-again",
+  "snapshot": "split-4-back-in-the-editor",
   "bitmap": true
  },
  {
-  "focus": {
-   "on": true
-  }
+  "remember": "editor-centred"
  },
  {
-  "wait": 0.6
- },
- {
-  "command": "moveToBeginningOfDocument:",
-  "edits": false
- },
- {
-  "wait": 0.5
- },
- {
-  "assert": {
-   "focusCentred": 2
-  }
- },
- {
-  "focus": {
-   "on": false
-  }
+  "layout": "split"
  },
  {
   "wait": 0.7
@@ -872,11 +799,17 @@
  {
   "assert": {
    "focusInsets": false,
-   "sliding": false
+   "sliding": false,
+   "userScrolling": false,
+   "menu": {
+    "View > Keep Focused Line Centred": {
+     "enabled": false
+    }
+   }
   }
  },
  {
-  "snapshot": "split-9-off-at-the-top",
+  "snapshot": "split-5-split-again",
   "bitmap": true
  },
  {
@@ -885,11 +818,44 @@
  {
   "assert": {
    "preview": {
-    "scrollSynced": 8
+    "scrollSynced": 1
    },
-   "coreMatchesText": true,
    "overlayConsistent": true
   }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "sliding": false
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "focusInsets": false,
+   "menu": {
+    "View > Keep Focused Line Centred": {
+     "enabled": true
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "split-6-focus-off",
+  "bitmap": true
  },
  {
   "log": "--- the setting off: focus mode without centring"

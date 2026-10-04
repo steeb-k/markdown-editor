@@ -105,5 +105,107 @@
  },
  {
   "snapshot": "pictures-caret-in-source"
+ },
+ {
+  "log": "--- An image inside a sentence: its alt text shows like a link with the markup concealed and no picture (the sentence stays whole); a picture only for an image that is a paragraph of its own"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "selectText": "The end.",
+  "offset": 0
+ },
+ {
+  "waitImages": 10
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "assert": {
+   "decorations": {
+    "image": 3
+   },
+   "hidden": [
+    "# ",
+    "![retina screenshot](retina-144dpi.png)",
+    "![plain picture](plain-72dpi.png)",
+    "![",
+    "](small.png)",
+    "![a picture of its own](small.png)"
+   ]
+  }
+ },
+ {
+  "assert": {
+   "colors": {
+    "tiny": "none"
+   }
+  }
+ },
+ {
+  "evalPreview": "const p = [...document.querySelectorAll('p')].find(p => p.textContent.includes('inside a sentence')); return p.querySelectorAll('img').length + ' ' + p.textContent.replace(/\\s+/g,' ').trim();",
+  "expect": "1 A smaller one, and one inside a sentence like this."
+ },
+ {
+  "evalPreview": "const p = [...document.querySelectorAll('p')].find(p => p.textContent.includes('inside a sentence')); return getComputedStyle(p.querySelector('img')).display + ' ' + p.className;",
+  "expect": "inline "
+ },
+ {
+  "evalPreview": "const i = document.querySelector('p.picture > img[alt=\"a picture of its own\"]'); return getComputedStyle(i).display;",
+  "expect": "block"
+ },
+ {
+  "evalPreview": "const p = [...document.querySelectorAll('p')].find(p => p.textContent.includes('inside a sentence')); const r = p.getBoundingClientRect(); return String(r.height < 200);",
+  "expect": "true"
+ },
+ {
+  "snapshot": "pictures-sentence",
+  "bitmap": true
+ },
+ {
+  "selectText": "tiny",
+  "offset": 2
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "decorations": {
+    "image": 3
+   },
+   "hidden": [
+    "# ",
+    "![retina screenshot](retina-144dpi.png)",
+    "![plain picture](plain-72dpi.png)",
+    "![a picture of its own](small.png)"
+   ]
+  }
+ },
+ {
+  "snapshot": "pictures-sentence-caret-in",
+  "bitmap": true
+ },
+ {
+  "selectText": "The end.",
+  "offset": 0
+ },
+ {
+  "waitStyled": 10
+ },
+ {
+  "assert": {
+   "decorations": {
+    "image": 3
+   }
+  }
  }
 ]

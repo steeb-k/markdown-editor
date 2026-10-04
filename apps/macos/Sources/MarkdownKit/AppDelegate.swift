@@ -119,6 +119,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
 
+    /// The layout of the window in front (the key window, else the front-most document window).
+    static var frontLayout: LayoutMode? {
+        let window = [NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }.first { $0.windowController is EditorWindowController }
+            ?? NSApp.orderedWindows.first { $0.isVisible && $0.windowController is EditorWindowController }
+        return (window?.windowController as? EditorWindowController)?.session.layout
+    }
+
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(toggleFormattingToolbar(_:)):
@@ -126,7 +133,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
             return true
         case #selector(toggleCentreFocusedLine(_:)):
             item.state = Settings.shared.centreFocusedLine ? .on : .off
-            return true
+            // Centring is for the Editor layout: beside the preview the scroll sync needs the text where it is.
+            let split = Self.frontLayout == .split
+            item.toolTip = split ? "Applies to the Editor layout: beside the preview the line stays where it is and focus mode only dims."
+                                 : "Focus mode keeps the line you are writing in the middle of the window."
+            return !split
         case #selector(showWelcome(_:)): return HelpDocuments.resource("Welcome", extension: "md") != nil
         case #selector(showAcknowledgements(_:)): return HelpDocuments.resource("Acknowledgements", extension: "md") != nil
         case #selector(biggerText(_:)): return Settings.shared.fontSize < Settings.fontSizeRange.upperBound

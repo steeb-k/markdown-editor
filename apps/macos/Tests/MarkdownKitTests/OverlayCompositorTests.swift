@@ -17,6 +17,7 @@ final class OverlayCompositorTests: XCTestCase {
             if let keep = layers.focus, !keep.contains(where: { NSLocationInRange(i, $0) }) { return .dim }
             if let r = layers.pos.first(where: { NSLocationInRange(i, $0.range) }) { return r.paint }
             if let r = layers.authorship.first(where: { NSLocationInRange(i, $0.range) }) { return r.paint }
+            if let r = layers.code.first(where: { NSLocationInRange(i, $0.range) }) { return r.paint }
             return nil
         }
     }
@@ -76,6 +77,7 @@ final class OverlayCompositorTests: XCTestCase {
             var l = OverlayLayers()
             l.authorship = runs([.authorship(.ai), .authorship(.reference)], length: length)
             l.pos = runs([.pos(.noun), .pos(.verb), .pos(.adjective)], length: length)
+            l.code = runs([.code(.keyword), .code(.string), .code(.comment)], length: length)
             if rng.next() % 3 != 0 {
                 var keep: [NSRange] = []
                 var at = Int(rng.next() % 10)
@@ -214,5 +216,123 @@ final class OverlayCompositorTests: XCTestCase {
         XCTAssertEqual(e.signature(), before, "no stored attribute changed")
         XCTAssertEqual(e.string, text)
         XCTAssertFalse(e.um.canUndo, "nothing to undo")
+    }
+
+    // MARK: the code layer
+
+    func testCodeRolesAreTheLowestLayer() {
+        var l = OverlayLayers()
+        l.code = [Self.run(0, 30, .code(.keyword))]
+        l.authorship = [Self.run(5, 5, .authorship(.ai))]
+        l.pos = [Self.run(8, 4, .pos(.noun))]
+        var got = OverlayCompositor.compose(l, in: NSRange(location: 0, length: 40))
+        XCTAssertEqual(got, [Self.run(0, 5, .code(.keyword)), Self.run(5, 3, .authorship(.ai)), Self.run(8, 4, .pos(.noun)), Self.run(12, 18, .code(.keyword))])
+        l.focus = [NSRange(location: 0, length: 6)]
+        got = OverlayCompositor.compose(l, in: NSRange(location: 0, length: 40))
+        XCTAssertEqual(got, [Self.run(0, 5, .code(.keyword)), Self.run(5, 1, .authorship(.ai)), Self.run(6, 34, .dim)])
+    }
+
+    func testTheCodeLayerFollowsEditsInPlaceAsTheOthersDo() {
+        var rng = SplitMix(seed: 0xBEE5)
+        for round in 0..<300 {
+            let o = OverlayCompositor()
+            var runs: [OverlayRun] = []
+            var at = Int(rng.next() % 4)
+            while at < 200 {
+                let len = 1 + Int(rng.next() % 8)
+                if rng.next() % 4 != 0 { runs.append(Self.run(at, len, .code([.keyword, .string, .comment][Int(rng.next() % 3)]))) }
+                at += len + Int(rng.next() % 4)
+            }
+            o.patchCode(runs, in: NSRange(location: 0, length: 300))
+            XCTAssertEqual(o.layers.code, runs)
+            let change = TextChange(old: NSRange(location: Int(rng.next() % 220), length: Int(rng.next() % 12)), newLength: Int(rng.next() % 12))
+            o.shiftCode(through: change)
+            XCTAssertEqual(o.layers.code, OverlayCompositor.shift(runs, through: change), "round \(round): \(change)")
+        }
+    }
+
+    func testPatchingTheCodeLayerReplacesOnlyTheWindow() {
+        let o = OverlayCompositor()
+        o.patchCode([Self.run(0, 10, .code(.keyword)), Self.run(20, 10, .code(.string)), Self.run(40, 10, .code(.comment))], in: NSRange(location: 0, length: 60))
+        // A result for the middle block: its runs are replaced, a run crossing the window's edge keeps its outside.
+        o.patchCode([Self.run(22, 3, .code(.number))], in: NSRange(location: 15, length: 20))
+        XCTAssertEqual(o.layers.code, [Self.run(0, 10, .code(.keyword)), Self.run(22, 3, .code(.number)), Self.run(40, 10, .code(.comment))])
+        o.patchCode([Self.run(5, 20, .code(.type))], in: NSRange(location: 8, length: 10))
+        XCTAssertEqual(o.layers.code, [Self.run(0, 8, .code(.keyword)), Self.run(8, 10, .code(.type)), Self.run(22, 3, .code(.number)), Self.run(40, 10, .code(.comment))])
+        // The same answer again changes nothing (no application is owed).
+        let before = o.layers
+        o.patchCode([Self.run(8, 10, .code(.type))], in: NSRange(location: 8, length: 10))
+        XCTAssertEqual(o.layers, before)
+        // Nothing for a stretch: its runs go.
+        o.patchCode([], in: NSRange(location: 0, length: 30))
+        XCTAssertEqual(o.layers.code, [Self.run(40, 10, .code(.comment))])
+    }
+
+    /// The stored attributes carry no colour for code roles: one run of the block's own colour, as before the roles
+    /// were drawn; the roles are the overlay's, for the window, and follow a scroll and a theme change.
+    func testCodeRolesAreNotStoredAndFollowScrollingAndTheTheme() throws {
+        var text = "# Title\n\n"
+        for i in 0..<700 { text += "Prose paragraph \(i) with some words in it to fill the space.\n\n```rust\nfn compute_\(i)(x: u32) -> u32 { x + \(i) } // note \(i)\n```\n\n" }
+        XCTAssertGreaterThan(text.utf16.count, OverlayCompositor.wholeTextLimit)
+        let e = Editor(text: text)
+        let s = e.session
+        let ns = e.string as NSString
+        // Stored: no role colours anywhere (every character of a block has the block's colour).
+        let palette = s.appearance.palette
+        for needle in ["fn compute_0(", "// note 0", "fn compute_699(", "// note 699"] {
+            let r = ns.range(of: needle)
+            var stored = Set<String>()
+            var at = r.location
+            while at < NSMaxRange(r) {
+                var eff = NSRange()
+                if let c = s.storage.attribute(.foregroundColor, at: at, effectiveRange: &eff) as? NSColor { stored.insert(c.hexString) }
+                at = NSMaxRange(eff)
+            }
+            XCTAssertEqual(stored, [palette.codeText.hexString], needle)
+        }
+        // The layer has the roles of the whole text; the window paints the part around what is visible (the top).
+        s.visibleRange = { NSRange(location: 0, length: 2000) }
+        s.overlay.reset()
+        s.overlay.apply()
+        XCTAssertGreaterThan(s.overlay.layers.code.count, 400)
+        let last = ns.range(of: "fn compute_699(").location
+        XCTAssertNil(e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: last, effectiveRange: nil), "far from the window: not painted")
+        let first = ns.range(of: "fn compute_0(").location
+        XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: first, effectiveRange: nil) as? NSColor)?.hexString, palette.syntax.keyword.hexString)
+        // Scrolling there: the window moves with the visible range, from the layer, in the same call.
+        s.visibleRange = { NSRange(location: last - 500, length: 3000) }
+        s.overlay.apply()
+        XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: last, effectiveRange: nil) as? NSColor)?.hexString, palette.syntax.keyword.hexString)
+        XCTAssertNil(e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: first, effectiveRange: nil), "left behind: cleared")
+        let note = ns.range(of: "// note 699").location
+        XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: note, effectiveRange: nil) as? NSColor)?.hexString, palette.syntax.comment.hexString)
+        // A theme change repaints what is painted, with the new theme's colours.
+        let dark = ThemeStore.shared.palette(ThemeStore.shared.theme(id: "dark"))
+        s.overlay.palette = dark
+        XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: last, effectiveRange: nil) as? NSColor)?.hexString, dark.syntax.keyword.hexString)
+    }
+
+    func testAnEditShiftsTheCodeLayerAndTheAnalysisRepaintsTheBlock() throws {
+        let e = Editor(text: "Intro\n\n```rust\nfn main() { let x = 1; }\n```\n\nEnd\n")
+        let s = e.session
+        let p = s.appearance.palette
+        func shown(_ needle: String) -> String? {
+            s.overlay.apply()
+            let at = (e.string as NSString).range(of: needle).location
+            return (e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil) as? NSColor)?.hexString
+        }
+        XCTAssertEqual(shown("fn main"), p.syntax.keyword.hexString)
+        // Typing above the block: its colours move with it, before any analysis has answered.
+        e.edit(range: NSRange(location: 0, length: 0), with: "Some words typed above. ")
+        XCTAssertEqual(shown("fn main"), p.syntax.keyword.hexString)
+        XCTAssertTrue(s.waitUntilStyled())
+        XCTAssertEqual(shown("fn main"), p.syntax.keyword.hexString)
+        XCTAssertEqual(shown("let x"), p.syntax.keyword.hexString)
+        XCTAssertNil(shown("Intro"))
+        // Opening the comment in the block recolours the rest of it once the analysis has answered.
+        let at = (e.string as NSString).range(of: "fn main").location
+        e.edit(range: NSRange(location: at, length: 0), with: "/* ")
+        XCTAssertTrue(s.waitUntilStyled())
+        XCTAssertEqual(shown("fn main"), p.syntax.comment.hexString)
     }
 }

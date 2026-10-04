@@ -113,7 +113,7 @@ extension EditorWindowController {
         previewController.onOpenNote = on ? { [weak self] target, _ in self?.openWikilink(target: target, heading: nil) } : nil
         if on {
             if notesSplit == nil { installNotesSplit(in: window) }
-            window.minSize.width = baseMinWidth + CGFloat(workspace?.sidebarWidth ?? 240) + 1
+            window.minSize.width = baseMinWidth + CGFloat(workspace?.sidebarWidth ?? 240) + 1 + outlineMinExtra
             if window.frame.width < window.minSize.width {
                 var f = window.frame
                 f.size.width = window.minSize.width
@@ -123,7 +123,7 @@ extension EditorWindowController {
             documentBecameFront()
         } else {
             removeNotesSplit()
-            window.minSize.width = baseMinWidth
+            window.minSize.width = baseMinWidth + outlineMinExtra
         }
         updateFadeGeometry()
         // The tabs take the pane's width, or the whole row again.
@@ -154,10 +154,12 @@ extension EditorWindowController {
         // The editor's own view (with the toolbar and fade over it) becomes the right-hand pane.
         window.contentView = container
         split.addSubview(bar.view)
-        split.addSubview(root)
+        // The editor's pane: its own view, or the split that holds it beside the outline.
+        let pane: NSView = paneHost ?? root
+        split.addSubview(pane)
         let w = CGFloat(workspace.sidebarWidth)
         bar.view.frame = NSRect(x: 0, y: 0, width: w, height: split.bounds.height)
-        root.frame = NSRect(x: w + 1, y: 0, width: max(0, split.bounds.width - w - 1), height: split.bounds.height)
+        pane.frame = NSRect(x: w + 1, y: 0, width: max(0, split.bounds.width - w - 1), height: split.bounds.height)
         split.adjustSubviews()
         workspace.requestSnapshot()
         bar.view.needsLayout = true
@@ -172,16 +174,17 @@ extension EditorWindowController {
         notesSplit = nil
         let container = notesContainer
         notesContainer = nil
-        if window.contentView === container { window.contentView = root }
+        let pane: NSView = paneHost ?? root
+        if window.contentView === container { window.contentView = pane }
         _ = split
-        root.autoresizingMask = []
-        root.frame = window.contentView?.bounds ?? root.frame
-        root.needsLayout = true
+        pane.autoresizingMask = []
+        pane.frame = window.contentView?.bounds ?? pane.frame
+        pane.needsLayout = true
     }
 
     private func applySidebarWidth() {
         guard let split = notesSplit, let bar = sidebar?.view, let w = workspace?.sidebarWidth else { return }
-        window?.minSize.width = baseMinWidth + w + 1
+        window?.minSize.width = baseMinWidth + w + 1 + outlineMinExtra
         guard abs(bar.frame.width - w) > 0.5 else { return }
         applyingSidebarWidth = true
         split.setPosition(w, ofDividerAt: 0)
@@ -640,18 +643,29 @@ extension EditorWindowController {
 extension EditorWindowController: NSSplitViewDelegate {
     public func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool { false }
 
-    public func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat { 160 }
-
-    public func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        min(480, max(160, splitView.bounds.width - 320))
+    public func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        // The outline's divider: the editor's pane keeps its room, the column its 480 at most.
+        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 481) }
+        return 160
     }
 
-    /// A window's resize is the editor's: the sidebar keeps its width.
-    public func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool { view !== sidebar?.view }
+    public func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 161) }
+        return min(480, max(160, splitView.bounds.width - 320))
+    }
+
+    /// A window's resize is the editor's: the sidebar and the outline keep their widths.
+    public func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
+        splitView === paneHost ? view !== outline?.view : view !== sidebar?.view
+    }
 
     public func splitViewDidResizeSubviews(_ notification: Notification) {
         // The tabs follow the divider as it is dragged.
         tabs.refresh()
+        if (notification.object as? NSSplitView) === paneHost {
+            outlineDividerMoved()
+            return
+        }
         guard !applyingSidebarWidth, let bar = sidebar?.view, let workspace else { return }
         // Only the user's drag of the divider (a window's resize leaves the sidebar's width alone).
         if NSApp.currentEvent?.type == .leftMouseDragged || NSApp.currentEvent?.type == .leftMouseUp {

@@ -78,6 +78,14 @@ pub struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct OutlineEntry {
+    pub level: u8,
+    pub text: String,
+    pub range: Utf16Range,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ImageRef {
     pub range: Utf16Range,
     pub destination: String,
@@ -531,6 +539,12 @@ impl From<core::Block> for Block {
             heading_level: b.heading_level,
             depth: b.depth,
         }
+    }
+}
+
+impl From<core::OutlineEntry> for OutlineEntry {
+    fn from(e: core::OutlineEntry) -> Self {
+        OutlineEntry { level: e.level, text: e.text, range: e.range.into(), line: e.line }
     }
 }
 
@@ -998,6 +1012,11 @@ impl Document {
 
     pub fn prose_ranges(&self, within: Option<Utf16Range>) -> Vec<Utf16Range> {
         self.with(|d| d.prose_ranges(within.map(Into::into)).into_iter().map(Utf16Range::from).collect())
+    }
+
+    /// The headings in order, for an outline.
+    pub fn outline(&self) -> Vec<OutlineEntry> {
+        self.with(|d| d.outline().into_iter().map(OutlineEntry::from).collect())
     }
 
     pub fn images(&self) -> Vec<ImageRef> {

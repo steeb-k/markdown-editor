@@ -26,7 +26,7 @@ expression: d.render_html(&lines())
 </blockquote>
 <h2 id="code" data-line="25">Code</h2>
 <p data-line="27">Inline <code>code with a mispeled wrod</code> and a bare URL <a href="https://example.com/a-misspeled-path">https://example.com/a-misspeled-path</a> plus <a href="http://www.commonmark.org">www.commonmark.org</a>.</p>
-<pre data-line="29"><code class="language-swift"><span class="s-comment s-line s-double-slash">// A fenced block: one continuous panel, no stripes.</span>
+<pre data-line="29" data-lang="Swift"><code class="language-swift"><span class="s-comment s-line s-double-slash">// A fenced block: one continuous panel, no stripes.</span>
 <span class="s-storage s-type s-swift">let</span> greeting <span class="s-keyword s-operator s-assignment">=</span> <span class="s-string s-quoted s-double">"</span><span class="s-string s-quoted s-double">h</span><span class="s-string s-quoted s-double">e</span><span class="s-string s-quoted s-double">l</span><span class="s-string s-quoted s-double">o</span><span class="s-string s-quoted s-double"> </span><span class="s-string s-quoted s-double">w</span><span class="s-string s-quoted s-double">r</span><span class="s-string s-quoted s-double">o</span><span class="s-string s-quoted s-double">l</span><span class="s-string s-quoted s-double">d</span><span class="s-string s-quoted s-double">"</span>
 <span class="s-keyword s-control s-loop">for</span> i <span class="s-keyword s-control s-loop">in</span> <span class="s-constant s-numeric s-integer">0</span><span class="s-keyword s-operator s-custom">..&lt;</span><span class="s-constant s-numeric s-integer">3</span> {
     print(greeting, i)

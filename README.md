@@ -85,6 +85,8 @@ scripts/macos/ui-script.sh scripts/macos/ui/notes.json          # notes mode: si
 scripts/macos/ui-script.sh scripts/macos/ui/notes-files.json    # new note and folder, rename with link updates and undo, drag, Trash, templates, today's note
 scripts/macos/ui-script.sh scripts/macos/ui/notes-links.json    # wikilinks: Cmd-click and preview clicks, plain mode and notes mode, a link to nothing
 scripts/macos/ui-script.sh scripts/macos/ui/quick-open.json     # the palette: fuzzy on titles and paths, arrows, Return, Option-Return, Escape
+scripts/macos/ui-script.sh scripts/macos/ui/outline.json        # the outline column: real clicks jump the editor and the preview, the mark follows caret and page, keys, folds, divider, notes mode, tabs
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/outline-big.json   # 1000 headings: main-thread cost of each kind of update (under 10 ms but one rare shape)
 ```
 
 UI scripts and their steps: [scripts/macos/ui/README.md](scripts/macos/ui/README.md).
@@ -93,6 +95,19 @@ Generated and gitignored: `apps/macos/Frameworks/`, `apps/macos/Sources/Markdown
 
 `UI_BUILD=/some/dir scripts/macos/ui-script.sh ...` (and `ui-big-focus.sh`) builds and runs `/some/dir/Markdown.app`
 instead of `build/Markdown.app`, so a copy someone is using is left alone.
+
+## Outline
+
+View > Outline (⌃⌘O) puts a column of the document's headings on the right, 220 points wide and resizable, in every
+layout (Preview too), beside the notes sidebar when that is on (neither makes the window larger). It lists ATX and setext
+headings, in lists and quotes too, with their inline markup stripped (never what only looks like a heading inside code or
+HTML), indented by level with a disclosure triangle per level. The heading the caret is in is marked (in the Preview layout,
+the heading at the top of the page) and kept in view without taking the keyboard. A click, or Return on the selected row,
+moves the caret there and scrolls the editor so the heading is at the top (in the middle with focus centring on), and the
+preview to the same heading by its source line; the arrow keys move through the list and fold. It comes from the core
+(`Document::outline()`, built from the blocks the analysis already has), is asked for a quarter of a second after the last
+analysis (typing only moves a timer), and is told apart from the tab strip, which ends at its left edge. Each window keeps
+its own visibility and width; Settings has "Show outline in new windows" (the last width dragged is where new windows start).
 
 ## Notes mode
 

@@ -156,3 +156,20 @@ final class EditorRootView: NSView {
         if abs(event.deltaX) + abs(event.deltaY) >= 1 { onPointerMoved?() }
     }
 }
+
+/// A strip over the top of the content view, as high as the title bar, that does what the title bar does where AppKit's
+/// own title bar views do not reach: a few points beside the tab strip's room at each end, and the gaps between the
+/// window buttons, where the text view, the web view or the scroll view's backdrop took the click and a drag or a
+/// double-click on the row did nothing. AppKit's views stay above it (the buttons, the tab strip, the file name's own
+/// button), and it is clear: nothing is drawn.
+final class TitlebarBandView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            TitlebarDoubleClick.setting().perform(on: window)
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
+}

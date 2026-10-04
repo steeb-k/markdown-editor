@@ -131,6 +131,20 @@ pub struct Block {
     pub depth: u8,
 }
 
+/// One heading of the document, for an outline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutlineEntry {
+    /// 1 to 6.
+    pub level: u8,
+    /// What a reader reads: the heading's inline markup stripped (emphasis, code ticks, link and image
+    /// syntax, entities and escapes decoded), a line break as a space, blanks trimmed. May be empty (`#`).
+    pub text: String,
+    /// The whole heading as written, markers included (an ATX heading's `#`s, a setext heading's underline).
+    pub range: TextRange,
+    /// 0-based line of the heading's first character.
+    pub line: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageRef {
     /// The whole element, `![alt](dest "title")`.

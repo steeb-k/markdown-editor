@@ -98,6 +98,8 @@ public final class Settings: NSObject {
         static let templatesFolder = "templatesFolder"
         static let noteSort = "noteSort"
         static let sidebarWidth = "sidebarWidth"
+        static let outlineByDefault = "outlineByDefault"
+        static let outlineWidth = "outlineWidth"
         static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
@@ -129,6 +131,8 @@ public final class Settings: NSObject {
             Key.templatesFolder: "Templates",
             Key.noteSort: NoteSort.name.rawValue,
             Key.sidebarWidth: 240.0,
+            Key.outlineByDefault: false,
+            Key.outlineWidth: 220.0,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -198,6 +202,19 @@ public final class Settings: NSObject {
     public var splitRatio: Double {
         get { min(max(defaults.double(forKey: Key.splitRatio), 0.25), 0.75) }
         set { defaults.set(min(max(newValue, 0.25), 0.75), forKey: Key.splitRatio) }
+    }
+
+    /// Whether new windows open with the outline column on the right (each window keeps its own after that).
+    public var showOutlineInNewWindows: Bool {
+        get { defaults.bool(forKey: Key.outlineByDefault) }
+        set { defaults.set(newValue, forKey: Key.outlineByDefault); changed() }
+    }
+
+    /// The outline column's width in points: the last one the user dragged it to, where new windows start.
+    /// Setting it posts no change notification (a drag would be a storm of them).
+    public var outlineWidth: Double {
+        get { min(max(defaults.double(forKey: Key.outlineWidth), 160), 480) }
+        set { defaults.set(min(max(newValue, 160), 480), forKey: Key.outlineWidth) }
     }
 
     public var autoHideChrome: Bool {

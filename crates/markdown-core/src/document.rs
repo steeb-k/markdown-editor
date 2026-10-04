@@ -178,6 +178,25 @@ impl Document {
         self.convert_nested(&pairs).into_iter().map(|(s, e)| TextRange::new(s, e)).collect()
     }
 
+    /// The document's headings in order (ATX and setext, in lists and quotes too; never what only looks like
+    /// one inside code or HTML), built from the blocks the analysis already enumerates. See [`OutlineEntry`].
+    pub fn outline(&self) -> Vec<OutlineEntry> {
+        let headings: Vec<&crate::analysis::IBlock> =
+            self.analysis.blocks.iter().filter(|b| b.kind == BlockKind::Heading).collect();
+        let pairs: Vec<(usize, usize)> = headings.iter().map(|b| (b.start, b.end)).collect();
+        let conv = self.convert_nested(&pairs);
+        headings
+            .iter()
+            .zip(conv)
+            .map(|(b, (s, e))| OutlineEntry {
+                level: b.heading_level.unwrap_or(1),
+                text: crate::outline::heading_text(&self.text[b.start..b.end], b.depth > 0),
+                range: TextRange::new(s, e),
+                line: b.line,
+            })
+            .collect()
+    }
+
     pub fn images(&self) -> Vec<ImageRef> {
         let mut order: Vec<usize> = (0..self.analysis.images.len()).collect();
         order.sort_by_key(|&i| (self.analysis.images[i].start, Reverse(self.analysis.images[i].end)));

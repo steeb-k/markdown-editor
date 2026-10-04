@@ -68,7 +68,8 @@ final class ClickHitTestTests: XCTestCase {
                 for focus in [false, true] {
                     doc.session.setFocusEnabled(focus)
                     pump(0.6)
-                    if focus { XCTAssertGreaterThan(wc.editorScrollView.focusInset, 0, "focus mode makes room") }
+                    // (In Split focus mode only dims: no room above and below the text, nothing centred.)
+                    if focus { XCTAssertEqual(wc.editorScrollView.focusInset > 0, layout == .editor, "focus mode makes room in the Editor layout only") }
                     let what = "\(layout), toolbar \(toolbar), focus \(focus)"
                     try assertTextTakesClicks(wc, what)
                     // The chrome faded by typing: the same.

@@ -458,5 +458,786 @@
   "setting": {
    "chromeReturnsAfterPause": true
   }
+ },
+ {
+  "log": "--- real double-clicks on the title bar in every layout (the web view under the full-size content view once took the row: only the file name's own button answered in Preview, and the half of Split over the page)"
+ },
+ {
+  "setting": {
+   "autoHideChrome": true,
+   "chromeReturnsAfterPause": false
+  }
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "log": "--- editor, chrome showing"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "titlebarClean": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "titlebar-editor-visible",
+  "bitmap": true
+ },
+ {
+  "log": "--- split, chrome showing"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "titlebarClean": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "titlebar-split-visible",
+  "bitmap": true
+ },
+ {
+  "log": "--- preview, chrome showing"
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "titlebarClean": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "titlebar-preview-visible",
+  "bitmap": true
+ },
+ {
+  "log": "--- and with the chrome faded by typing (the layouts that have a text view to type in, then Preview with it still faded)"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "selectText": "Lists that wrap",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "type": "x",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "titlebarClean": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "snapshot": "titlebar-editor-faded",
+  "bitmap": true
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "type": "x",
+  "interval": 0.05
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false,
+   "titlebarClean": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "snapshot": "titlebar-split-faded",
+  "bitmap": true
+ },
+ {
+  "action": "showPreviewLayout:",
+  "edits": false
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "chromeVisible": false
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.99,
+   "count": 2,
+   "expectWindowAction": true,
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "titlebar-preview-faded",
+  "bitmap": true
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "setting": {
+   "chromeReturnsAfterPause": true
+  }
  }
 ]

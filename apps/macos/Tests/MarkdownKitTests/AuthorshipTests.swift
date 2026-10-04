@@ -73,7 +73,7 @@ extension Editor {
                 switch paint {
                 case .authorship(let s)?: if (s == .ai) != (kind == .ai) { out.append("character \(i) has the wrong source colour") }
                 case .pos?, .dim?: break
-                case nil: out.append("character \(i) is borrowed text but is not coloured")
+                case nil, .code?: out.append("character \(i) is borrowed text but is not coloured")
                 }
             } else if case .authorship? = paint {
                 out.append("character \(i) is the user's but is coloured as borrowed")

@@ -147,6 +147,11 @@ final class TabStripView: NSView {
     var leadingInset: CGFloat = 0 {
         didSet { if leadingInset != oldValue { needsLayout = true } }
     }
+    /// ... and its right edge is `trailingInset` short of the strip's (the outline column's room: the tabs end
+    /// where it begins).
+    var trailingInset: CGFloat = 0 {
+        didSet { if trailingInset != oldValue { needsLayout = true } }
+    }
     /// The chevrons at the clip's two ends, over the tabs, each with the edge of the tab beneath faded out.
     let leftChevron = TabOverflowButton(direction: -1)
     let rightChevron = TabOverflowButton(direction: 1)
@@ -157,7 +162,7 @@ final class TabStripView: NSView {
     /// Which ends have tabs beyond them (as of the last layout).
     private(set) var overflow: (left: Bool, right: Bool) = (false, false)
     /// The room the tabs have.
-    var available: CGFloat { max(0, bounds.width - leadingInset) }
+    var available: CGFloat { max(0, bounds.width - leadingInset - trailingInset) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -519,6 +524,9 @@ final class TabStripController: NSObject {
     /// Where the tabs begin, as an x in the window: nil for the whole row (the strip starts after the window
     /// buttons), the editor pane's left edge in notes mode (the row above the sidebar is the sidebar's).
     var tabsBegin: (() -> CGFloat?)?
+    /// Where the tabs end, as an x in the window: nil for the strip's own right edge, the outline column's left
+    /// edge while it is shown.
+    var tabsEnd: (() -> CGFloat?)?
     /// The strip shows even for a lone tab (notes mode: the window's title would otherwise be drawn over the
     /// sidebar).
     var showsSingleTab: (() -> Bool)?
@@ -657,6 +665,12 @@ final class TabStripController: NSObject {
             strip.leadingInset = max(0, (begin - left).rounded(.up))
         } else {
             strip.leadingInset = 0
+        }
+        if let end = tabsEnd?(), strip.superview != nil {
+            let right = strip.convert(NSPoint(x: strip.bounds.maxX, y: 0), to: nil).x
+            strip.trailingInset = max(0, (right - end).rounded(.up))
+        } else {
+            strip.trailingInset = 0
         }
         strip.setEntries(entries)
     }

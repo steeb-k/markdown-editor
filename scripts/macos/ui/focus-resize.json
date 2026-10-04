@@ -1,6 +1,6 @@
 [
  {
-  "log": "--- Focus mode with the line kept centred: a live resize (AppKit's own resize loop, one frame per drag) keeps the caret's line in the middle at every frame, in Source, Live and Split, with and without the formatting bar; nothing moves after the mouse-up, and it ends where a keystroke would put it (the caret at the start of a paragraph: at a soft line break the text system's caret rectangle is on the line before)"
+  "log": "--- Focus mode with the line kept centred: a live resize (AppKit's own resize loop, one frame per drag) keeps the caret's line in the middle at every frame, in Source and Live (in Split only the dimming applies: nothing is centred), with and without the formatting bar; nothing moves after the mouse-up, and it ends where a keystroke would put it (the caret at the start of a paragraph: at a soft line break the text system's caret rectangle is on the line before)"
  },
  {
   "setting": {
@@ -384,7 +384,7 @@
   "wait": 0.5
  },
  {
-  "log": "--- source in split, formatting bar on"
+  "log": "--- source in split, formatting bar on (dimming only: nothing is centred, and a resize starts no slide)"
  },
  {
   "layout": "split"
@@ -418,7 +418,7 @@
  },
  {
   "assert": {
-   "focusCentred": 0.5,
+   "focusInsets": false,
    "sliding": false,
    "userScrolling": false
   }
@@ -535,12 +535,12 @@
      26
     ]
    ],
-   "maxOffset": 0.5
+   "centred": false
   }
  },
  {
   "assert": {
-   "focusCentred": 0.5,
+   "focusInsets": false,
    "sliding": false,
    "userScrolling": false
   }
@@ -911,7 +911,7 @@
   "wait": 0.5
  },
  {
-  "log": "--- source in split, formatting bar off"
+  "log": "--- source in split, formatting bar off (dimming only: nothing is centred, and a resize starts no slide)"
  },
  {
   "layout": "split"
@@ -945,7 +945,7 @@
  },
  {
   "assert": {
-   "focusCentred": 0.5,
+   "focusInsets": false,
    "sliding": false,
    "userScrolling": false
   }
@@ -1062,12 +1062,12 @@
      26
     ]
    ],
-   "maxOffset": 0.5
+   "centred": false
   }
  },
  {
   "assert": {
-   "focusCentred": 0.5,
+   "focusInsets": false,
    "sliding": false,
    "userScrolling": false
   }

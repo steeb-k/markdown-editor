@@ -49,6 +49,20 @@ extension UIScriptRunner {
             default: NSPoint(x: f.minX - gap, y: f.midY)
             }
             return (tv.convert(v, to: nil), tv.characterIndexForInsertion(at: v), "badge \(side) of \(needle)")
+        case "outline", "outlineDisclosure":
+            // A row of the outline column (`row`: among the rows showing, or `text`: a heading's title); the
+            // disclosure triangle is at the row's indent.
+            guard let o = wc.outline else { return nil }
+            let list = o.view.list
+            var row = c["row"] as? Int ?? 0
+            if let text = c["text"] as? String {
+                guard let i = o.entries.firstIndex(where: { $0.text == text }), let r = o.row(of: i) else { return nil }
+                row = r
+            }
+            guard row < list.numberOfRows else { return nil }
+            let rr = list.rect(ofRow: row)
+            let x = at == "outline" ? rr.maxX - 24 : list.frameOfOutlineCell(atRow: row).midX
+            return (list.convert(NSPoint(x: x, y: rr.midY), to: nil), nil, "\(at) row \(row)")
         case "toolbar":
             return (inside(wc.toolbar), nil, "toolbar")
         case "preview":
@@ -109,8 +123,9 @@ extension UIScriptRunner {
         if hit.isDescendant(of: wc.toolbar) { return "toolbar" }
         if hit.isDescendant(of: wc.previewController.webView) { return "preview" }
         if let bar = wc.sidebar?.view, hit.isDescendant(of: bar) { return "sidebar" }
+        if let column = wc.outline?.view, hit.isDescendant(of: column) { return hit === column.band ? "titlebar" : "outline" }
         if hit === wc.splitView { return "divider" }
-        if !hit.isDescendant(of: content) { return "titlebar" }
+        if !hit.isDescendant(of: content) || hit === wc.titlebarBand { return "titlebar" }
         return "other"
     }
 

@@ -5,6 +5,14 @@ import MarkdownCore
 /// The preview's web view. Page JavaScript is off for everything a document can put in it; the
 /// app's own script (see `PreviewScripts`) runs in a content world of its own.
 public final class PreviewWebView: WKWebView {
+    /// The page runs under the transparent title bar, and AppKit hands a click or a double-click in the title bar's
+    /// row to the window (to drag it, to zoom it) only if no view under that row refuses to move the window with a
+    /// mouse-down: a web view says no, and the row stopped being a title bar wherever the page lay under it (all of it
+    /// but the file name's own button; hit-testing named the title bar's views throughout, so it showed nothing).
+    /// Nothing else follows from yes: the window is not movable by its background, so a press in the page is still
+    /// the page's.
+    public override var mouseDownCanMoveWindow: Bool { true }
+
     public override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         // A document is not a web page: no Reload, Back, Forward, Open Link in New Window...
@@ -518,7 +526,21 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
               let line = (body["line"] as? NSNumber)?.doubleValue else { return }
         receivedScrolls.append(line)
         if receivedScrolls.count > 200 { receivedScrolls.removeFirst(100) }
+        onPageLine?(line)
         scrollEditor(toPosition: line, atEnd: (body["atEnd"] as? Bool) ?? false)
+    }
+
+    /// Told the source line at the top of the page whenever it reports a scroll (the outline marks the heading
+    /// there while the preview is alone).
+    var onPageLine: ((Double) -> Void)?
+
+    /// Scrolls the page so that source line `line` is at its top (the outline's jump in the Preview layout; in
+    /// Split the editor's scroll takes the page along).
+    func scrollPage(toLine line: Double) {
+        guard isLoaded else { return }
+        jsInFlight += 1
+        webView.callAsyncJavaScript("return __md.scrollToLine(line, false);", arguments: ["line": line],
+                                    in: nil, in: PreviewScripts.world) { [weak self] _ in self?.jsInFlight -= 1 }
     }
 
     /// Instrumentation: the source positions the page reported (user scrolls of the preview).

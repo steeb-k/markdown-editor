@@ -22,6 +22,18 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// Whether this window shows the editor, the preview or both. Set through `setLayout`.
     public internal(set) var layout: LayoutMode
     public var onLayoutChange: (() -> Void)?
+    /// Whether this window shows the outline column, and how wide it is here. Set through `setOutlineShown`.
+    public internal(set) var outlineShown: Bool
+    public var outlineWidth: CGFloat
+    public var onOutlineVisibilityChange: (() -> Void)?
+    /// The headings as the core last gave them, while the outline is shown, and who hears of a change
+    /// (see `EditorSession+Outline`).
+    public internal(set) var outlineEntries: [OutlineEntry] = []
+    public var onOutline: (([OutlineEntry]) -> Void)?
+    var outlineTimer: Timer?
+    /// How long after the last analysis the headings are asked for again: a keystroke costs a timer's move, and
+    /// the list follows a pause in typing.
+    public static let outlineDelay: TimeInterval = 0.25
     /// Told after every edit of the text (a keystroke, a load, an undo): the preview schedules a render.
     public var onTextChange: (() -> Void)?
     /// Told after every edit, for a window in notes mode: the library hears of the new text.
@@ -139,6 +151,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         styler = Styler(appearance: appearance)
         viewMode = settings.defaultViewMode
         layout = settings.defaultLayout
+        outlineShown = settings.showOutlineInNewWindows
+        outlineWidth = CGFloat(settings.outlineWidth)
         focusEnabled = settings.focusMode
         syntaxEnabled = settings.syntaxHighlight
         authorship = Authorship(me: settings.authorName)
@@ -209,6 +223,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         layoutManager.setLive(LiveState())
         overlay.reset()
         refreshAuthorshipOverlay()
+        overlay.apply()
         if syntaxEnabled { pos.reset() }
         if focusEnabled { refreshState() }
     }
@@ -262,6 +277,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         var range = result.range
         for e in log where e.seq > result.seq { range = RangeMath.shift(range, through: e.change) }
         log.removeAll { $0.seq <= result.seq }
+        if outlineShown { scheduleOutline() }
         if result.seq == coordinator.latestSeq {
             if let spans = result.spans, !isComposing() {
                 apply(spans, prose: result.prose, code: result, in: result.range, afterEdit: true)
@@ -300,8 +316,13 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         }
         isStyling = true
         styler.style(storage, range: range, spans: spans, prose: prose.map(\.nsRange),
-                     highlights: code.highlights, languages: code.languages, insideProcessing: inDelegate)
+                     languages: code.languages, insideProcessing: inDelegate)
         isStyling = false
+        // The colour roles of code go to the overlay (painted for what is visible, scrolling brings the rest from
+        // this layer at once); in the keystroke's own pass `didChangeText` applies it before anything is drawn.
+        let window = RangeMath.clamp(range, toLength: storage.length)
+        overlay.patchCode(code.highlights.map { OverlayRun($0.range.nsRange, .code($0.role)) }, in: window)
+        if !inDelegate { overlay.apply() }
         textView?.refreshTypingAttributes()
         if viewMode == .live, afterEdit {
             if inDelegate { scheduleLiveRefresh() } else { refreshLive() }

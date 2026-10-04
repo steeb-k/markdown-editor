@@ -979,3 +979,21 @@ fn metadata_block_without_a_closing_delimiter() {
     let s = spans_of(t);
     assert!(!s.iter().any(|(k, x)| k == "Markup" && x.contains("http")), "{s:?}");
 }
+
+#[test]
+fn a_picture_is_standalone_only_as_a_paragraph_of_its_own() {
+    let standalone = |t: &str| {
+        let d = Document::new(t, OffsetEncoding::Utf8);
+        d.images().iter().map(|i| i.standalone).collect::<Vec<_>>()
+    };
+    for t in ["![a](b)", "  ![a](b)  ", "![a](b)\n", "![a](b)  \n", "x\n\n![a](b)\n\ny", "![a](b)\r\n\r\ny", "- ![a](b)", "> ![a](b)"] {
+        assert_eq!(standalone(t), vec![true], "{t:?}");
+    }
+    for t in [
+        "A smaller one, and one inside a sentence ![tiny](img/small.png) like this.",
+        "A smaller one, and one inside a sentence ![tiny](img/small.png) like this.\r\n",
+        "![a](b) text", "text ![a](b)", "a\n![a](b)\nb", "- a ![a](b) b", "# H ![a](b)", "**![a](b)**", "![a](b) <b>x</b>",
+    ] {
+        assert_eq!(standalone(t), vec![false], "{t:?}");
+    }
+}

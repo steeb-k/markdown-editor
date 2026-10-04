@@ -1,0 +1,117 @@
+[
+ {
+  "log": "The outline with 1000 headings (run with RELEASE=1): the list is made in one update; an update after an edit takes the main thread under 10 ms (a letter typed in a heading, a heading added or removed, a disclosure opened); a heading added that takes the headings after it as its own changes parents, and the list is reloaded (about 30 ms)"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": false,
+   "autoHideChrome": false,
+   "showFormattingToolbar": true
+  }
+ },
+ {
+  "makeFile": {
+   "name": "headings.md",
+   "text": "# Part\n\nA paragraph of text.\n\n## Section\n\nAnother paragraph, a little longer than the first.\n\n### Subsection\n\nText.\n\n",
+   "repeat": 334
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "resize": [
+   1100,
+   760
+  ]
+ },
+ {
+  "waitStyled": 60
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "outline": {
+   "waitEntries": 1002,
+   "timeout": 10
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": true,
+    "count": 1002,
+    "levels": [
+     1,
+     2,
+     3,
+     1,
+     2,
+     3
+    ]
+   }
+  }
+ },
+ {
+  "snapshot": "outline-big-1",
+  "bitmap": true
+ },
+ {
+  "log": "a letter typed into a heading (same shape), a leaf added after a heading, a heading with a disclosure added under a leaf"
+ },
+ {
+  "outline": {
+   "measure": {
+    "count": 6,
+    "maxMs": 10,
+    "needle": "### Subsection",
+    "added": "### Added heading"
+   }
+  }
+ },
+ {
+  "outline": {
+   "measure": {
+    "count": 6,
+    "maxMs": 10,
+    "needle": "### Subsection",
+    "added": "#### Added heading"
+   }
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "updateMs": 10
+   }
+  }
+ },
+ {
+  "log": "the rare shape: a heading that takes the ones after it (a reload; it is not held to 10 ms)"
+ },
+ {
+  "outline": {
+   "measure": {
+    "count": 4,
+    "maxMs": 80,
+    "needle": "## Section",
+    "added": "## Added heading"
+   }
+  }
+ },
+ {
+  "snapshot": "outline-big-2",
+  "bitmap": true
+ }
+]

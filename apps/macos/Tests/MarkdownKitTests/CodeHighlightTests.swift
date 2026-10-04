@@ -31,14 +31,23 @@ final class CodeHighlightTests: XCTestCase {
     private func colour(_ e: Editor, _ needle: String, offset: Int = 0) -> String? {
         let r = (e.string as NSString).range(of: needle)
         precondition(r.location != NSNotFound, needle)
-        return (e.session.storage.attribute(.foregroundColor, at: r.location + offset, effectiveRange: nil) as? NSColor)?.hexString
+        // What the reader sees: the overlay's colour over the stored one.
+        e.session.overlay.apply()
+        let at = r.location + offset
+        let shown = e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil) as? NSColor
+        return (shown ?? e.session.storage.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor)?.hexString
+    }
+
+    private func stored(_ e: Editor, _ needle: String) -> String? {
+        let r = (e.string as NSString).range(of: needle)
+        return (e.session.storage.attribute(.foregroundColor, at: r.location, effectiveRange: nil) as? NSColor)?.hexString
     }
 
     private func syntax(_ e: Editor) -> ThemePalette.SyntaxColors { e.session.appearance.palette.syntax }
 
     // MARK: colours
 
-    func testRolesBecomeStoredForegroundColours() {
+    func testRolesAreOverlayColoursOverTheBlocksStoredColour() {
         let e = Editor(text: doc)
         let p = e.session.appearance.palette
         let s = p.syntax
@@ -469,12 +478,12 @@ final class CodeHighlightTests: XCTestCase {
         let at = (e.string as NSString).range(of: "fn main").location
         XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil) as? NSColor)?.hexString, dim,
                        "the overlay still wins over the stored highlight colour")
-        XCTAssertEqual(colour(e, "fn main"), syntax(e).keyword.hexString, "and the stored colour is untouched")
+        XCTAssertEqual(stored(e, "fn main"), e.session.appearance.palette.codeText.hexString, "and the stored colour is the block's own")
         XCTAssertEqual(badges(e).first?.dimmed, true, "the badge recedes with its block")
-        // The caret in the block: its code is at full strength.
+        // The caret in the block: its code is at full strength, in its role's colour.
         e.select(at + 1)
         e.settle()
-        XCTAssertNil(e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil))
+        XCTAssertEqual((e.lm.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil) as? NSColor)?.hexString, syntax(e).keyword.hexString)
         XCTAssertEqual(badges(e).first?.dimmed, false)
     }
 }

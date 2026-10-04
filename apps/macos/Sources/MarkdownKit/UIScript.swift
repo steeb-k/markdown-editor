@@ -286,6 +286,8 @@ final class UIScriptRunner {
 
         if let n = step["notes"] as? [String: Any] {
             notesStep(n, then: done)
+        } else if let o = step["outline"] as? [String: Any] {
+            outlineStep(o, then: done)
         } else if let p = step["palette"] {
             paletteStep(p, then: done)
         } else if let path = str("open") {
@@ -1157,11 +1159,14 @@ final class UIScriptRunner {
     /// the one before, the caret line's distance from the middle is recorded; then at the mouse-up,
     /// and once things have settled, with every move of the editor's clip view after the mouse-up
     /// (a late correction) and the distance from where a keystroke would put it.
-    /// `"steps": [[dw, dh], ...]` in points; `"maxOffset"` fails the step above that distance.
+    /// `"steps": [[dw, dh], ...]` in points; `"maxOffset"` fails the step above that distance. `"centred": false`
+    /// is for a layout that does not centre (Split): the distances are logged but not held to anything, and the
+    /// step fails if a slide starts, the room for centring is there, or the editor moves after the mouse-up.
     private func liveResize(_ d: [String: Any], then done: @escaping () -> Void) {
         guard let w = window, let c = controller else { record(["liveResize": "no window"], ok: false); done(); return }
         let steps = ((d["steps"] as? [[Double]]) ?? []).filter { $0.count == 2 }
         let maxOffset = (d["maxOffset"] as? NSNumber)?.doubleValue ?? 0.5
+        let centred = d["centred"] as? Bool ?? true
         func offset() -> Double? {
             guard let middle = visibleMiddleInWindow(), let tv = textView else { return nil }
             var y: CGFloat
@@ -1218,8 +1223,8 @@ final class UIScriptRunner {
             let target = c.centring.targetOrigin(for: self.textView?.selectedRange() ?? NSRange())
             let fromTarget = target.map { (Double(clip.bounds.minY - $0) * 100).rounded() / 100 }
             let worst = (perFrame + [atEnd, settled].compactMap { $0 }).map(abs).max() ?? .infinity
-            let ok = sawLiveResize && w.frame != before && perFrame.count == steps.count && !slid && worst <= maxOffset
-                && lateMoves.isEmpty && abs(fromTarget ?? .infinity) <= 0.5
+            var ok = sawLiveResize && w.frame != before && perFrame.count == steps.count && !slid && lateMoves.isEmpty
+            ok = ok && (centred ? worst <= maxOffset && abs(fromTarget ?? .infinity) <= 0.5 : (self.controller?.editorScrollView.focusInset ?? 1) == 0)
             self.record(["liveResize": steps.count, "live": sawLiveResize, "before": NSStringFromRect(before), "after": NSStringFromRect(w.frame),
                          "offsets_per_frame": perFrame, "sizes": sizes, "slid_during_resize": slid,
                          "offset_at_end": (atEnd.map { $0 as Any } ?? NSNull()), "offset_settled": (settled.map { $0 as Any } ?? NSNull()),
@@ -2174,6 +2179,7 @@ final class UIScriptRunner {
                 web.draw(in: c.previewController.webView.convert(c.previewController.webView.bounds, to: frameView))
             }
             if let sb = c.sidebar?.view { draw(sb) }
+            if let column = c.outline?.view { draw(column) }
             for v in c.overlayViews { draw(v) }
             if let p = c.palette, p.isOpen { draw(p.panel) }
             // Title bar: its controls one by one (the bar itself is transparent).
@@ -2415,6 +2421,7 @@ final class UIScriptRunner {
             }
         }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
+        if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {
@@ -2485,6 +2492,7 @@ final class UIScriptRunner {
                 case .dim?: name = "dim"
                 case .pos(let c)?: name = "\(c)"
                 case .authorship(let a)?: name = "author-\(a)"
+                case .code(let role)?: name = "code-\(role)"
                 }
                 let actual = lm.temporaryAttribute(.foregroundColor, atCharacterIndex: r.location, effectiveRange: nil) as? NSColor
                 let expected = paint.flatMap { s.overlay.color(for: $0) }

@@ -137,13 +137,18 @@ blockquote {{ padding: 0 0 0 1.1em; border-left: 3px solid var(--rule); color: v
 blockquote > :last-child {{ margin-bottom: 0; }}
 hr {{ border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }}
 img {{ max-width: 100%; height: auto; border-radius: 4px; }}
-/* A picture on its own line has room around it, as in the editor (where it is a line of its own between blank ones). */
-p > img:only-child {{ display: block; margin: 1.8em 0; }}
+/* A picture that is a paragraph of its own has room around it, as in the editor (where it is a line of its own between blank ones); inside a sentence it stays in the line. */
+p.picture > img {{ display: block; margin: 1.8em 0; }}
 /* Raw frames and forms are blocked by the page's policy and would leave an empty box. */
 iframe, form, object, embed {{ display: none; }}
 code, pre {{ font-family: {mono}; font-size: {mono_scale}em; }}
 :not(pre) > code {{ background: var(--code-bg); color: var(--code-text); padding: 0.1em 0.35em; border-radius: 4px; }}
 pre {{ background: var(--code-bg); padding: 0.85em 1.1em; border-radius: 6px; overflow-x: auto; line-height: 1.4; tab-size: 4; }}
+/* The language's name at the block's top right, as the editor's badge: a pill of the panel's colour in the quote colour, over the first line's end as in the editor, with no change to the block's padding. */
+pre[data-lang] {{ position: relative; }}
+pre[data-lang]::before {{ content: attr(data-lang); position: absolute; top: 0.35em; right: 0.5em; padding: 0.05em 0.6em; border-radius: 0.9em;
+  background: var(--code-bg); color: var(--quote); font: 500 0.72rem/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  letter-spacing: 0; user-select: none; -webkit-user-select: none; pointer-events: none; }}
 pre code {{ background: none; padding: 0; color: var(--text); font-size: 1em; }}
 table {{ border-collapse: collapse; max-width: 100%; }}
 th, td {{ border: 1px solid var(--border); padding: 0.4em 0.8em; vertical-align: top; }}

@@ -113,6 +113,10 @@ final class FocusCentring {
     }
     /// The editor is on screen (it is not in the Preview layout).
     var editorShown: () -> Bool = { true }
+    /// The layout lets the line be centred: not in Split, where the preview's scroll sync pairs the editor's
+    /// top with the page's, and room above the text and a line held in the middle would break the pairing.
+    /// Dimming goes on there; only the centring is off.
+    var layoutAllows: () -> Bool = { true }
     /// Seconds, a steady clock (tests substitute their own).
     var now: () -> TimeInterval = { CACurrentMediaTime() }
     var enterDuration = FocusCentring.enterDuration
@@ -177,7 +181,7 @@ final class FocusCentring {
 
     /// Focus mode, the setting or the layout changed: bring centring (and the room it needs) in line.
     func update() {
-        let wanted = (session?.focusEnabled ?? false) && (session?.settings.centreFocusedLine ?? false)
+        let wanted = (session?.focusEnabled ?? false) && (session?.settings.centreFocusedLine ?? false) && layoutAllows()
         if wanted && !isActive {
             activate()
         } else if !wanted && isActive {
@@ -253,6 +257,15 @@ final class FocusCentring {
         RunLoop.main.perform(inModes: [.common]) { [weak self] in
             MainActor.assumeIsolated { self?.flush() }
         }
+    }
+
+    /// The caret was moved by a click that is not on the text (the outline's): the line is centred as a key's move
+    /// would, not left where it was clicked.
+    func requestDespiteMouse(_ range: NSRange) {
+        guard isActive else { return }
+        request(range, user: true)
+        fromMouse = false
+        caretPlacedByMouse = false
     }
 
     /// The text re-laid out (concealment changed, a picture arrived): keep the middle, unless the user

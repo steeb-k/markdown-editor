@@ -10,6 +10,8 @@ Markdown is plain text with a few marks that mean something: `#` makes a heading
 
 Beside the editor you can have a preview: **Editor and Preview** puts the two side by side and keeps them scrolled together; **Preview** shows the finished page alone. Pictures, tables, footnotes and highlighted code blocks look as they will when you print or export.
 
+View > Outline puts the document's headings in a column on the right, in every layout: click one to go there (the editor and the preview both scroll to it), use the arrow keys and Return, and fold a level with its triangle. The heading you are in, or at the top of the preview, is marked. Which windows start with it is a setting.
+
 ## Writing
 
 Type. Press Return at the end of a list item and the list goes on; press it on an empty item and the list ends. Tab and Shift-Tab indent and outdent items.

@@ -13,6 +13,7 @@ pub mod highlight;
 pub mod library;
 mod lines;
 mod offsets;
+mod outline;
 mod pos;
 mod preview_css;
 mod render;

@@ -253,6 +253,35 @@ final class TitlebarTests: XCTestCase {
         doc.close()
     }
 
+    /// The page under the transparent title bar must not refuse the window's drag (AppKit then gives the row to the
+    /// window only where the file name's own button is), and what the title bar's own views do not reach is a band
+    /// that drags and double-clicks like it, in every layout, over the web view and the editor alike.
+    func testTheTitleBarRowBelongsToTheWindowInEveryLayout() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.showWindow(nil)
+        let window = try XCTUnwrap(wc.window)
+        XCTAssertTrue(wc.previewController.webView.mouseDownCanMoveWindow, "a web view under the title bar would take the row from the window")
+        let bar = window.frame.height - window.contentLayoutRect.height
+        XCTAssertGreaterThan(bar, 0)
+        for layout in [LayoutMode.editor, .split, .preview] {
+            doc.session.setLayout(layout)
+            window.layoutIfNeeded()
+            let band = wc.titlebarBand
+            XCTAssertEqual(band.frame.height, bar, accuracy: 0.5, "\(layout)")
+            XCTAssertEqual(band.frame.width, wc.root.frame.width, accuracy: 0.5, "\(layout)")
+            XCTAssertEqual(band.frame.maxY, wc.root.frame.maxY, accuracy: 0.5, "\(layout)")
+            // Beside the tab strip's room, where nothing of the title bar's lies, the band is what a click finds.
+            let p = wc.root.convert(NSPoint(x: wc.root.frame.width - 3, y: wc.root.frame.maxY - bar / 2), to: nil)
+            let hit = wc.root.hitTest(wc.root.convert(p, from: nil))
+            XCTAssertTrue(hit === band, "\(layout): \(String(describing: hit))")
+            // Below the row the text and the page are theirs again.
+            let below = wc.root.hitTest(NSPoint(x: wc.root.frame.width - 20, y: wc.root.frame.maxY - bar - 20))
+            XCTAssertFalse(below === band, "\(layout)")
+            XCTAssertTrue(band.mouseDownCanMoveWindow)
+        }
+    }
+
     // MARK: the View menu
 
     func testEachViewMenuItemShowsTheStateOfTheWindow() throws {
@@ -936,8 +965,10 @@ final class FocusCentringTests: XCTestCase {
                 while !c.isSettled, Date() < settle { pump(0.02) }
                 pump(0.1)
                 let label = "\(layout) \(mode) toolbar \(toolbar)"
+                let centres = layout != .split
+                XCTAssertEqual(c.isActive, centres, label)
                 var o = try offsets(wc)
-                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred before the resize")
+                if centres { XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred before the resize") }
                 // What the window tells every view as a live resize starts and ends (the text view's own
                 // end of a live resize scrolls the clip view).
                 let content = try XCTUnwrap(window.contentView)
@@ -962,21 +993,24 @@ final class FocusCentringTests: XCTestCase {
                     window.displayIfNeeded()
                     o = try offsets(wc)
                     worst = max(worst, abs(o.line - o.middle))
-                    XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): step \(i) at \(size)")
+                    if centres { XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): step \(i) at \(size)") }
+                    else { XCTAssertEqual(wc.editorScrollView.focusInset, 0, "\(label): no room at step \(i)") }
                     XCTAssertFalse(c.isSliding, "\(label): no slide during a live resize (step \(i))")
                 }
                 tell(content, false)
                 window.layoutIfNeeded()
                 o = try offsets(wc)
-                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred as the resize ends")
+                if centres { XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred as the resize ends") }
                 let end = wc.scrollView.contentView.bounds.minY
                 pump(0.5)
                 XCTAssertEqual(wc.scrollView.contentView.bounds.minY, end, accuracy: 0.5, "\(label): nothing moves after the resize")
                 o = try offsets(wc)
-                XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred after the resize")
-                // Where a fresh keystroke would put it.
-                let target = try XCTUnwrap(c.targetOrigin(for: tv.selectedRange()))
-                XCTAssertEqual(wc.scrollView.contentView.bounds.minY, target, accuracy: 0.5, "\(label): where a keystroke would put it")
+                if centres {
+                    XCTAssertEqual(o.line, o.middle, accuracy: 0.5, "\(label): centred after the resize")
+                    // Where a fresh keystroke would put it.
+                    let target = try XCTUnwrap(c.targetOrigin(for: tv.selectedRange()))
+                    XCTAssertEqual(wc.scrollView.contentView.bounds.minY, target, accuracy: 0.5, "\(label): where a keystroke would put it")
+                }
                 print("live resize \(label): worst offset \(worst)")
                 doc.close()
             }
@@ -1070,6 +1104,66 @@ final class FocusCentringTests: XCTestCase {
         pump(0.05)
         XCTAssertTrue(wc.centring.isActive)
         XCTAssertGreaterThan(wc.editorScrollView.focusInset, 0)
+    }
+
+    /// Beside the preview the centring cannot be reconciled with the scroll sync: focus dims, nothing is centred,
+    /// no room is made, the menu item says why it is off, and the Editor layout brings it back.
+    func testFocusInSplitDimsButDoesNotCentre() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.centring.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 60), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.1)
+        XCTAssertTrue(wc.centring.isActive)
+        XCTAssertGreaterThan(wc.editorScrollView.focusInset, 0)
+        let bar = wc.editorScrollView.baseInsetTop
+
+        // Into Split: the line stays where it is on screen, the room goes.
+        let before = try offsets(wc).line
+        doc.session.setLayout(.split)
+        pump(0.1)
+        XCTAssertFalse(wc.centring.isActive)
+        XCTAssertEqual(wc.editorScrollView.focusInset, 0, "no extra room beside the preview")
+        XCTAssertEqual(wc.scrollView.contentInsets.top, bar)
+        XCTAssertTrue(doc.session.focusEnabled)
+        pump(0.5)
+        XCTAssertTrue(doc.session.overlay.isFocusing, "dimming stays")
+
+        // Typing and moving the caret never centre it there, and the room does not come back.
+        let moved = try offsets(wc).line
+        tv.setSelectedRange(NSRange(location: location(of: 70), length: 0))
+        tv.insertText("x", replacementRange: tv.selectedRange())
+        pump(0.3)
+        XCTAssertEqual(wc.editorScrollView.focusInset, 0)
+        XCTAssertFalse(wc.centring.isActive)
+        _ = (before, moved)
+
+        // The menu item is off, with the reason in its tool tip; in the Editor layout it is on.
+        let item = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu?.items.first { $0.title == "Keep Focused Line Centred" })
+        let app = AppDelegate()
+        if AppDelegate.frontLayout == .split {
+            XCTAssertFalse(app.validateMenuItem(item))
+            XCTAssertTrue(item.toolTip?.contains("Editor layout") ?? false, item.toolTip ?? "no tool tip")
+        }
+
+        // Back to the Editor layout: the room returns and the caret's line slides to the middle.
+        doc.session.setLayout(.editor)
+        pump(0.6)
+        XCTAssertTrue(wc.centring.isActive)
+        XCTAssertGreaterThan(wc.editorScrollView.focusInset, 0)
+        let o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        if AppDelegate.frontLayout == .editor { XCTAssertTrue(app.validateMenuItem(item)) }
+
+        // Focus turned on while already in Split: dimming, no centring.
+        doc.session.setFocusEnabled(false)
+        doc.session.setLayout(.split)
+        doc.session.setFocusEnabled(true)
+        pump(0.1)
+        XCTAssertFalse(wc.centring.isActive)
+        XCTAssertEqual(wc.editorScrollView.focusInset, 0)
     }
 
     func testThePreviewAndTheEditorKeepTheirBaseInsetForTheirMaths() throws {

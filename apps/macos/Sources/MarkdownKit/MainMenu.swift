@@ -230,6 +230,7 @@ enum MainMenu {
             _ = item(m, "Show Authorship", #selector(EditorTextView.toggleAuthorshipDisplay(_:)), "a", [.command, .option])
             m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
+            _ = item(m, "Outline", #selector(EditorWindowController.toggleOutline(_:)), "o", [.command, .control])
             m.addItem(.separator())
             _ = item(m, "Notes Mode", #selector(EditorWindowController.toggleNotesMode(_:)), "l", [.command, .control])
             _ = item(m, "Show Backlinks", #selector(EditorWindowController.toggleBacklinks(_:)), "b", [.command, .option])

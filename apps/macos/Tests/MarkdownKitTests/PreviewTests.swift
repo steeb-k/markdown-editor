@@ -77,6 +77,40 @@ final class PreviewTests: XCTestCase {
         doc.close()
     }
 
+    /// The editor's language badge in the preview: a label at the top right of each coloured block, from the page's own
+    /// stylesheet, kept by body patches (editing the language, a block added) and in the exported page.
+    func testHighlightedBlocksShowTheirLanguageInThePreview() throws {
+        let (doc, wc) = try open("# T\n\n```rust\nfn a() {}\n```\n\n```nosuch\nx\n```\n\n```\nplain\n```\n", layout: .split)
+        let p = wc.previewController
+        XCTAssertTrue(p.waitUntilSettled())
+        func labels() -> [String] {
+            (p.evaluateSync("return [...document.querySelectorAll('#md pre')].map(e => getComputedStyle(e, '::before').content);") as? [String]) ?? []
+        }
+        XCTAssertEqual(labels(), ["\"Rust\"", "none", "none"])
+        // The pill sits at the block's top right and does not move the code.
+        let geometry = p.evaluateSync("""
+            const e = document.querySelector('#md pre[data-lang]'); const b = getComputedStyle(e, '::before'); const c = getComputedStyle(e);
+            return [b.position, b.right, c.paddingTop, c.position];
+            """) as? [String]
+        XCTAssertEqual(geometry?[0], "absolute")
+        XCTAssertEqual(geometry?[3], "relative")
+        XCTAssertEqual(geometry?[2], (p.evaluateSync("return getComputedStyle(document.querySelector('#md pre:not([data-lang])')).paddingTop;") as? String), "the first line's room is every block's")
+        // A body patch: the language changed, and a block typed in after it.
+        let tv = wc.textView
+        let range = (tv.string as NSString).range(of: "rust")
+        tv.setSelectedRange(NSRange(location: range.location, length: range.length))
+        type("python", into: tv)
+        XCTAssertTrue(p.waitUntilSettled())
+        XCTAssertEqual(p.lastBodyHTML, coreBody(doc.session, p))
+        XCTAssertEqual(labels(), ["\"Python\"", "none", "none"])
+        // The exported page carries it (the PDF is made from it).
+        let page = doc.session.coordinator.sync { $0.renderHtml(options: RenderOptions(sourceLines: false, standalone: true, sanitize: false, highlight: true,
+                                                                                       fallbackTitle: "x", style: nil)) }
+        XCTAssertTrue(page.contains("data-lang=\"Python\""))
+        XCTAssertTrue(page.contains("pre[data-lang]::before"))
+        doc.close()
+    }
+
     func testSupersededRendersNeverApply() throws {
         let (doc, wc) = try open("one\n", layout: .split)
         let p = wc.previewController
@@ -762,6 +796,7 @@ final class PreviewTests: XCTestCase {
         let text = PDFInspector.text(url)
         for word in ["Long document", "Quokka paragraph 1:", "Quokka paragraph 60", "zebra"] { XCTAssertTrue(text.contains(word), "\(word) is selectable text") }
         XCTAssertGreaterThanOrEqual(PDFInspector.imageCount(url), 1, "the local picture is in the PDF")
+        XCTAssertTrue(text.contains("Rust"), "the code block's language label is in the PDF, as in the preview")
         // Light print styling whatever the theme (the app theme here is Dark).
         let corner = try XCTUnwrap(PDFInspector.pixel(url, page: 0, x: 4, y: 4))
         XCTAssertGreaterThan(corner.r + corner.g + corner.b, 2.9)

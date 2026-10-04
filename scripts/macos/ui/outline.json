@@ -1,0 +1,1033 @@
+[
+ {
+  "log": "--- The outline column: View > Outline, in every layout, clicks jump the editor and the preview, the mark follows the caret and the page, keys, folding, the divider, tabs, notes mode, 1000 headings"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": true,
+   "chromeReturnsAfterPause": true,
+   "spellCheck": false,
+   "showFormattingToolbar": true,
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/outline.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1100,
+   760
+  ]
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "quick brown fox",
+  "offset": 3
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": false,
+    "plain": true
+   },
+   "menu": {
+    "View > Outline": {
+     "enabled": true,
+     "state": "off"
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "outline-00-off",
+  "bitmap": true
+ },
+ {
+  "log": "--- shown from the View menu"
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "outline": {
+   "waitEntries": 14
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": true,
+    "count": 14,
+    "titles": [
+     "Field notes",
+     "First part",
+     "Morning",
+     "Afternoon",
+     "Second part",
+     "With emphasis and code and a link",
+     "Deep one",
+     "Setext heading",
+     "A heading in a quote",
+     "A heading in a list item",
+     "Third part",
+     "Evening",
+     "Appendix",
+     "Last words"
+    ],
+    "levels": [
+     1,
+     2,
+     3,
+     3,
+     2,
+     3,
+     4,
+     1,
+     2,
+     3,
+     2,
+     3,
+     1,
+     2
+    ],
+    "width": 220,
+    "accessible": true,
+    "marked": "Field notes"
+   },
+   "menu": {
+    "View > Outline": {
+     "enabled": true,
+     "state": "on"
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "outline-01-shown",
+  "bitmap": true
+ },
+ {
+  "log": "--- a click on a heading: the caret goes there, the editor has it at the top, the keyboard is the editor's"
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Second part"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Second part",
+    "responder": "text",
+    "editorTop": "## Second part",
+    "jumps": 1
+   },
+   "selectedText": ""
+  }
+ },
+ {
+  "snapshot": "outline-02-clicked",
+  "bitmap": true
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Appendix"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Appendix",
+    "responder": "text",
+    "jumps": 2
+   }
+  }
+ },
+ {
+  "snapshot": "outline-03-appendix",
+  "bitmap": true
+ },
+ {
+  "log": "--- the mark follows the caret"
+ },
+ {
+  "selectText": "Evening",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Evening"
+   }
+  }
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "quick brown fox",
+  "offset": 3
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Field notes"
+   }
+  }
+ },
+ {
+  "selectText": "Not a heading in a fence",
+  "offset": 3
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Afternoon"
+   }
+  }
+ },
+ {
+  "log": "--- typing a heading adds an entry within one analysis"
+ },
+ {
+  "selectText": "Deep one",
+  "offset": 8,
+  "length": 0
+ },
+ {
+  "type": "\n\nA paragraph.\n\n## Freshly added\n",
+  "interval": 0.02
+ },
+ {
+  "outline": {
+   "waitEntries": 15,
+   "timeout": 3
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "count": 15,
+    "marked": "Freshly added"
+   }
+  }
+ },
+ {
+  "selectText": "Freshly added",
+  "offset": 13,
+  "length": 0
+ },
+ {
+  "type": "Zed",
+  "interval": 0.02
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Freshly addedZed",
+    "count": 15
+   }
+  }
+ },
+ {
+  "undoUntilLacks": "A paragraph."
+ },
+ {
+  "outline": {
+   "waitEntries": 14,
+   "timeout": 3
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "count": 14,
+    "titles": [
+     "Field notes",
+     "First part",
+     "Morning",
+     "Afternoon",
+     "Second part",
+     "With emphasis and code and a link",
+     "Deep one",
+     "Setext heading",
+     "A heading in a quote",
+     "A heading in a list item",
+     "Third part",
+     "Evening",
+     "Appendix",
+     "Last words"
+    ]
+   }
+  }
+ },
+ {
+  "log": "--- folding: a heading's disclosure, the fold kept while the list updates"
+ },
+ {
+  "outline": {
+   "fold": "Second part"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "titles": [
+     "Field notes",
+     "First part",
+     "Morning",
+     "Afternoon",
+     "Second part",
+     "Setext heading",
+     "A heading in a quote",
+     "A heading in a list item",
+     "Third part",
+     "Evening",
+     "Appendix",
+     "Last words"
+    ]
+   }
+  }
+ },
+ {
+  "selectText": "Deep one",
+  "offset": 8,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Second part"
+   }
+  }
+ },
+ {
+  "type": "x",
+  "interval": 0.02
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "titlesStart": [
+     "Field notes",
+     "First part",
+     "Morning",
+     "Afternoon",
+     "Second part",
+     "Setext heading"
+    ]
+   }
+  }
+ },
+ {
+  "outline": {
+   "fold": "Second part",
+   "open": true
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "count": 14
+   }
+  }
+ },
+ {
+  "undoUntilLacks": "Deep onex"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- Split: a click jumps the editor and the preview to the same heading by its line (the scroll sync pairs them); the preview follows"
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "quick brown fox",
+  "offset": 3
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": true,
+    "marked": "Field notes",
+    "windowWidth": 1100
+   }
+  }
+ },
+ {
+  "snapshot": "outline-04-split",
+  "bitmap": true
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Third part"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Third part",
+    "editorTop": "## Third part",
+    "previewTop": {
+     "heading": "Third part",
+     "tolerance": 1.5
+    },
+    "responder": "text"
+   },
+   "preview": {
+    "scrollSynced": 1.5
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Setext heading"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Setext heading",
+    "editorTop": "Setext heading",
+    "previewTop": {
+     "heading": "Setext heading",
+     "tolerance": 1.5
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "outline-05-split-clicked",
+  "bitmap": true
+ },
+ {
+  "editorScroll": 0.2
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "selectText": "Morning",
+  "offset": 2,
+  "length": 0
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Morning"
+   }
+  }
+ },
+ {
+  "log": "--- Preview: a click scrolls the page by data-line; the mark follows the page's top as it scrolls"
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": true,
+    "windowWidth": 1100
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Appendix"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Appendix",
+    "previewTop": {
+     "heading": "Appendix",
+     "tolerance": 1.5
+    },
+    "responder": "preview"
+   }
+  }
+ },
+ {
+  "snapshot": "outline-06-preview-clicked",
+  "bitmap": true
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Second part"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Second part",
+    "previewTop": {
+     "heading": "Second part",
+     "tolerance": 1.5
+    }
+   }
+  }
+ },
+ {
+  "previewScroll": 0.9
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtPageTop": true
+   }
+  }
+ },
+ {
+  "previewScroll": 0.4
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "markedAtPageTop": true
+   }
+  }
+ },
+ {
+  "previewScroll": 0.0
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": null
+   }
+  }
+ },
+ {
+  "snapshot": "outline-07-preview-top",
+  "bitmap": true
+ },
+ {
+  "log": "--- back in the editor the heading last chosen is at its top"
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Last words"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Last words",
+    "editorTop": "## Last words"
+   }
+  }
+ },
+ {
+  "log": "--- keys: the arrows move through the list without jumping, Return jumps, Left and Right fold"
+ },
+ {
+  "outline": {
+   "focus": true
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "responder": "outline",
+    "jumps": 7
+   }
+  }
+ },
+ {
+  "outline": {
+   "key": "up"
+  }
+ },
+ {
+  "outline": {
+   "key": "up"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "jumps": 7,
+    "responder": "outline"
+   }
+  }
+ },
+ {
+  "outline": {
+   "key": "return"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "jumps": 8,
+    "responder": "text",
+    "marked": "Evening",
+    "editorTop": "### Evening"
+   }
+  }
+ },
+ {
+  "outline": {
+   "focus": true
+  }
+ },
+ {
+  "outline": {
+   "key": "left"
+  }
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "outline": {
+    "titlesStart": [
+     "Field notes",
+     "First part",
+     "Morning",
+     "Afternoon",
+     "Second part"
+    ]
+   }
+  }
+ },
+ {
+  "outline": {
+   "key": "right"
+  }
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "outline": {
+   "key": "down"
+  }
+ },
+ {
+  "outline": {
+   "key": "down"
+  }
+ },
+ {
+  "assert": {
+   "outline": {
+    "jumps": 8,
+    "responder": "outline"
+   }
+  }
+ },
+ {
+  "selectText": "quick brown fox",
+  "offset": 3
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Appendix"
+   }
+  }
+ },
+ {
+  "log": "--- the divider: a drag makes the column wider, the width is remembered"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "outline": {
+   "dragDivider": -80
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "width": 300,
+    "windowWidth": 1100
+   }
+  }
+ },
+ {
+  "snapshot": "outline-08-wider",
+  "bitmap": true
+ },
+ {
+  "outline": {
+   "dragDivider": 80
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "width": 220
+   }
+  }
+ },
+ {
+  "log": "--- Live mode and focus centring: a click centres the heading when centring is on"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Third part"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Third part"
+   },
+   "focusCentred": 3
+  }
+ },
+ {
+  "snapshot": "outline-09-live-focus-centred",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "log": "--- with the notes sidebar too: three columns, no window growth, the tabs run between them"
+ },
+ {
+  "notes": {
+   "library": "scripts/macos/ui/fixtures/library"
+  }
+ },
+ {
+  "notes": {
+   "mode": true
+  }
+ },
+ {
+  "notes": {
+   "waitLoaded": 30
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "notes": {
+    "sidebarShown": true
+   },
+   "outline": {
+    "shown": true,
+    "width": 220,
+    "windowWidth": 1100,
+    "tabsEnd": true
+   }
+  }
+ },
+ {
+  "snapshot": "outline-09b-three-columns",
+  "bitmap": true
+ },
+ {
+  "click": {
+   "at": "outline",
+   "text": "Third part"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "marked": "Third part",
+    "editorTop": "## Third part"
+   },
+   "notes": {
+    "sidebarShown": true,
+    "sidebarWidth": 240
+   }
+  }
+ },
+ {
+  "outline": {
+   "dragDivider": -60
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "width": 280,
+    "windowWidth": 1100,
+    "tabsEnd": true
+   },
+   "notes": {
+    "sidebarWidth": 240
+   }
+  }
+ },
+ {
+  "outline": {
+   "dragDivider": 60
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "notes": {
+    "sidebarShown": false
+   },
+   "outline": {
+    "shown": true,
+    "width": 220
+   }
+  }
+ },
+ {
+  "outline": {
+   "show": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "notes": {
+    "plainLayout": true
+   }
+  }
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "notes": {
+   "mode": true
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "outline": {
+   "show": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "notes": {
+    "sidebarShown": true
+   },
+   "outline": {
+    "shown": false
+   }
+  }
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- hidden again: the window is the editor's own"
+ },
+ {
+  "outline": {
+   "show": false
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": false,
+    "plain": true
+   },
+   "menu": {
+    "View > Outline": {
+     "state": "off"
+    }
+   }
+  }
+ },
+ {
+  "snapshot": "outline-10-hidden",
+  "bitmap": true
+ }
+]

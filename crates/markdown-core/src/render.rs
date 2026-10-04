@@ -490,6 +490,30 @@ impl<'a, 'o> Renderer<'a, 'o> {
         self.write_tail(tail);
     }
 
+    /// The paragraph whose start event is `index` holds one image and nothing else but blanks and line breaks
+    /// (the core's `standalone` rule for images).
+    fn is_picture_paragraph(&self, index: usize) -> bool {
+        let mut images = 0;
+        let mut depth = 0;
+        for (event, _) in &self.events[index + 1..] {
+            match event {
+                Event::End(TagEnd::Paragraph) if depth == 0 => return images == 1,
+                Event::Start(Tag::Image { .. }) => {
+                    if depth == 0 {
+                        images += 1;
+                    }
+                    depth += 1;
+                }
+                Event::End(TagEnd::Image) => depth -= 1,
+                Event::Text(t) if depth == 0 && t.trim().is_empty() => {}
+                Event::SoftBreak | Event::HardBreak if depth == 0 => {}
+                _ if depth > 0 => {}
+                _ => return false,
+            }
+        }
+        false
+    }
+
     fn write_tail(&mut self, tail: &str) {
         self.out.push_str(tail);
         self.end_newline = tail.ends_with('\n');
@@ -902,6 +926,17 @@ impl<'a, 'o> Renderer<'a, 'o> {
             }
         }
         self.out.push_str(&format!("<pre{line}"));
+        // The editor's badge in the preview: the language's display name, for the blocks that are coloured only
+        // (the stylesheet draws it at the block's top right; a fragment has no stylesheet and stays plain HTML).
+        if let Some(name) = highlighted
+            .as_ref()
+            .filter(|_| self.opts.source_lines || self.opts.standalone)
+            .and_then(|_| highlight::language_name(info))
+        {
+            self.out.push_str(" data-lang=\"");
+            self.attr(&name);
+            self.out.push('"');
+        }
         if skipped {
             self.out.push_str(" data-highlight=\"skipped\"");
         }
@@ -969,7 +1004,11 @@ impl<'a, 'o> Renderer<'a, 'o> {
         match tag {
             Tag::HtmlBlock => {}
             Tag::Paragraph => {
-                self.open_block("p", "", range.start, "");
+                // A picture that is a paragraph of its own gets room around it (the stylesheet's `.picture`);
+                // inside a sentence it stays inline, as the editor shows its alt text inside the line.
+                // (Only where a stylesheet follows: the preview and the standalone page, not a fragment.)
+                let attrs = if (self.opts.source_lines || self.opts.standalone) && self.is_picture_paragraph(index) { " class=\"picture\"" } else { "" };
+                self.open_block("p", attrs, range.start, "");
                 if let Some(c) = self.pending_task.take() {
                     self.checkbox(c);
                 }

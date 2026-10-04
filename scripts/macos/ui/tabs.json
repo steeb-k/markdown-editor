@@ -544,5 +544,137 @@
     }
    }
   }
+ },
+ {
+  "log": "--- fifteen tabs with the outline column: the strip ends at the column's left edge (as it starts at the sidebar's right), its chevrons inside that room"
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": true,
+    "tabsEnd": true
+   },
+   "tabs": {
+    "count": 15,
+    "stripShown": true,
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   },
+   "titlebarClean": true
+  }
+ },
+ {
+  "snapshot": "15-fifteen-tabs-outline",
+  "bitmap": true
+ },
+ {
+  "tabScroll": 0
+ },
+ {
+  "assert": {
+   "outline": {
+    "tabsEnd": true
+   },
+   "tabs": {
+    "overflow": {
+     "left": false,
+     "right": true
+    },
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   }
+  }
+ },
+ {
+  "tabScroll": 0.5
+ },
+ {
+  "assert": {
+   "outline": {
+    "tabsEnd": true
+   },
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": true
+    },
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   }
+  }
+ },
+ {
+  "snapshot": "16-fifteen-tabs-outline-middle",
+  "bitmap": true
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "tabChevron": "right"
+ },
+ {
+  "assert": {
+   "outline": {
+    "tabsEnd": true
+   },
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": true
+    },
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   }
+  }
+ },
+ {
+  "tabScroll": 1
+ },
+ {
+  "assert": {
+   "outline": {
+    "tabsEnd": true
+   },
+   "tabs": {
+    "overflow": {
+     "left": true,
+     "right": false
+    },
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   }
+  }
+ },
+ {
+  "tabChevron": "left"
+ },
+ {
+  "outline": {
+   "show": false
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "outline": {
+    "shown": false,
+    "tabsEndAtStrip": true
+   },
+   "tabs": {
+    "chevronsInside": true,
+    "chevronsMatchClipping": true
+   }
+  }
  }
 ]

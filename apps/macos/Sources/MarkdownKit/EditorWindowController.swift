@@ -13,6 +13,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// Text scrolled up under the transparent title bar fades out instead of colliding with the
     /// traffic lights and the title.
     let titlebarFade = EdgeFadeView()
+    /// Stands in for the title bar where AppKit's own views do not take the click (see `TitlebarBandView`).
+    let titlebarBand = TitlebarBandView()
+    private var bandHeight: NSLayoutConstraint!
     /// The editor and the preview side by side (either may be collapsed away).
     let splitView = PreviewSplitView()
     let previewPane = NSView()
@@ -38,6 +41,16 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     var syncedSelectionURL: URL?
     var palette: PaletteController?
     var applyingSidebarWidth = false
+    /// The outline column (see `EditorWindowController+Outline`), and the split view that holds it beside the
+    /// editor's pane while it is shown.
+    var outline: OutlineController?
+    var paneHost: NotesSplitView?
+    var applyingOutlineWidth = false
+    /// The source line at the top of the preview as the page last reported it, and how many jumps the outline made.
+    var lastPageLine: Double?
+    var jumps = 0
+    /// Instrumentation: the main-thread seconds the last arrival of the headings took.
+    var lastOutlineArrival: TimeInterval = 0
     private var observers: [NSObjectProtocol] = []
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
@@ -96,6 +109,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         root.addSubview(splitView)
         root.addSubview(titlebarFade)
         root.addSubview(toolbar)
+        root.addSubview(titlebarBand)
+        titlebarBand.translatesAutoresizingMaskIntoConstraints = false
+        bandHeight = titlebarBand.heightAnchor.constraint(equalToConstant: 0)
         titlebarFade.translatesAutoresizingMaskIntoConstraints = false
         fadeHeight = titlebarFade.heightAnchor.constraint(equalToConstant: 52)
         let toolbarCentre = toolbar.centerXAnchor.constraint(equalTo: scroll.centerXAnchor)
@@ -118,6 +134,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             titlebarFade.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             titlebarFade.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             fadeHeight,
+            titlebarBand.topAnchor.constraint(equalTo: root.topAnchor),
+            titlebarBand.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            titlebarBand.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            bandHeight,
             // Centred under the editor, unless the editor's pane (in Split) is narrower than the bar:
             // then it moves over just enough to stay inside the window.
             toolbarCentre,
@@ -168,13 +188,20 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         }
         session.onTextChange = { [weak self] in self?.previewController.textChanged() }
         session.onOpenWikilink = { [weak self] ref in self?.openWikilink(target: ref.target, heading: ref.heading) }
-        session.onLayoutChange = { [weak self] in self?.applyLayout() }
+        session.onLayoutChange = { [weak self] in
+            self?.applyLayout()
+            self?.outlineLayoutChanged()
+        }
+        session.onOutlineVisibilityChange = { [weak self] in self?.applyOutline() }
+        session.onOutline = { [weak self] entries in self?.outlineArrived(entries) }
+        previewController.onPageLine = { [weak self] line in self?.outlinePageScrolled(to: line) }
         observers.append(NotificationCenter.default.addObserver(
             forName: Settings.didChangeNotification, object: settings, queue: .main
         ) { [weak self] _ in self?.settingsChanged() })
         toolbar.isHidden = !settings.showFormattingToolbar
         applyChrome()
         applyLayout()
+        if session.outlineShown { applyOutline() }
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
@@ -192,6 +219,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         baseMinWidth = window.minSize.width
         tabs.onGroupChange = { [weak self] in self?.tabGroupChanged() }
         tabs.tabsBegin = { [weak self] in self?.editorPaneLeft }
+        tabs.tabsEnd = { [weak self] in self?.outlineLeft }
         tabs.showsSingleTab = { [weak self] in self?.notesSplit != nil }
         tabs.onSelectedTabChange = { [weak self] in
             // The tab now in front tells the sidebar which note is open (the window becoming key does the same
@@ -208,8 +236,12 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         centring.attach(to: editorScrollView)
         centring.applyInsets = { [weak self] in self?.updateFadeGeometry() }
         centring.editorShown = { [weak self] in self?.scrollView.isHidden == false && self?.window?.isVisible == true }
+        centring.layoutAllows = { [weak self] in self?.session.layout != .split }
         textView.centring = centring
-        session.onCaretActivity = { [weak self] in self?.centring.request() }
+        session.onCaretActivity = { [weak self] in
+            self?.centring.request()
+            self?.outlineFollowCaret()
+        }
         session.onLayoutSettled = { [weak self] in self?.centring.layoutChanged() }
         centring.update()
     }
@@ -277,7 +309,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     }
 
     /// The editor's top character while it is hidden (the Preview layout).
-    private var hiddenEditorTop: EditorTopAnchor?
+    var hiddenEditorTop: EditorTopAnchor?
 
     /// The character at the top of the editor's viewport, and how far into its line the viewport
     /// starts (nil when nothing is laid out).
@@ -394,6 +426,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showEditorLayout(_:)): item.state = session.layout == .editor ? .on : .off; return true
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
+        case #selector(toggleOutline(_:)): item.state = session.outlineShown ? .on : .off; return true
         case #selector(copyAsHTML(_:)), #selector(copyAsRichText(_:)): return session.storage.length > 0
         case #selector(exportPDF(_:)): return true
         case .some(let action) where Self.forwardedToEditor.contains(action):
@@ -450,6 +483,14 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             }
         }
         notesSplit?.tint = session.appearance.palette.rule
+        paneHost?.tint = session.appearance.palette.rule
+        if let outline {
+            let style = SidebarStyle(session.appearance.palette)
+            if style != outline.view.style {
+                outline.view.style = style
+                outline.styleChanged()
+            }
+        }
         updateFadeGeometry()
         let appearance = ThemeStore.windowAppearance(for: session.settings.theme)
         if window.appearance?.name != appearance?.name { window.appearance = appearance }
@@ -464,6 +505,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         let bar = max(0, window.frame.height - window.contentLayoutRect.height)
         titlebarFade.solid = max(0, bar - 6)
         fadeHeight.constant = bar + 22
+        bandHeight.constant = bar
         titlebarFade.isHidden = bar == 0
         previewController.setChrome(top: bar, bottom: 0)
         let bottom = toolbar.isHidden ? 0 : toolbar.fittingSize.height + Self.toolbarBottomMargin
@@ -533,6 +575,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     }
 
     public func windowWillClose(_ notification: Notification) {
+        session.outlineTimer?.invalidate()
         previewController.tearDown()
         leaveWorkspace(closing: true)
     }

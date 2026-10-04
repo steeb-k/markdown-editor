@@ -245,11 +245,20 @@ extension UIScriptRunner {
                 let r = (s.text as NSString).range(of: needle)
                 guard r.location != NSNotFound else { check("code colour of \(needle.debugDescription)", false, "not in the text"); continue }
                 let at = r.location + (c["offset"] as? Int ?? 0)
-                let got = hex(s.storage.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor)
+                // What is drawn: the overlay's colour (the roles are its lowest layer) over the stored one. Text outside
+                // the window the overlay paints (a 1 MB document is painted around what is visible) is asked of the
+                // layer instead: what scrolling there would draw.
+                s.overlay.apply()
+                var shown = s.layoutManager.temporaryAttribute(.foregroundColor, atCharacterIndex: at, effectiveRange: nil) as? NSColor
+                if !NSLocationInRange(at, s.overlay.appliedWindow), let run = s.overlay.layers.code.first(where: { NSLocationInRange(at, $0.range) }) {
+                    shown = s.overlay.color(for: run.paint)
+                }
+                let got = hex(shown ?? s.storage.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor)
                 let sx = p.syntax
                 let want: NSColor? = [
                     "comment": sx.comment, "keyword": sx.keyword, "string": sx.string, "number": sx.number, "function": sx.function,
                     "type": sx.type, "tag": sx.tag, "variable": sx.variable, "code": p.codeText, "text": p.text, "markup": p.markup,
+                    "focusDim": p.focusDim,
                 ][role]
                 check("code colour of \(needle.debugDescription) is \(role)", got != nil && got == hex(want), "\(got ?? "nil") wanted \(hex(want) ?? "?")")
             }
@@ -257,7 +266,11 @@ extension UIScriptRunner {
         if let n = a["temporaryColour"] as? [String: Any], let needle = n["needle"] as? String {
             let r = (s.text as NSString).range(of: needle)
             let t = hex(s.layoutManager.temporaryAttribute(.foregroundColor, atCharacterIndex: r.location, effectiveRange: nil) as? NSColor)
-            let want = n["is"] as? String == "focusDim" ? hex(p.focusDim) : nil
+            // `none`: nothing (the stored colour shows); `focusDim`; or a role (the overlay's colour for code).
+            let sx = p.syntax
+            let roles: [String: NSColor] = ["comment": sx.comment, "keyword": sx.keyword, "string": sx.string, "number": sx.number, "function": sx.function,
+                                            "type": sx.type, "tag": sx.tag, "variable": sx.variable]
+            let want = n["is"] as? String == "focusDim" ? hex(p.focusDim) : (n["is"] as? String).flatMap { roles[$0] }.flatMap { hex($0) }
             check("temporary colour of \(needle.debugDescription) is \(n["is"] as? String ?? "none")", t == want, "\(t ?? "none")")
         }
         if let m = a["codeMenu"] as? [String: Any] {

@@ -3,6 +3,8 @@ import MarkdownCore
 
 /// What paints a stretch of text on top of its stored colour.
 public enum OverlayPaint: Hashable {
+    /// The colour of a role in highlighted code (the editor's theme), the lowest layer.
+    case code(CodeRole)
     /// Authorship colouring: borrowed text (AI, Reference). Filled by the session from the
     /// core's `Authorship` runs (`setAuthorship`).
     case authorship(AuthorSource)
@@ -26,6 +28,9 @@ public struct OverlayRun: Equatable {
 
 /// The inputs of the overlay, one list per layer. Lists are sorted and disjoint.
 public struct OverlayLayers: Equatable {
+    /// Layer 0, just above the stored colour: the roles of highlighted code, from the analysis (the whole text, as
+    /// far as it has been analysed; only the window is painted).
+    public var code: [OverlayRun] = []
     /// Layer 1 (above the stored colour): borrowed text.
     public var authorship: [OverlayRun] = []
     /// Layer 2: part-of-speech colours.
@@ -40,7 +45,7 @@ public struct OverlayLayers: Equatable {
 /// Owns the *temporary foreground colour* of a layout manager and composes everything that
 /// paints over the stored colours with a fixed precedence:
 ///
-///     stored (base)  <  authorship  <  part of speech  <  focus dim
+///     stored (base)  <  code roles  <  authorship  <  part of speech  <  focus dim
 ///
 /// Temporary attributes are not part of the text storage: no undo, no dirty document, no
 /// analysis, no layout. The compositor keeps the runs it has applied and, when a layer
@@ -91,6 +96,30 @@ public final class OverlayCompositor {
     public func setFocus(_ keep: [NSRange]?) {
         guard keep != layers.focus else { return }
         layers.focus = keep
+        layersChanged = true
+    }
+
+    /// Replaces the code roles inside `window` (a result of the analysis for that range), leaving the rest of the
+    /// layer as it is. Runs are the core's, sorted and disjoint within a block; the layer is spliced, not rebuilt.
+    func patchCode(_ runs: [OverlayRun], in window: NSRange) {
+        guard window.length > 0 else { return }
+        let new = Self.clip(runs, to: window)
+        let lo = Self.firstRun(endingAfter: window.location, in: layers.code)
+        var hi = lo
+        while hi < layers.code.count, layers.code[hi].range.location < NSMaxRange(window) { hi += 1 }
+        // A run that crosses an edge of the window keeps the part outside it.
+        var replacement: [OverlayRun] = []
+        if lo < hi, layers.code[lo].range.location < window.location {
+            let r = layers.code[lo].range
+            replacement.append(OverlayRun(NSRange(location: r.location, length: window.location - r.location), layers.code[lo].paint))
+        }
+        replacement.append(contentsOf: new)
+        if lo < hi, NSMaxRange(layers.code[hi - 1].range) > NSMaxRange(window) {
+            let r = layers.code[hi - 1].range
+            replacement.append(OverlayRun(NSRange(location: NSMaxRange(window), length: NSMaxRange(r) - NSMaxRange(window)), layers.code[hi - 1].paint))
+        }
+        guard Array(layers.code[lo..<hi]) != replacement else { return }
+        layers.code.replaceSubrange(lo..<hi, with: replacement)
         layersChanged = true
     }
 
@@ -178,6 +207,7 @@ public final class OverlayCompositor {
         defer { timeFollowingEdits += CFAbsoluteTimeGetCurrent() - t0 }
         layers.authorship = Self.shift(layers.authorship, through: change)
         layers.pos = Self.shift(layers.pos, through: change)
+        shiftCode(through: change)
         if let keep = layers.focus { layers.focus = Self.shiftKeeping(keep, through: change) }
         applied = Self.shift(applied, through: change)
         dirty = dirty.map { RangeMath.shift($0, through: change) }
@@ -187,14 +217,17 @@ public final class OverlayCompositor {
         layersChanged = true
     }
 
-    /// Forget everything (a new text was loaded).
+    /// Forget everything (a new text was loaded). The code roles stay: the analysis of the new text is answered
+    /// inside the load itself, before this is called, and the layer follows every edit like the others did.
     public func reset() {
         removeAll()
+        let code = layers.code
         layers = OverlayLayers()
+        layers.code = code
         applied = []
         dirty = []
         appliedWindow = NSRange(location: 0, length: 0)
-        layersChanged = false
+        layersChanged = !code.isEmpty
     }
 
     // MARK: applying
@@ -271,6 +304,7 @@ public final class OverlayCompositor {
         guard let p = palette else { return nil }
         switch paint {
         case .dim: return p.focusDim
+        case .code(let role): return p.syntax.color(for: role)
         case .pos(let c):
             switch c {
             case .noun: return p.posNoun
@@ -312,7 +346,8 @@ public final class OverlayCompositor {
     /// The runs that paint `window`, composed from the layers in their order of precedence.
     /// Sorted, disjoint, adjacent runs of one paint merged.
     public static func compose(_ layers: OverlayLayers, in window: NSRange) -> [OverlayRun] {
-        var runs = clip(layers.authorship, to: window)
+        var runs = clip(layers.code, to: window)
+        runs = overlay(runs, with: clip(layers.authorship, to: window))
         runs = overlay(runs, with: clip(layers.pos, to: window))
         if let keep = layers.focus {
             runs = overlay(runs, with: complement(of: keep, in: window).map { OverlayRun($0, .dim) })
@@ -496,6 +531,39 @@ public final class OverlayCompositor {
     }
 
     // MARK: ranges
+
+    /// First index of `runs` whose range ends after `p`.
+    static func firstRun(endingAfter p: Int, in runs: [OverlayRun]) -> Int {
+        var lo = 0, hi = runs.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if NSMaxRange(runs[mid].range) <= p { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
+    /// The code layer after an edit, in place: the runs before it are not touched (a keystroke in a document
+    /// with tens of thousands of them must not copy them), the ones after move by the change, and the ones the
+    /// replaced text overlapped keep their parts outside it.
+    func shiftCode(through c: TextChange) {
+        guard !layers.code.isEmpty else { return }
+        let oldEnd = NSMaxRange(c.old)
+        let lo = Self.firstRun(endingAfter: c.old.location, in: layers.code)
+        var hi = lo
+        while hi < layers.code.count, layers.code[hi].range.location < oldEnd { hi += 1 }
+        var middle: [OverlayRun] = []
+        for r in layers.code[lo..<hi] {
+            let s = r.range.location, e = NSMaxRange(r.range)
+            if s < c.old.location { middle.append(OverlayRun(NSRange(location: s, length: c.old.location - s), r.paint)) }
+            if e > oldEnd { middle.append(OverlayRun(NSRange(location: c.old.location + c.newLength, length: e - oldEnd), r.paint)) }
+        }
+        if c.delta != 0 {
+            layers.code.withUnsafeMutableBufferPointer { buf in
+                for i in hi..<buf.count { buf[i].range.location += c.delta }
+            }
+        }
+        if lo < hi || !middle.isEmpty { layers.code.replaceSubrange(lo..<hi, with: middle) }
+    }
 
     /// First index whose range ends after `p`.
     static func firstIndex(endingAfter p: Int, in ranges: [NSRange]) -> Int {

@@ -28,5 +28,5 @@ over two lines.</p>
 </code></pre>
 <pre data-line="23"><code>indented code
 </code></pre>
-<p data-line="25"><img src="images/pic.png" alt="alt text" title="An image" /></p>
+<p class="picture" data-line="25"><img src="images/pic.png" alt="alt text" title="An image" /></p>
 <div>raw html</div>

@@ -1507,3 +1507,52 @@ fn every_bundled_syntax_survives_pathological_input() {
     println!("{} syntaxes; slowest block: {:?} ({})", tokens.len(), worst.0, worst.1);
     assert!(worst.0 < Duration::from_secs(3), "{:?} for {}", worst.0, worst.1);
 }
+
+// ----- pictures inside a sentence ----------------------------------------------------------------
+
+#[test]
+fn only_a_paragraph_of_one_picture_is_marked_as_one() {
+    let lines = |text: &str| doc(text).render_html(&RenderOptions { source_lines: true, ..Default::default() });
+    // On its own (blanks and a line break around it do not matter): the stylesheet gives it room.
+    for t in ["![a](p.png)\n", "  ![a](p.png)  \n", "![a](p.png)  \n", "[x]: y\n\n![a][r]\n\n[r]: p.png\n", "> ![a](p.png)\n", "- ![a](p.png)\n\n  x\n"] {
+        assert!(lines(t).contains("<p class=\"picture\""), "{t:?}: {}", lines(t));
+    }
+    // Inside a sentence, beside text on the next line, beside another picture, in a link: in the line.
+    for t in ["A ![a](p.png) b\n", "![a](p.png) b\n", "a ![a](p.png)\n", "a\n![a](p.png)\nb\n", "![a](p.png) ![b](q.png)\n", "![a](p.png)\n![b](q.png)\n", "[![a](p.png)](u)\n", "![a](p.png)  \nb\n"] {
+        assert!(!lines(t).contains("class=\"picture\""), "{t:?}: {}", lines(t));
+    }
+    // A fragment (no stylesheet, no line attributes) stays plain HTML; the standalone page marks it too.
+    assert_eq!(doc("![a](p.png)\n").render_html(&RenderOptions::default()), "<p><img src=\"p.png\" alt=\"a\" /></p>\n");
+    let page = doc("x ![a](p.png) y\n\n![b](q.png)\n").render_html(&RenderOptions { standalone: true, ..Default::default() });
+    assert_eq!(page.matches("class=\"picture\"").count(), 1);
+    assert!(page.contains("p.picture > img {"), "the stylesheet has the rule");
+    assert!(!page.contains("img:only-child"), "an image beside text is never a block");
+}
+
+// ----- the language label ------------------------------------------------------------------------
+
+#[test]
+fn highlighted_blocks_carry_their_language_for_the_preview_label() {
+    let lines = RenderOptions { source_lines: true, ..Default::default() };
+    let html = |t: &str, o: &RenderOptions| doc(t).render_html(o);
+    let rust = "```rust\nfn main() {}\n```\n";
+    assert!(html(rust, &lines).contains("<pre data-line=\"0\" data-lang=\"Rust\"><code class=\"language-rust\">"));
+    // The badge's own names: the highlighter's, not the fence's word.
+    assert!(html("```sh\nls\n```\n", &lines).contains("data-lang=\"Bourne Again Shell (bash)\""));
+    assert!(html("```py,ignore\nx = 1\n```\n", &lines).contains("data-lang=\"Python\""));
+    // No label: no language, an unknown one, plain text, indented code, highlighting off, a block left plain.
+    for t in ["```\nx\n```\n", "```nosuchlang\nx\n```\n", "```text\nx\n```\n", "    x\n"] {
+        assert!(!html(t, &lines).contains("data-lang"), "{t:?}");
+    }
+    let off = RenderOptions { source_lines: true, highlight: false, ..Default::default() };
+    assert!(!html(rust, &off).contains("data-lang"));
+    // The standalone page (the export and the PDF) has it; a fragment (Copy as HTML) stays plain.
+    let page = html(rust, &RenderOptions { standalone: true, ..Default::default() });
+    assert!(page.contains("data-lang=\"Rust\"") && page.contains("pre[data-lang]::before { content: attr(data-lang)"));
+    assert!(!html(rust, &RenderOptions::default()).contains("data-lang"));
+    // The sanitizer works on what the document writes, not on what the renderer adds: the label survives it.
+    let clean = html(rust, &RenderOptions { sanitize: true, source_lines: true, ..Default::default() });
+    assert!(clean.contains("data-lang=\"Rust\""));
+    // What a document writes itself is not trusted to carry one.
+    assert!(!html("<pre data-lang=\"X\">a</pre>\n", &RenderOptions { sanitize: true, ..Default::default() }).contains("data-lang"));
+}
