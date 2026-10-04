@@ -125,7 +125,7 @@
   {"type": "A draft that was never saved."},
   {"autosave": {"waitTitled": true, "timeout": 8}},
   {"history": {"waitVersions": 1, "timeout": 4}},
-  {"assert": {"windows": {"titles": ["Untitled 1", "Clips.md"]}, "history": {"count": 1, "reasons": ["draft"], "latestIsTheText": true},
+  {"assert": {"windows": {"titles": ["Untitled 1.md", "Clips.md"]}, "history": {"count": 1, "reasons": ["draft"], "latestIsTheText": true},
               "documentFile": {"work": "library/Drafts/Untitled 1.md", "contains": "A draft that was never saved.", "equalsText": true}}},
   {"notes": {"settle": 10}},
   {"assert": {"notes": {"rowsContain": ["Drafts"]}}},

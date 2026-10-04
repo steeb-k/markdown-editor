@@ -12,14 +12,15 @@ extension EditorSession {
         columnChanged(outlineWasShown: before)
     }
 
-    /// The header's segment, or a menu, or a setting: the column shows `pane` (and is shown, if it was not). The choice
-    /// is the default for windows opened later.
-    public func selectColumnPane(_ pane: SideColumnPane) {
+    /// The header's segment, or a menu, or a setting: the column shows `pane` (and is shown, if it was not). A click on
+    /// a segment (`remember`) is also the default for windows opened later; ⌃⌘H and the other menu paths leave the
+    /// setting ("Side column starts on") as the person set it.
+    public func selectColumnPane(_ pane: SideColumnPane, remember: Bool = false) {
         let before = outlineShown
+        if remember, settings.sideColumnPane != pane { settings.sideColumnPane = pane }
         guard pane != columnPane || !columnShown else { return }
         columnPane = pane
         columnShown = true
-        settings.sideColumnPane = pane
         columnChanged(outlineWasShown: before)
     }
 

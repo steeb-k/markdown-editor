@@ -24,6 +24,8 @@ public final class MarkdownDocument: NSDocument {
     var savesInFlight = 0
     /// Why the next write's snapshot is taken, when not the usual (a draft).
     var nextSnapshotReason: HistoryReason?
+    /// A draft's write is under way (its extension shows, see `fileAttributesToWrite`).
+    var writingDraft = false
     /// How long after the last edit the document is written and a snapshot taken.
     nonisolated(unsafe) public static var autosaveDelay: TimeInterval = 2
     /// The longest a stream of edits goes unwritten (NSDocument's own timer, from the first edit).

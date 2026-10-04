@@ -64,6 +64,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// Instrumentation: main-thread seconds of the last update of the mark from the scroll, and how many there were.
     var lastOutlineScrollUpdate: TimeInterval = 0
     var outlineScrollUpdates = 0
+    /// Instrumentation: how often a double-click on the title asked for a rename.
+    var titleRenames = 0
+    /// The rename popover, while it shows.
+    var renamer: TitleRenamer?
     var observers: [NSObjectProtocol] = []
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
@@ -186,7 +190,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         chrome = ChromeController(window: window, toolbar: toolbar, autoHide: settings.autoHideChrome,
                                   reappearsAfterPause: settings.chromeReturnsAfterPause)
         chrome.titleViews = [titleView]
-        titleView.onRename = { [weak self] in self?.markdownDocument?.rename(nil) }
+        titleView.onRename = { [weak self] in self?.showRename() }
         titleView.canRename = { [weak self] in
             guard let self, let doc = markdownDocument else { return false }
             return chrome.state.isVisible && doc.fileURL != nil && !doc.isBundled
@@ -524,6 +528,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         fadeHeight.constant = bar + 22
         bandHeight.constant = bar
         titleHeight.constant = bar
+        // No row of its own (full screen, where AppKit's title bar comes down over the content): no title of ours either.
+        titleView.isHidden = bar == 0
         positionChangeBar()
         titlebarFade.isHidden = bar == 0
         previewController.setChrome(top: bar, bottom: 0)
@@ -565,6 +571,39 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         centring.update()
     }
 
+    /// A double-click on the title's name: the rename popover under it (see `TitleRenamer`).
+    func showRename() {
+        guard let doc = markdownDocument, let url = doc.fileURL, !doc.isBundled, renamer == nil else { return }
+        titleRenames += 1
+        let r = TitleRenamer(name: url.lastPathComponent) { [weak self, weak doc] typed in
+            guard let self, let doc, let url = doc.fileURL else { return }
+            rename(doc, from: url, to: typed)
+        }
+        r.onClose = { [weak self] in self?.renamer = nil }
+        renamer = r
+        titleView.layoutSubtreeIfNeeded()
+        r.show(relativeTo: titleView.titleFrame, of: titleView)
+    }
+
+    /// Moves the document's file to the name typed, or says why not.
+    func rename(_ doc: MarkdownDocument, from url: URL, to typed: String) {
+        guard let dest = TitleRenamer.destination(for: url, typed: typed) else { NSSound.beep(); return }
+        guard dest.path != url.path else { return }
+        // A change of case only is the same file to the file system: NSDocument moves it all the same.
+        if DocumentFileAccess.exists(dest), dest.path.lowercased() != url.path.lowercased() {
+            guard let window else { return }
+            let alert = NSAlert()
+            alert.messageText = "\u{201C}\(dest.lastPathComponent)\u{201D} is already taken."
+            alert.informativeText = "Please choose a different name."
+            alert.beginSheetModal(for: window)
+            return
+        }
+        doc.move(to: dest) { [weak self] error in
+            guard let error, let window = self?.window else { return }
+            NSAlert(error: error).beginSheetModal(for: window)
+        }
+    }
+
     /// The title view shows what the document's name, file and state are now.
     func updateTitleView() {
         guard let window else { return }
@@ -591,6 +630,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     }
 
     public func windowWillClose(_ notification: Notification) {
+        renamer?.popover.close()
         session.outlineTimer?.invalidate()
         history?.service = nil
         previewController.tearDown()

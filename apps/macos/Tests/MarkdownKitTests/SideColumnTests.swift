@@ -219,6 +219,103 @@ final class SideColumnTests: XCTestCase {
         XCTAssertTrue(doc.session.historyShown, "the column comes back on the pane it last had")
     }
 
+    /// Found in the M8f test pass: ⌃⌘H (and every menu path) wrote the pane into the settings, so one press changed what
+    /// "Side column starts on" says for every window opened later. Only a click on a segment is a new default.
+    func testOnlyASegmentClickChangesTheDefaultPaneNotTheMenus() throws {
+        let settings = isolatedSettings()
+        settings.sideColumnPane = .outline
+        let (doc, wc) = try open(settings: settings)
+        wc.showHistory(nil)
+        XCTAssertTrue(doc.session.historyShown)
+        XCTAssertEqual(settings.sideColumnPane, .outline, "⌃⌘H leaves the setting alone")
+        wc.showHistory(nil)
+        wc.toggleSideColumn(nil)
+        XCTAssertTrue(doc.session.historyShown, "this window remembers its own pane")
+        doc.session.setOutlineShown(true)
+        settings.sideColumnPane = .history
+        doc.session.setHistoryShown(true)
+        doc.session.setOutlineShown(true)
+        XCTAssertEqual(settings.sideColumnPane, .history, "nor do the other menu paths")
+        let header = try XCTUnwrap(wc.sideColumn?.view.header)
+        header.selectedSegment = 1
+        _ = NSApp.sendAction(try XCTUnwrap(header.action), to: header.target, from: header)
+        header.selectedSegment = 0
+        _ = NSApp.sendAction(try XCTUnwrap(header.action), to: header.target, from: header)
+        XCTAssertEqual(settings.sideColumnPane, .outline, "a click on a segment does")
+    }
+
+    /// Found in the M8f test pass: the divider let the column go to 160 points while the setting (and so a new window)
+    /// keeps 200 at least; the column now stops where the setting does, and the window's width never squeezes it.
+    func testTheDividerStopsWhereTheSettingDoes() throws {
+        let settings = isolatedSettings()
+        let (doc, wc) = try open(settings: settings, column: true)
+        let host = try XCTUnwrap(wc.paneHost)
+        let w = host.bounds.width
+        let minPos = wc.splitView(host, constrainMinCoordinate: 0, ofSubviewAt: 0)
+        let maxPos = wc.splitView(host, constrainMaxCoordinate: w, ofSubviewAt: 0)
+        XCTAssertEqual(w - 1 - maxPos, CGFloat(Settings.sideColumnWidthRange.lowerBound), accuracy: 0.5, "the narrowest column")
+        XCTAssertEqual(w - 1 - minPos, CGFloat(Settings.sideColumnWidthRange.upperBound), accuracy: 0.5, "the widest")
+        host.setPosition(w - 150, ofDividerAt: 0)
+        host.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(wc.columnView).frame.width, 199.5)
+        doc.session.columnWidth = 150
+        doc.session.setColumnShown(false)
+        doc.session.setColumnShown(true)
+        XCTAssertEqual(try XCTUnwrap(wc.columnView).frame.width, 200, accuracy: 1, "a width below the least is the least")
+    }
+
+    /// The three columns and the title at the window's narrowest: the editor's pane keeps its least width, the title sits
+    /// over it, the column keeps its width, whichever pane shows, and switching changes none of it.
+    func testThreeColumnsAndTheTitleAtTheNarrowestWindow() throws {
+        let (doc, wc) = try open(column: true)
+        let ws = Workspace(library: LibraryController(), settings: wc.session.settings, notesMode: true)
+        wc.adopt(ws)
+        defer { wc.leaveWorkspace() }
+        let window = try XCTUnwrap(wc.window)
+        window.setContentSize(NSSize(width: window.minSize.width, height: 600))
+        window.layoutIfNeeded()
+        pump()
+        XCTAssertEqual(window.frame.width, window.minSize.width, accuracy: 1)
+        for pane in [SideColumnPane.history, .outline, .history] {
+            doc.session.selectColumnPane(pane)
+            window.layoutIfNeeded()
+            pump()
+            let column = try XCTUnwrap(wc.columnView)
+            XCTAssertEqual(column.frame.width, 260, accuracy: 1, "\(pane)")
+            XCTAssertGreaterThanOrEqual(wc.root.frame.width, wc.baseMinWidth - 0.5, "\(pane): the editor's pane keeps its least width")
+            let sidebarRight = try XCTUnwrap(wc.sidebar?.view).convert(wc.sidebar!.view.bounds, to: nil).maxX
+            wc.titleView.layoutSubtreeIfNeeded()
+            let title = wc.titleView.convert(wc.titleView.titleFrame, to: nil)
+            XCTAssertGreaterThanOrEqual(title.minX, sidebarRight, "\(pane)")
+            XCTAssertLessThanOrEqual(title.maxX, try XCTUnwrap(wc.columnLeft), "\(pane)")
+            XCTAssertLessThanOrEqual(window.frame.width, window.minSize.width + 1, "\(pane): the window did not grow")
+        }
+    }
+
+    /// Someone who had the outline on by default in M8d opens a window after the update: the column is there, on the
+    /// outline, at the outline's old width; once they change the new setting the old one no longer counts.
+    func testTheOldOutlineSettingsOpenTheFirstWindowAsTheyDid() throws {
+        let suite = "sidecolumn-migrate-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "outlineByDefault")
+        defaults.set(300, forKey: "outlineWidth")   // an integer, as `defaults write -int` leaves it
+        defaults.set(340.0, forKey: "historyWidth")
+        let settings = Settings(defaults: defaults)
+        let doc = MarkdownDocument(settings: settings)
+        try doc.read(from: Data(Self.sample.utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        docs.append(doc)
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        wc.showWindow(nil)
+        wc.window?.setContentSize(NSSize(width: 1100, height: 700))
+        wc.window?.layoutIfNeeded()
+        XCTAssertTrue(doc.session.outlineShown)
+        XCTAssertEqual(try XCTUnwrap(wc.columnView).frame.width, 300, accuracy: 1)
+        settings.showSideColumnInNewWindows = false
+        XCTAssertFalse(Settings(defaults: defaults).showSideColumnInNewWindows, "the new setting, once set, is the one")
+    }
+
     func testShowHistoryIsOffForADocumentWithNoFileOfItsOwn() throws {
         let (_, bundled) = try open(bundled: true)
         XCTAssertFalse(bundled.validateMenuItem(try menuItem("Show History")), "a help page has no history")

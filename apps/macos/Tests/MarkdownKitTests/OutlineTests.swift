@@ -452,6 +452,71 @@ final class OutlineTests: XCTestCase {
         XCTAssertEqual(marked(wc), "One")
     }
 
+    /// Found in the M8f test pass: a scroll of the reader's own within 0.6 s of a jump was dropped with the jump's own,
+    /// and nothing asked again when the quiet ended: the mark stayed on the heading chosen wherever the reader went.
+    func testTheReadersWheelRightAfterAJumpMovesTheMark() throws {
+        let (doc, wc) = try open("# One\n\n" + String(repeating: "filler line\n\n", count: 80) + "## Two\n\nend\n", outline: true)
+        defer { doc.close() }
+        XCTAssertTrue(waitEntries(wc, 2))
+        let two = try XCTUnwrap(wc.outline?.entries.last)
+        let jumped = CFAbsoluteTimeGetCurrent()
+        wc.jump(to: two)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "Two")
+        // The jump's own late scrolling still leaves the mark alone.
+        scroll(wc, toCharacter: 0)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "Two", "a programmatic scroll within the quiet is the jump's")
+        scroll(wc, toCharacter: Int(two.range.start))
+        pump(0.05)
+        // The reader's wheel, 0.25 s after the jump, and the scrolling it starts (AppKit's own, which may go on after the
+        // event: here it is made by hand, as an unfocused test app's scroll view need not act on a synthetic wheel event).
+        let event = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: 420, wheel2: 0, wheel3: 0).flatMap(NSEvent.init(cgEvent:)))
+        wc.scrollView.scrollWheel(with: event)
+        scroll(wc, toCharacter: 0)
+        pump(0.15)
+        XCTAssertLessThan(CFAbsoluteTimeGetCurrent() - jumped, EditorWindowController.outlineJumpQuiet, "all of it within the jump's quiet")
+        XCTAssertEqual(marked(wc), "One", "the reader's own scroll moves the mark at once, quiet or not")
+    }
+
+    /// Front matter, or an introduction, above the first heading: the first heading is marked (the reader is at the start
+    /// of it); a document with no headings marks nothing and never fails; the Preview layout marks by the page's line.
+    func testFrontMatterNoHeadingsAndThePreviewLayout() throws {
+        let front = "---\ntitle: A note\ntags: [a, b]\n---\n\nAn introduction.\n\n" + String(repeating: "intro line\n\n", count: 40) + "# First\n\ntext\n\n## Second\n\n" + String(repeating: "more\n\n", count: 80)
+        let (doc, wc) = try open(front, outline: true)
+        defer { doc.close() }
+        XCTAssertTrue(waitEntries(wc, 2))
+        scroll(wc, toCharacter: 0)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "First", "front matter at the top: the first heading")
+        scroll(wc, toCharacter: (front as NSString).range(of: "intro line").location)
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "First")
+        let second = try XCTUnwrap(wc.outline?.entries.last)
+        scroll(wc, toCharacter: Int(second.range.start))
+        pump(0.1)
+        XCTAssertEqual(marked(wc), "Second")
+        // The Preview layout: the page's top line says.
+        doc.session.setLayout(.preview)
+        pump(0.1)
+        wc.outlinePageScrolled(to: Double(second.line) + 2)
+        XCTAssertEqual(marked(wc), "Second")
+        let first = try XCTUnwrap(wc.outline?.entries.first)
+        wc.outlinePageScrolled(to: Double(first.line))
+        XCTAssertEqual(marked(wc), "First")
+        // No headings at all.
+        let (plain, pwc) = try open(String(repeating: "just words\n\n", count: 200), outline: true)
+        defer { plain.close() }
+        pump(0.3)
+        XCTAssertEqual(pwc.outline?.entries.count, 0)
+        for y in [0, 500, 2_000] {
+            scroll(pwc, toCharacter: y)
+            pump(0.05)
+            pwc.outlineFollowScroll()
+            XCTAssertNil(marked(pwc))
+        }
+    }
+
     func testReduceMotionAndFocusCentringDoNotChangeWhatTheScrollMarks() throws {
         for reduce in [true, false] {
             let (doc, wc) = try open(Self.sample, outline: true)

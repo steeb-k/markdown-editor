@@ -38,12 +38,16 @@ final class EditorScrollView: NSScrollView {
     /// Part of `contentInsets.top` and `.bottom` that focus mode added for centring.
     var focusInset: CGFloat = 0
     var onUserScroll: (() -> Void)?
+    /// When the reader last scrolled with the wheel or the trackpad (the scrolling it starts may go on after the event,
+    /// animated): what the outline's mark tells from a jump's own scrolling.
+    private(set) var lastUserScroll: CFAbsoluteTime = 0
 
     /// The inset under the title bar, without focus mode's.
     var baseInsetTop: CGFloat { contentInsets.top - focusInset }
     var baseInsetBottom: CGFloat { contentInsets.bottom - focusInset }
 
     override func scrollWheel(with event: NSEvent) {
+        lastUserScroll = CFAbsoluteTimeGetCurrent()
         onUserScroll?()
         super.scrollWheel(with: event)
     }

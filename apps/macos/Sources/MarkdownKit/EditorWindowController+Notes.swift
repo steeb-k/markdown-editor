@@ -631,12 +631,13 @@ extension EditorWindowController: NSSplitViewDelegate {
 
     public func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         // The outline's divider: the editor's pane keeps its room, the column its 480 at most.
-        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 481) }
+        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 1 - CGFloat(Settings.sideColumnWidthRange.upperBound)) }
         return 160
     }
 
     public func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 161) }
+        // The column no narrower than a new window would start it (what the setting keeps).
+        if splitView === paneHost { return max(baseMinWidth, splitView.bounds.width - 1 - CGFloat(Settings.sideColumnWidthRange.lowerBound)) }
         return min(480, max(160, splitView.bounds.width - 320))
     }
 

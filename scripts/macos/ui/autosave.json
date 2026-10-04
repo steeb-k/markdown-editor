@@ -79,7 +79,7 @@
   {"type": "My first draft."},
   {"autosave": {"waitTitled": true, "timeout": 8}},
   {"autosave": {"waitClean": true}},
-  {"assert": {"windows": {"titles": ["Untitled 1"], "editedDot": false}, "documentFile": {"work": "library/Drafts/Untitled 1.md", "contains": "My first draft.", "equalsText": true}}},
+  {"assert": {"windows": {"titles": ["Untitled 1.md"], "editedDot": false}, "documentFile": {"work": "library/Drafts/Untitled 1.md", "contains": "My first draft.", "equalsText": true}}},
   {"notes": {"settle": 10}},
   {"assert": {"notes": {"rowsContain": ["Drafts"], "selected": ["Drafts/Untitled 1.md"]}}},
   {"snapshot": "05-draft-in-the-sidebar", "bitmap": true},

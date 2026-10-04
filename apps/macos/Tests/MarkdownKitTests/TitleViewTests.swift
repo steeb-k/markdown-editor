@@ -244,6 +244,231 @@ final class TitleViewTests: XCTestCase {
         XCTAssertNil(untitled.titleView.pathMenu())
     }
 
+    // MARK: from the M8f test pass
+
+    /// At the window's narrowest, with every combination of sidebar and column, every layout, the chrome shown and faded,
+    /// a long name, an RTL name and one with emoji, edited and not: the title stays inside its pane (never over the sidebar
+    /// or the column, never under the window buttons), centred, and never wider than its room.
+    func testAtTheNarrowestWindowTheTitleStaysInsideItsPaneWhateverItSays() throws {
+        let names = [String(repeating: "a very long file name ", count: 10) + ".md",
+                     "\u{645}\u{644}\u{627}\u{62D}\u{638}\u{627}\u{62A} \u{627}\u{644}\u{627}\u{62C}\u{62A}\u{645}\u{627}\u{639} \u{627}\u{644}\u{623}\u{633}\u{628}\u{648}\u{639}\u{64A}\u{629}.md",
+                     "\u{1F4DD} Notes \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} \u{1F1EB}\u{1F1F7} plan.md"]
+        for name in names {
+            let (_, wc) = try open(file: name)
+            let window = try XCTUnwrap(wc.window)
+            let zoom = try XCTUnwrap(window.standardWindowButton(.zoomButton))
+            for (sidebar, column) in [(false, false), (false, true), (true, false), (true, true)] {
+                if column != wc.session.columnShown { setColumn(wc, column) }
+                if sidebar, wc.sidebar == nil { addSidebar(wc) }
+                if !sidebar, wc.sidebar != nil { wc.leaveWorkspace() }
+                window.setContentSize(NSSize(width: window.minSize.width, height: 600))
+                window.layoutIfNeeded()
+                XCTAssertEqual(window.frame.width, window.minSize.width, accuracy: 1)
+                for layout in [LayoutMode.editor, .split, .preview] {
+                    wc.session.setLayout(layout)
+                    for edited in [false, true] {
+                        wc.titleView.edited = edited
+                        for faded in [false, true] {
+                            wc.chromeController.fadeDuration = 0
+                            wc.chromeController.send(faded ? .typingStarted : .pointerMoved)
+                            pump(0.02)
+                            let what = "\(name.prefix(12)) sidebar \(sidebar) column \(column) \(layout) edited \(edited) faded \(faded)"
+                            try assertCentred(wc, what)
+                            let tv = wc.titleView
+                            XCTAssertLessThanOrEqual(tv.parts.total, tv.availableWidth + 0.5, what)
+                            let g = try geometry(wc)
+                            if !sidebar {
+                                XCTAssertGreaterThanOrEqual(g.title.minX, zoom.convert(zoom.bounds, to: nil).maxX, "\(what): clear of the window buttons")
+                            }
+                            // Every part drawn inside the title's frame: the name and "Edited".
+                            for field in tv.subviews where !field.isHidden && field.frame.width > 0 {
+                                let f = tv.convert(field.frame, to: nil)
+                                XCTAssertGreaterThanOrEqual(f.minX, g.pane.lowerBound - 0.5, what)
+                                XCTAssertLessThanOrEqual(f.maxX, g.pane.upperBound + 0.5, what)
+                            }
+                            if edited { XCTAssertGreaterThan(tv.parts.status, 20, "\(what): Edited is there in full") }
+                        }
+                    }
+                }
+            }
+            wc.leaveWorkspace()
+        }
+    }
+
+    /// The title's own arithmetic, at every width down to nothing: never wider than its room, the name cut first and then
+    /// "Edited", and never drawn outside its row.
+    func testARowNarrowerThanItsTitleCutsTheNameThenEditedAndNeverDrawsOutside() throws {
+        let tv = TitlebarTitleView(frame: NSRect(x: 0, y: 0, width: 400, height: 28))
+        tv.name = "A title of some length.md"
+        for edited in [false, true] {
+            tv.edited = edited
+            for width in stride(from: CGFloat(0), through: 400, by: 7) {
+                tv.setFrameSize(NSSize(width: width, height: 28))
+                tv.layoutSubtreeIfNeeded()
+                let p = tv.parts
+                XCTAssertLessThanOrEqual(p.total, tv.availableWidth + 0.01, "width \(width), edited \(edited)")
+                XCTAssertGreaterThanOrEqual(p.name, 0)
+                XCTAssertGreaterThanOrEqual(p.status, 0)
+                if edited, p.name > 0 { XCTAssertEqual(p.status, TitlebarTitleView.width(of: NSTextField(labelWithString: TitlebarTitleView.statusText)), accuracy: 6, "the name goes first") }
+                for v in tv.subviews where !v.isHidden && v.frame.width > 0 {
+                    XCTAssertGreaterThanOrEqual(v.frame.minX, TitlebarTitleView.sideMargin - 0.5, "width \(width)")
+                    XCTAssertLessThanOrEqual(v.frame.maxX, width - TitlebarTitleView.sideMargin + 0.5, "width \(width)")
+                }
+            }
+        }
+        XCTAssertTrue(tv.clipsToBounds, "nothing of it is drawn outside its row")
+    }
+
+    /// Full screen (and any window with no title-bar row): the row is gone, and so is the title (AppKit's own title bar
+    /// comes down over the content there; ours, in a row of no height, would draw over the text).
+    func testWithNoTitleBarRowThereIsNoTitle() throws {
+        let (_, wc) = try open(file: "Bare.md")
+        let window = try XCTUnwrap(wc.window)
+        XCTAssertFalse(wc.titleView.isHidden)
+        let mask = window.styleMask
+        window.styleMask = [.borderless, .resizable]
+        wc.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
+        window.layoutIfNeeded()
+        XCTAssertEqual(window.frame.height - window.contentLayoutRect.height, 0, accuracy: 0.5)
+        XCTAssertTrue(wc.titleView.isHidden, "no row, no title")
+        XCTAssertEqual(wc.titleView.frame.height, 0, accuracy: 0.5)
+        window.styleMask = mask
+        wc.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: window))
+        window.layoutIfNeeded()
+        XCTAssertFalse(wc.titleView.isHidden, "and back with it")
+        try assertCentred(wc, "after the row came back")
+    }
+
+    /// ⌘-click: the folders, named as the Finder names them, ending at the file's volume (the startup disk by its name, not
+    /// "/"); a file nested deep has every one of them, nearest first.
+    func testThePathMenuNamesTheFoldersAsTheFinderDoesAndEndsAtTheVolume() throws {
+        let (doc, wc) = try open(file: "Deep.md")
+        let base = try XCTUnwrap(doc.fileURL?.deletingLastPathComponent())
+        let nested = base.appendingPathComponent("one/two words/thrée", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        let file = nested.appendingPathComponent("Deep.md")
+        try Data("# Deep\n".utf8).write(to: file)
+        doc.fileURL = file
+        wc.synchronizeWindowTitleWithDocumentName()
+        let menu = try XCTUnwrap(wc.titleView.pathMenu())
+        let titles = menu.items.map(\.title)
+        XCTAssertEqual(Array(titles.prefix(4)), ["thrée", "two words", "one", base.lastPathComponent])
+        let last = try XCTUnwrap(menu.items.last?.representedObject as? URL)
+        XCTAssertEqual((try last.resourceValues(forKeys: [.isVolumeKey])).isVolume, true, "it ends at the volume")
+        XCTAssertEqual(menu.items.last?.title, FileManager.default.displayName(atPath: "/"), "named as the Finder names it")
+        XCTAssertNotEqual(menu.items.last?.title, "/")
+        XCTAssertEqual(menu.items.compactMap { $0.representedObject as? URL }.count, menu.items.count)
+        // A volume other than the startup disk ends at itself, not at /Volumes and /.
+        let volumes = (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? [])
+            .filter { $0.path.hasPrefix("/Volumes/") }
+        for volume in volumes.prefix(1) {
+            let folders = TitlebarTitleView.enclosingFolders(of: volume.appendingPathComponent("some/where/file.md"))
+            XCTAssertEqual(folders.last?.standardizedFileURL.path, volume.standardizedFileURL.path, "\(volume.path)")
+            XCTAssertFalse(folders.contains { $0.path == "/Volumes" || $0.path == "/" })
+        }
+    }
+
+    /// A double-click on the name renames (and does not zoom); on the blank part of the row it does what the system's
+    /// title bar setting says, not rename.
+    func testADoubleClickOnTheNameRenamesAndDoesNotZoom() throws {
+        let (_, wc) = try open(file: "Rename.md")
+        let window = try XCTUnwrap(wc.window)
+        let tv = wc.titleView
+        tv.layoutSubtreeIfNeeded()
+        var renames = 0
+        tv.onRename = { renames += 1 }
+        let frame = window.frame
+        func doubleClick(at p: NSPoint) throws {
+            let inWindow = tv.convert(p, to: nil)
+            let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: inWindow, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                         windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+            tv.mouseDown(with: event)
+            pump(0.3)
+        }
+        try doubleClick(at: NSPoint(x: tv.titleFrame.midX, y: tv.titleFrame.midY))
+        XCTAssertEqual(renames, 1, "the name renames")
+        XCTAssertEqual(window.frame, frame, "and does not zoom")
+        // Faded, the same place is the row's: no rename.
+        wc.chromeController.fadeDuration = 0
+        wc.chromeController.send(.typingStarted)
+        pump(0.05)
+        try doubleClick(at: NSPoint(x: tv.titleFrame.midX, y: tv.titleFrame.midY))
+        XCTAssertEqual(renames, 1, "faded: not renamed")
+        wc.chromeController.send(.pointerMoved)
+        pump(0.05)
+        try doubleClick(at: NSPoint(x: tv.bounds.maxX - 20, y: tv.bounds.midY))
+        XCTAssertEqual(renames, 1, "beside the name: the row's, not a rename")
+    }
+
+    /// Found in the M8f test pass: the double-click called `NSDocument.rename`, whose popover anchors to AppKit's own title
+    /// views, hidden while the app draws its title: nothing came up at all (a real double-click in `titlebar.json`). The
+    /// title has its own popover now: the name in a field under the title, Return renames the file, Escape leaves it.
+    func testADoubleClickOnTheNameOpensARenamePopoverThatRenamesTheFile() throws {
+        let (doc, wc) = try open(file: "Before.md")
+        let folder = try XCTUnwrap(doc.fileURL?.deletingLastPathComponent())
+        wc.showRename()
+        let r = try XCTUnwrap(wc.renamer)
+        XCTAssertTrue(r.popover.isShown, "the popover is up")
+        XCTAssertEqual(r.field.stringValue, "Before.md")
+        XCTAssertEqual(r.field.currentEditor()?.selectedRange, NSRange(location: 0, length: 6), "the name without .md selected")
+        let popoverWindow = try XCTUnwrap(r.popover.contentViewController?.view.window)
+        let title = wc.titleView.convert(wc.titleView.titleFrame, to: nil)
+        let titleOnScreen = try XCTUnwrap(wc.window).convertToScreen(title)
+        XCTAssertLessThanOrEqual(popoverWindow.frame.maxY, titleOnScreen.minY + 1, "under the title")
+        XCTAssertTrue(popoverWindow.frame.minX < titleOnScreen.maxX && popoverWindow.frame.maxX > titleOnScreen.minX, "by it")
+        wc.showRename()
+        XCTAssertTrue(wc.renamer === r, "one at a time")
+        // Escape: nothing renamed.
+        _ = r.control(r.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+        pump(0.3)
+        XCTAssertNil(wc.renamer)
+        XCTAssertEqual(doc.fileURL?.lastPathComponent, "Before.md")
+        // Return with a new name (no extension typed: the old one is kept).
+        wc.showRename()
+        let r2 = try XCTUnwrap(wc.renamer)
+        r2.field.stringValue = "After"
+        _ = r2.control(r2.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        XCTAssertTrue(spin(timeout: 5) { doc.fileURL?.lastPathComponent == "After.md" })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("After.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Before.md").path))
+        XCTAssertTrue(spin(timeout: 2) { wc.titleView.name == "After.md" && wc.window?.title == "After.md" })
+        // A name already taken: nothing moves.
+        try Data("x".utf8).write(to: folder.appendingPathComponent("Taken.md"))
+        wc.rename(doc, from: try XCTUnwrap(doc.fileURL), to: "Taken.md")
+        pump(0.3)
+        XCTAssertEqual(doc.fileURL?.lastPathComponent, "After.md")
+        if let sheet = wc.window?.attachedSheet { wc.window?.endSheet(sheet) }
+        // Names that cannot be a file's.
+        let url = URL(fileURLWithPath: "/tmp/a/Note.md")
+        XCTAssertNil(TitleRenamer.destination(for: url, typed: "  "))
+        XCTAssertNil(TitleRenamer.destination(for: url, typed: "a/b"))
+        XCTAssertNil(TitleRenamer.destination(for: url, typed: ".hidden"))
+        XCTAssertEqual(TitleRenamer.destination(for: url, typed: "New.txt")?.lastPathComponent, "New.txt")
+        XCTAssertEqual(TitleRenamer.destination(for: url, typed: " Été ")?.path, "/tmp/a/Été.md")
+        // An untitled document has nothing to rename.
+        let (_, untitled) = try open()
+        untitled.showRename()
+        XCTAssertNil(untitled.renamer)
+    }
+
+    /// Nothing of the title outlives its window.
+    func testTheTitleViewIsFreedWithItsWindow() throws {
+        weak var weakTitle: TitlebarTitleView?
+        weak var weakController: EditorWindowController?
+        try autoreleasepool {
+            let (doc, wc) = try open(file: "Gone.md")
+            addSidebar(wc)
+            setColumn(wc, true)
+            weakTitle = wc.titleView
+            weakController = wc
+            wc.leaveWorkspace()
+            doc.updateChangeCount(.changeCleared)
+            doc.close()
+            docs.removeAll { $0 === doc }
+        }
+        XCTAssertTrue(spin(timeout: 5) { weakTitle == nil && weakController == nil }, "the title view and its controller are freed")
+    }
+
     func testTheRowIsTheWindowsEverywhereAndTheTitleRenamesOnlyWhenItIsThere() throws {
         let (_, wc) = try open(file: "Row.md")
         let tv = wc.titleView

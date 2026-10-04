@@ -39,6 +39,9 @@ final class TitlebarTitleView: NSView {
         label.cell?.truncatesLastVisibleLine = true
         status.font = Self.titleFont
         status.lineBreakMode = .byClipping
+        // Never drawn outside its row (a row of no height, before the first layout or in full screen, drew the name over
+        // the text below it).
+        clipsToBounds = true
         for v in [label, status] as [NSView] { addSubview(v) }
         // One element for VoiceOver, with what the system's title had: the name, and that it is edited.
         for v in [label, status] as [NSView] { v.setAccessibilityElement(false) }
@@ -114,6 +117,8 @@ final class TitlebarTitleView: NSView {
         var p = Parts(name: wanted, status: statusWidth)
         let over = p.total - availableWidth
         if over > 0 { p.name = max(0, wanted - over) }
+        // Narrower than "Edited" alone (a row hardly wider than its margins): that is cut too, never wider than the room.
+        if p.total > availableWidth { p.status = max(0, availableWidth - Self.gap) }
         return p
     }
 
@@ -166,23 +171,35 @@ final class TitlebarTitleView: NSView {
         window?.performDrag(with: event)
     }
 
-    /// The folders the file is in, the nearest first, each of which shows in the Finder when chosen (nil without a file).
+    /// The folders the file is in, the nearest first, up to and including its volume, each of which shows in the Finder
+    /// when chosen (nil without a file). Named as the Finder names them (the startup disk is "Macintosh HD", not "/",
+    /// and a file on another disk ends at that disk, not at "Volumes" and "/").
     func pathMenu() -> NSMenu? {
         guard let url = fileURL else { return nil }
         let menu = NSMenu(title: name)
-        var folder = url.deletingLastPathComponent()
-        while true {
-            let item = NSMenuItem(title: folder.lastPathComponent.isEmpty ? "/" : folder.lastPathComponent, action: #selector(revealFolder(_:)), keyEquivalent: "")
+        for folder in Self.enclosingFolders(of: url) {
+            let item = NSMenuItem(title: FileManager.default.displayName(atPath: folder.path), action: #selector(revealFolder(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = folder
             item.image = NSWorkspace.shared.icon(forFile: folder.path)
             item.image?.size = NSSize(width: 16, height: 16)
             menu.addItem(item)
-            let parent = folder.deletingLastPathComponent()
-            if parent.path == folder.path || folder.path == "/" { break }
-            folder = parent
         }
         return menu
+    }
+
+    /// The folders `url` is in, the nearest first, ending with the volume's root.
+    static func enclosingFolders(of url: URL) -> [URL] {
+        var folders: [URL] = []
+        var folder = url.standardizedFileURL.deletingLastPathComponent()
+        while true {
+            folders.append(folder)
+            let isVolume = (try? folder.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? false
+            let parent = folder.deletingLastPathComponent()
+            if isVolume || folder.path == "/" || parent.path == folder.path { break }
+            folder = parent
+        }
+        return folders
     }
 
     @objc private func revealFolder(_ sender: NSMenuItem) {
@@ -216,5 +233,98 @@ enum SystemTitle {
             changed = true
         }
         return changed
+    }
+}
+
+/// Renaming from the title: a popover under the name with the name in a field (the part before the extension
+/// selected), Return renames, Escape or a click elsewhere leaves it. AppKit's own (`NSDocument.rename`) anchors to its
+/// title views, which are hidden while the app draws its own title: it showed nothing at all (found in the M8f test pass).
+/// The file is moved by `NSDocument.move(to:)`, as AppKit's rename does, so the history follows (`fileURL`'s `didSet`).
+@MainActor
+final class TitleRenamer: NSObject, NSTextFieldDelegate, NSPopoverDelegate {
+    let popover = NSPopover()
+    let field = NSTextField(string: "")
+    private let original: String
+    private let commit: (String) -> Void
+    private var done = false
+    /// The popover closed (renamed or not).
+    var onClose: (() -> Void)?
+
+    init(name: String, commit: @escaping (String) -> Void) {
+        original = name
+        self.commit = commit
+        super.init()
+        field.stringValue = name
+        field.font = TitlebarTitleView.titleFont
+        field.alignment = .center
+        field.lineBreakMode = .byTruncatingMiddle
+        field.usesSingleLineMode = true
+        field.delegate = self
+        field.setAccessibilityLabel("Name")
+        field.setAccessibilityIdentifier("rename-field")
+        let label = NSTextField(labelWithString: "Name:")
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 58))
+        label.frame = NSRect(x: 14, y: 34, width: 252, height: 16)
+        field.frame = NSRect(x: 14, y: 10, width: 252, height: 22)
+        view.addSubview(label)
+        view.addSubview(field)
+        let vc = NSViewController()
+        vc.view = view
+        popover.contentViewController = vc
+        popover.behavior = .transient
+        popover.delegate = self
+    }
+
+    func show(relativeTo rect: NSRect, of view: NSView) {
+        popover.show(relativeTo: rect, of: view, preferredEdge: .maxY)
+        popover.contentViewController?.view.window?.makeFirstResponder(field)
+        // The name without its extension selected, as the Finder does.
+        let stem = (original as NSString).deletingPathExtension
+        field.currentEditor()?.selectedRange = NSRange(location: 0, length: (stem as NSString).length)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            finish(rename: true)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            finish(rename: false)
+            return true
+        default:
+            return false
+        }
+    }
+
+    func finish(rename: Bool) {
+        guard !done else { return }
+        done = true
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        popover.close()
+        closed()
+        if rename, !name.isEmpty, name != original { commit(name) }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        done = true
+        closed()
+    }
+
+    /// Said once, whichever way it closed.
+    private func closed() {
+        let close = onClose
+        onClose = nil
+        close?()
+    }
+
+    /// Where a document called `original` goes when renamed `typed`: in the same folder, with the old extension if none
+    /// was typed. Nil for a name that cannot be a file's (empty, a slash, a leading dot, too long).
+    static func destination(for url: URL, typed: String) -> URL? {
+        var name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix("."), name.utf8.count <= 255 else { return nil }
+        if (name as NSString).pathExtension.isEmpty, !url.pathExtension.isEmpty { name += "." + url.pathExtension }
+        return url.deletingLastPathComponent().appendingPathComponent(name)
     }
 }

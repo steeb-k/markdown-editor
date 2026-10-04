@@ -94,6 +94,12 @@ extension UIScriptRunner {
             let tv = wc.textView
             let index = tv.characterIndexForInsertion(at: tv.convert(p, from: nil))
             return (p, index, "window \(Int(px)),\(Int(py))")
+        case "title":
+            // The app's own title (its name, and "Edited"): `x` a fraction across it.
+            let tv = wc.titleView
+            let f = tv.titleFrame
+            guard !tv.isHidden, f.width > 0 else { return nil }
+            return (tv.convert(NSPoint(x: f.minX + f.width * fx, y: f.midY), to: nil), nil, "title")
         case "titlebar":
             guard let w = wc.window else { return nil }
             let bar = w.frame.height - w.contentLayoutRect.height
@@ -213,6 +219,7 @@ extension UIScriptRunner {
             return
         }
         let frameBefore = w.frame
+        let windowsBefore = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
         for k in 1...count {
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                 if let e = mouse(type, p, in: w, count: k, mods: mods) { NSApp.postEvent(e, atStart: false) }
@@ -239,6 +246,29 @@ extension UIScriptRunner {
                 case .nothing: ok = ok && w.frame == frameBefore
                 }
                 if w.isMiniaturized { w.deminiaturize(nil) }
+            }
+            if c["expectRename"] as? Bool == true {
+                // A double-click on the title's name: AppKit's rename popover comes up (a window of its own, by the title),
+                // and the window neither zooms nor moves. The popover is then dismissed with Escape, renaming nothing.
+                let appeared = NSApp.windows.filter { $0.isVisible && !windowsBefore.contains(ObjectIdentifier($0)) }
+                let title = clickController.map { $0.titleView.convert($0.titleView.titleFrame, to: nil) } ?? .zero
+                let titleOnScreen = w.convertToScreen(title)
+                entry["appeared"] = appeared.map { "\(Swift.type(of: $0)) \(NSStringFromRect($0.frame))" }
+                entry["renames"] = clickController?.titleRenames ?? -1
+                entry["titleOnScreen"] = NSStringFromRect(titleOnScreen)
+                entry["frame"] = [NSStringFromRect(frameBefore), NSStringFromRect(w.frame)]
+                // Placed by the title: its horizontal span overlaps the title's, and it hangs just below the title bar.
+                let byTitle = appeared.contains { $0.frame.minX < titleOnScreen.maxX + 40 && $0.frame.maxX > titleOnScreen.minX - 40
+                    && $0.frame.maxY <= titleOnScreen.maxY + 40 && $0.frame.maxY >= w.frame.maxY - 200 }
+                entry["byTitle"] = byTitle
+                ok = ok && !appeared.isEmpty && w.frame == frameBefore && byTitle
+                for p in appeared {
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: p.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                                                    isARepeat: false, keyCode: 53) { NSApp.postEvent(e, atStart: false) }
+                    }
+                }
             }
             if let want = c["expectResponder"] as? String { ok = ok && responder == want }
             if let want = c["expectSelection"] as? [Int], want.count == 2 {

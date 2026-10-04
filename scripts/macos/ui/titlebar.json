@@ -3346,5 +3346,109 @@
   "outline": {
    "show": false
   }
+ },
+ {
+  "log": "--- a real double-click on the title's own name renames (AppKit's rename popover, by the title) and does not zoom; at x 0.3 and 0.9 of the window the row zooms and unzooms (test pass, M8f)"
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "chromeVisible": true,
+   "title": {
+    "inPane": true,
+    "text": "tour.md"
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "title",
+   "x": 0.5,
+   "count": 2,
+   "expectRename": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "title": {
+    "inPane": true,
+    "text": "tour.md"
+   }
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "title-after-rename-and-zooms",
+  "bitmap": true
  }
 ]

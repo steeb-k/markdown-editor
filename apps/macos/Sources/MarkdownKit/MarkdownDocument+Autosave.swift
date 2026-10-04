@@ -160,6 +160,15 @@ extension MarkdownDocument {
         fileURL == nil && !isBundled && !session.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// A draft is written without a save panel, so NSDocument fell back on hiding the extension (the Finder's default):
+    /// the draft was "Untitled 1" in the title, the window and the Finder while every other note shows its `.md`.
+    public override func fileAttributesToWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType,
+                                               originalContentsURL absoluteOriginalContentsURL: URL?) throws -> [String: Any] {
+        var attributes = try super.fileAttributesToWrite(to: url, ofType: typeName, for: saveOperation, originalContentsURL: absoluteOriginalContentsURL)
+        if writingDraft { attributes[FileAttributeKey.extensionHidden.rawValue] = false }
+        return attributes
+    }
+
     /// Writes an untitled document into `Drafts` and makes it titled. False when that cannot be done (no library, no
     /// text); `done` is told whether the file was written.
     @discardableResult
@@ -168,8 +177,10 @@ extension MarkdownDocument {
         do { try DocumentFileAccess.ensureFolder(folder) } catch { return false }
         let url = Self.draftURL(in: folder)
         nextSnapshotReason = .draft
+        writingDraft = true
         save(to: url, ofType: fileType ?? "net.daringfireball.markdown", for: .saveAsOperation) { [weak self] error in
             guard let self else { done?(false); return }
+            writingDraft = false
             if error == nil {
                 historyLibrary.refresh([url])
                 (windowControllers.first as? EditorWindowController)?.documentBecameFront(force: true)

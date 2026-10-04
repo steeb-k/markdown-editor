@@ -17,9 +17,19 @@ extension EditorWindowController {
     /// The editor scrolled (or was laid out again at another size): the mark follows, once a display refresh, however
     /// many wheel events came before it. Never per event.
     func outlineScrolled() {
-        guard outline != nil, session.layout != .preview, CFAbsoluteTimeGetCurrent() >= outlineScrollQuietUntil else { return }
+        guard outline != nil, session.layout != .preview else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        if now < outlineScrollQuietUntil {
+            // A jump's own scrolling leaves its mark alone; the reader's wheel after the jump does not wait for the quiet
+            // to end (it was dropped, and the mark stayed on the heading chosen wherever the reader went).
+            guard editorScrollView.lastUserScroll > outlineScrollQuietUntil - Self.outlineJumpQuiet else { return }
+            outlineScrollQuietUntil = 0
+        }
         outlineScrollCoalescer?.request()
     }
+
+    /// How long a jump's own scrolling (its second pass, a centring slide) keeps the mark on the heading chosen.
+    static let outlineJumpQuiet: CFAbsoluteTime = 0.6
 
     static let outlineTopSlack: CGFloat = 12
 
@@ -89,7 +99,7 @@ extension EditorWindowController {
         }
         // The jump's own scrolling (and its second pass, and a centring slide) does not move the mark off the heading
         // chosen: the last headings of a document cannot reach the top, and are still the one the reader chose.
-        outlineScrollQuietUntil = CFAbsoluteTimeGetCurrent() + 0.6
+        outlineScrollQuietUntil = CFAbsoluteTimeGetCurrent() + Self.outlineJumpQuiet
         outlineScrollCoalescer?.cancel()
         if let i = OutlineModel.index(containing: location, in: session.outlineEntries) { outline?.mark(i) }
         jumps += 1

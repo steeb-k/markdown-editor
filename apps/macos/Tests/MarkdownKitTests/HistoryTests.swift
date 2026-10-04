@@ -790,5 +790,137 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(window.animationBehavior, .default, "the animation is back once the swap is done")
         XCTAssertTrue(doc.windowControllers.isEmpty, "the old document closed with its window")
         nwc.leaveWorkspace()
+        // The title is the new document's, and clean.
+        XCTAssertEqual(nwc.titleView.name, window.title)
+        XCTAssertEqual(nwc.titleView.fileURL, next.fileURL)
+        XCTAssertFalse(nwc.titleView.edited)
+    }
+
+    // MARK: from the M8f test pass: edits that change no text, and the title's "Edited"
+
+    /// The title says "Edited" exactly while the document is (checked after every turn of the run loop until `until`).
+    private func titleFollows(_ doc: MarkdownDocument, _ wc: EditorWindowController, for seconds: TimeInterval,
+                              file: StaticString = #filePath, line: UInt = #line) {
+        let end = Date(timeIntervalSinceNow: seconds)
+        var mismatches = 0
+        while Date() < end {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            // The title catches up within its own short look after an edit (50 ms): compare after it.
+            if wc.titleView.edited != doc.isDocumentEdited {
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.08))
+                if wc.titleView.edited != doc.isDocumentEdited { mismatches += 1 }
+            }
+        }
+        XCTAssertEqual(mismatches, 0, "the title's Edited is the document's state", file: file, line: line)
+    }
+
+    func testMarkAsChangesNoTextAndIsStillWrittenWithinThePause() throws {
+        let (doc, wc, url) = try open("one two three\n", name: "mark.md")
+        wc.showWindow(nil)
+        wc.textView.setSelectedRange(NSRange(location: 4, length: 3))
+        wc.textView.markAsAI(nil)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(doc.session.text, "one two three\n", "Mark As changes no text")
+        XCTAssertTrue(doc.isDocumentEdited)
+        XCTAssertTrue(wc.titleView.edited)
+        XCTAssertTrue(doc.autosaveTimer?.isValid ?? false, "the pause's timer runs for it")
+        XCTAssertTrue(waitUntil(3) { self.onDisk(url).contains("Annotations:") && !doc.isDocumentEdited }, "written within the pause, with its marks")
+        titleFollows(doc, wc, for: 0.2)
+        XCTAssertFalse(wc.titleView.edited)
+        // Undone: the marks go from the file at the next pause too.
+        doc.undoManager?.undo()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertTrue(doc.isDocumentEdited)
+        XCTAssertTrue(wc.titleView.edited, "undo past the write: edited again")
+        XCTAssertTrue(waitUntil(3) { self.onDisk(url) == "one two three\n" && !doc.isDocumentEdited })
+        titleFollows(doc, wc, for: 0.2)
+    }
+
+    func testADiscardedAuthorshipCheckIsWrittenWithinThePause() throws {
+        let fixture = try Data(contentsOf: Fixtures.fixtureDir.appendingPathComponent("authorship").appendingPathComponent("mismatch.md"))
+        let (doc, wc, url) = try open(String(decoding: fixture, as: UTF8.self), name: "mismatch.md")
+        XCTAssertNotNil(doc.session.pendingAuthorshipDecision)
+        XCTAssertFalse(wc.titleView.edited)
+        doc.session.resolveAuthorshipDecision(keep: false)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertTrue(doc.isDocumentEdited)
+        XCTAssertTrue(wc.titleView.edited)
+        XCTAssertTrue(waitUntil(3) { !self.onDisk(url).contains("SHA-256") && !doc.isDocumentEdited }, "the file without its marks, within the pause")
+        titleFollows(doc, wc, for: 0.2)
+        XCTAssertFalse(wc.titleView.edited)
+    }
+
+    func testAFormatToggleWithNothingSelectedIsWrittenWithinThePause() throws {
+        let (doc, wc, url) = try open("one two three\n", name: "format.md")
+        for (caret, toggle) in [(5, #selector(EditorTextView.toggleStrong(_:))), (0, #selector(EditorTextView.toggleEmphasis(_:))),
+                                (14, #selector(EditorTextView.toggleInlineCode(_:)))] {
+            let before = onDisk(url)
+            wc.textView.setSelectedRange(NSRange(location: min(caret, doc.session.storage.length), length: 0))
+            wc.textView.perform(toggle, with: nil)
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+            guard doc.isDocumentEdited else { continue }   // nothing to toggle there: nothing owed
+            XCTAssertTrue(wc.titleView.edited)
+            XCTAssertTrue(waitUntil(3) { self.onDisk(url) != before && !doc.isDocumentEdited }, "\(toggle) written within the pause")
+            XCTAssertEqual(onDisk(url), doc.session.text)
+            titleFollows(doc, wc, for: 0.1)
+        }
+        XCTAssertNotEqual(onDisk(url), "one two three\n", "at least one toggle changed the text")
+    }
+
+    func testTheTitlesEditedFollowsSaveUndoPastTheSaveAndTheAutosave() throws {
+        let (doc, wc, url) = try open("s\n", name: "title.md")
+        wc.showWindow(nil)
+        XCTAssertFalse(wc.titleView.edited)
+        type("x", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertTrue(wc.titleView.edited)
+        // ⌘S before the pause.
+        var saved = false
+        doc.save(to: url, ofType: "net.daringfireball.markdown", for: .saveOperation) { _ in saved = true }
+        XCTAssertTrue(waitUntil { saved })
+        titleFollows(doc, wc, for: 0.2)
+        XCTAssertFalse(wc.titleView.edited, "clean after ⌘S")
+        // Undo past the save point: edited again, and written again at the pause.
+        doc.undoManager?.undo()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertEqual(doc.session.text, "s\n")
+        XCTAssertTrue(doc.isDocumentEdited)
+        XCTAssertTrue(wc.titleView.edited)
+        XCTAssertTrue(waitUntil(3) { self.onDisk(url) == "s\n" && !doc.isDocumentEdited })
+        titleFollows(doc, wc, for: 0.2)
+        // Redo, and the autosave.
+        doc.undoManager?.redo()
+        titleFollows(doc, wc, for: 0.1)
+        XCTAssertTrue(waitUntil(3) { self.onDisk(url) == "s\nx" && !doc.isDocumentEdited })
+        titleFollows(doc, wc, for: 0.2)
+        XCTAssertTrue(SystemTitle.views(in: try XCTUnwrap(wc.window)).allSatisfy(\.isHidden), "AppKit's own Edited never shows")
+    }
+
+    func testADraftsTitleIsItsNewNameAndItsPathEndsInDrafts() throws {
+        let lib = try TempLibrary(["Home.md": "# Home\n"])
+        defer { lib.remove() }
+        let settings = isolatedSettings()
+        let ws = Workspace.make(settings: settings, notesMode: true)
+        ws.setLibraryFolder(lib.url)
+        let doc = MarkdownDocument(settings: settings)
+        doc.makeWindowControllers()
+        docs.append(doc)
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        _ = wc.window
+        XCTAssertNil(wc.titleView.pathMenu(), "untitled: no path")
+        XCTAssertFalse(wc.titleView.canRename(), "untitled: a double-click zooms, nothing to rename")
+        type("A draft.", in: wc)
+        XCTAssertTrue(waitUntil { doc.fileURL != nil && !doc.isDocumentEdited })
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        let url = try XCTUnwrap(doc.fileURL)
+        XCTAssertEqual(try url.resourceValues(forKeys: [.hasHiddenExtensionKey]).hasHiddenExtension, false, "the draft's .md shows, as every other note's does")
+        XCTAssertEqual(wc.titleView.name, "Untitled 1.md")
+        XCTAssertEqual(wc.window?.title, "Untitled 1.md")
+        XCTAssertEqual(wc.window?.representedURL?.lastPathComponent, "Untitled 1.md")
+        XCTAssertFalse(wc.titleView.edited)
+        let menu = try XCTUnwrap(wc.titleView.pathMenu())
+        XCTAssertEqual(menu.items.first?.title, "Drafts")
+        XCTAssertEqual(menu.items.dropFirst().first?.title, lib.url.lastPathComponent)
+        ws.library.stopObserving(ws)
     }
 }

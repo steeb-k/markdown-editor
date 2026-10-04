@@ -27,7 +27,9 @@ extension EditorWindowController {
     }
 
     /// The column's width as the session has it, whatever it shows.
-    private var wantedColumnWidth: CGFloat { min(max(session.columnWidth, 160), 480) }
+    private var wantedColumnWidth: CGFloat {
+        min(max(session.columnWidth, CGFloat(Settings.sideColumnWidthRange.lowerBound)), CGFloat(Settings.sideColumnWidthRange.upperBound))
+    }
 
     /// What the column adds to the window's narrowest: nothing without it.
     var outlineMinExtra: CGFloat { session.columnShown ? wantedColumnWidth + 1 : 0 }
@@ -75,7 +77,7 @@ extension EditorWindowController {
         }
         column.makeHistory = { [unowned self] in makeHistoryController() }
         column.willDrop = { [unowned column] pane in if pane == .history { column.history?.service = nil } }
-        column.onChoose = { [weak self] pane in self?.session.selectColumnPane(pane) }
+        column.onChoose = { [weak self] pane in self?.session.selectColumnPane(pane, remember: true) }
         return column
     }
 
