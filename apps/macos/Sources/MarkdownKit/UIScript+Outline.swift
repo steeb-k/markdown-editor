@@ -160,7 +160,7 @@ extension UIScriptRunner {
         }
         if let want = a["plain"] as? Bool {
             // The window is exactly the editor's own view (no column, no sidebar).
-            let plain = wc.window?.contentView === wc.root && wc.paneHost == nil && wc.outline == nil
+            let plain = wc.window?.contentView === wc.root && wc.paneHost == nil && wc.outline == nil && wc.history == nil
             check("plain layout \(want)", plain == want, "")
         }
         if let want = a["titles"] as? [String], let o {
@@ -184,14 +184,6 @@ extension UIScriptRunner {
             check("outline is \(want) wide", abs(o.view.frame.width - CGFloat(truncating: want)) <= 1, "\(o.view.frame.width)")
         }
         if let want = a["responder"] as? String { check("keyboard in the \(want)", outlineResponder(wc) == want, outlineResponder(wc)) }
-        if a["tabsEnd"] as? Bool == true {
-            // The strip's tabs end where the column begins (their clip view's edge, in the window).
-            if let strip = wc.tabs?.strip, let left = wc.outlineLeft {
-                let right = strip.convert(NSPoint(x: strip.bounds.maxX - strip.trailingInset, y: 0), to: nil).x
-                check("tabs end at the outline", abs(right - left) <= 1.5 && strip.trailingInset > 0, "tabs end \(right) outline \(left) inset \(strip.trailingInset)")
-            } else { check("tabs end at the outline", false, "no strip or no outline") }
-        }
-        if a["tabsEndAtStrip"] as? Bool == true, let strip = wc.tabs?.strip { check("tabs run to the strip's end", strip.trailingInset == 0, "\(strip.trailingInset)") }
         if let h = a["editorTop"] as? String, let tv = textView {
             // The editor's first visible line is the heading's line (within a line's room).
             let anchor = wc.editorTopAnchor()

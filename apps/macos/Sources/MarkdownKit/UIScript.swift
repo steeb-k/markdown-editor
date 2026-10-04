@@ -28,7 +28,7 @@ import WebKit
 /// move drains it at once.
 func later(_ delay: TimeInterval, _ body: @escaping () -> Void) {
     // And it ends the way the handling of an event ends: windows are updated (`NSWindow.update`,
-    // which is when a document's edited state reaches its windows and their tabs).
+    // which is when a document's edited state reaches its windows).
     let t = Timer(timeInterval: max(0, delay), repeats: false) { _ in
         autoreleasepool { body() }
         MainActor.assumeIsolated {
@@ -145,6 +145,10 @@ final class UIScriptRunner {
         }
         LinkOpener.opened = { url in UIScriptRunner.opened = url; return true }
         let runner = UIScriptRunner(script: URL(fileURLWithPath: path))
+        // The history of the script's documents goes in a folder of its own beside the output (never the user's).
+        let history = runner.outDir.appendingPathComponent("history", isDirectory: true)
+        try? FileManager.default.removeItem(at: history)
+        HistoryService.current = HistoryService(directory: history)
         running = runner
         later(0.3) { runner.run() }
     }
@@ -161,6 +165,10 @@ final class UIScriptRunner {
     private var weakProbes: [(String, () -> AnyObject?)] = []
     /// The last Trash move a notes step made: whether the file is in the Trash, and whether the original is still there.
     var lastTrashed: (landed: Bool, original: Bool, path: String)?
+    /// Window frames the script has noted (`remember` stores one, `windows.frameKept` compares it).
+    var rememberedFrames: [String: NSRect] = [:]
+    /// What the last `history` Copy put on its pasteboard.
+    var copied: String?
 
     private init(script: URL) {
         scriptURL = script
@@ -193,8 +201,8 @@ final class UIScriptRunner {
 
     /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
     /// forward) and full screen. A script without any never takes activation from the person at the machine.
-    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "dividerDrag", "liveResize", "tabClick", "tabClose",
-                                                      "tabDrag", "tabChevron", "doubleClickTitlebar", "fullscreen", "codeBadge"]
+    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "dividerDrag", "liveResize",
+                                                      "doubleClickTitlebar", "fullscreen", "codeBadge"]
 
     /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
     /// been launched, and not later from the background (`activate` is then refused, and `makeKey` waits in vain), so
@@ -215,7 +223,7 @@ final class UIScriptRunner {
     /// theirs became a double-click that zoomed the window; a drag step looked like stuck highlighting).
     /// The steps' own mouse events still arrive: they are posted to the app's queue or sent to the window
     /// (`NSApp.postEvent`, `NSWindow.sendEvent`) and never pass the window server's hit-testing, which is
-    /// the only thing the flag changes; `clicks.json`, `tabs.json`, `titlebar.json`, `focus-resize.json`
+    /// the only thing the flag changes; `clicks.json`, `windows.json`, `titlebar.json`, `focus-resize.json`
     /// and `code.json` pass with it on. Document and Settings windows also open at the top-left corner of
     /// the screen, so a harness window is recognisable. `requested` is for tests.
     static func adopt(_ w: NSWindow, requested: Bool = UIScriptRunner.isRequested) {
@@ -288,6 +296,10 @@ final class UIScriptRunner {
             notesStep(n, then: done)
         } else if let o = step["outline"] as? [String: Any] {
             outlineStep(o, then: done)
+        } else if let h = step["history"] as? [String: Any] {
+            historyStep(h, then: done)
+        } else if let a = step["autosave"] as? [String: Any] {
+            autosaveStep(a, then: done)
         } else if let p = step["palette"] {
             paletteStep(p, then: done)
         } else if let path = str("open") {
@@ -567,6 +579,8 @@ final class UIScriptRunner {
                 // is key; the app need not be active while a script runs, and then no window is).
                 if !ok, let wc = self.controller, wc.responds(to: sel) { ok = NSApp.sendAction(sel, to: wc, from: sender) }
                 if !ok, let w = self.window, w.responds(to: sel) { ok = NSApp.sendAction(sel, to: w, from: sender) }
+                // The document's own (Save).
+                if !ok, let d = self.document, d.responds(to: sel) { ok = NSApp.sendAction(sel, to: d, from: sender) }
             }
             // An action that edits runs as one undo group, like an event would. One that does not
             // (`"edits": false`: view toggles) must not: a closed empty group marks the document edited.
@@ -626,11 +640,11 @@ final class UIScriptRunner {
             }
             if let f = window?.contentView?.superview { for s in f.subviews where !(s === window?.contentView) { walk(s, 0) } }
             lines.append("accessories: " + (window?.titlebarAccessoryViewControllers.map { "\(Swift.type(of: $0)) \(NSStringFromRect($0.view.frame)) hidden=\($0.isHidden)" }.joined(separator: "; ") ?? ""))
-            lines.append("tabGroup visible: \(String(describing: window?.tabGroup?.isTabBarVisible)) overview \(String(describing: window?.tabGroup?.isOverviewVisible))")
+            lines.append("tabbingMode: \(String(describing: window?.tabbingMode.rawValue)) tabGroup windows: \(window?.tabGroup?.windows.count ?? 0)")
             record(["dumpTitlebar": lines], ok: true)
             done()
         } else if let name = str("dumpMenu") {
-            // A main-menu menu's items as they stand (AppKit adds some of its own, the tab items among them).
+            // A main-menu menu's items as they stand (AppKit may add some of its own).
             let menu = NSApp.mainMenu?.items.first { $0.title == name }?.submenu
             menu?.update()
             let items = menu?.items.map { $0.isSeparatorItem ? "-" : "\($0.title) [\($0.action.map { NSStringFromSelector($0) } ?? "")]" } ?? []
@@ -639,50 +653,6 @@ final class UIScriptRunner {
         } else if let name = str("remember") {
             remember(name)
             done()
-        } else if let i = step["tabClick"] as? Int {
-            tabClick(i, close: false)
-            later(0.4, done)
-        } else if let f = num("tabScroll") {
-            // The strip scrolled to a fraction of its range (a person's scroll wheel on it).
-            let strip = controller?.tabs.strip
-            strip?.scroll(toFraction: CGFloat(f))
-            record(["tabScroll": f, "offset": strip.map { Double($0.scrollOffset) } ?? 0, "overflow": strip.map { "left \($0.overflow.left) right \($0.overflow.right)" } ?? ""], ok: strip != nil)
-            later(0.2, done)
-        } else if let side = str("tabChevron") {
-            // A click on a chevron at one end of the strip: it scrolls by one tab.
-            guard let strip = controller?.tabs.strip, let w = window else { record(["tabChevron": side, "error": "no strip"], ok: false); done(); return }
-            let chevron = side == "left" ? strip.leftChevron : strip.rightChevron
-            let before = strip.scrollOffset
-            let hidden = chevron.isHidden
-            func firstClear() -> Int { TabStripModel.firstClearTab(offset: strip.scrollOffset, tabWidth: strip.tabWidth, chevron: strip.chevronWidth) }
-            let clearBefore = firstClear()
-            let point = chevron.convert(NSPoint(x: chevron.bounds.midX, y: chevron.bounds.midY), to: strip)
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                if let e = tabEvent(type, at: point, in: strip) { w.sendEvent(e) }
-            }
-            let moved = strip.scrollOffset - before
-            // One tab: the first tab clear of the left chevron is the next (or the previous) one, or the strip
-            // reached the end it was pressed towards.
-            let step = firstClear() - clearBefore
-            let atEnd = side == "left" ? strip.scrollOffset < 0.5 : !strip.overflow.right
-            let oneTab = step == (side == "left" ? -1 : 1) || (atEnd && moved != 0 && abs(step) <= 1)
-            // Short of the end, the first tab in view begins where the left chevron ends: its close button and title
-            // are not under the fade.
-            var clearOfChevron = true
-            if !strip.leftChevron.isHidden, strip.overflow.right, strip.chevronWidth > 0 {
-                let frames = strip.visibleTabFrames, i = firstClear()
-                clearOfChevron = i < frames.count && abs(frames[i].minX - strip.leftChevron.frame.maxX) < 1
-            }
-            record(["tabChevron": side, "was_hidden": hidden, "moved": Double(moved), "first_clear_tab": [clearBefore, firstClear()],
-                    "first_tab_clear_of_the_chevron": clearOfChevron, "overflow": "left \(strip.overflow.left) right \(strip.overflow.right)"],
-                   ok: !hidden && oneTab && clearOfChevron)
-            later(0.2, done)
-        } else if let i = step["tabClose"] as? Int {
-            tabClick(i, close: true)
-            later(0.6, done)
-        } else if let m = step["tabDrag"] as? [Int], m.count == 2 {
-            tabDrag(from: m[0], to: m[1])
-            later(0.4, done)
         } else if let a = step["assert"] as? [String: Any] {
             assertions(a)
             done()
@@ -706,13 +676,6 @@ final class UIScriptRunner {
                 self.check("fullscreen \(on)", w.styleMask.contains(.fullScreen) == on)
                 done()
             }
-        } else if step["newTab"] != nil, let c = controller {
-            let before = NSDocumentController.shared.documents.count
-            c.newWindowForTab(nil)
-            let docs = NSDocumentController.shared.documents
-            if let d = docs.last as? MarkdownDocument, docs.count > before { document = d }
-            record(["newTab": window?.tabbedWindows?.count ?? 0], ok: docs.count > before)
-            done()
         } else if let to = step["switchTo"] as? Int {
             let docs = NSDocumentController.shared.documents.compactMap { $0 as? MarkdownDocument }
             if to < docs.count { document = docs[to]; window?.makeKeyAndOrderFront(nil) }
@@ -1085,7 +1048,7 @@ final class UIScriptRunner {
         if let v = s["authorName"] as? String { st.authorNameSetting = v }
     }
 
-    // MARK: menus, the title bar and tabs
+    // MARK: menus and the title bar
 
     /// Sends an action as the menu would: along the responder chain, then to the window's own
     /// objects (the app need not be active while a script runs, and then no window is key).
@@ -1096,6 +1059,7 @@ final class UIScriptRunner {
         var ok = NSApp.sendAction(sel, to: nil, from: sender)
         if !ok, let tv = textView, tv.responds(to: sel) { ok = NSApp.sendAction(sel, to: tv, from: sender) }
         if !ok, let wc = controller, wc.responds(to: sel) { ok = NSApp.sendAction(sel, to: wc, from: sender) }
+        if !ok, let d = document, d.responds(to: sel) { ok = NSApp.sendAction(sel, to: d, from: sender) }   // the document's own (Save)
         if !ok, let w = window, w.responds(to: sel) { ok = NSApp.sendAction(sel, to: w, from: sender) }
         return ok
     }
@@ -1316,58 +1280,20 @@ final class UIScriptRunner {
         var v: [String: CGFloat] = [:]
         if let r = caretRectInWindow() { v["caretY"] = r.midY }
         if let c = controller { v["origin"] = c.scrollView.contentView.bounds.minY }
-        if let w = window { v["titlebar"] = w.frame.height - w.contentLayoutRect.height }
+        if let w = window { v["titlebar"] = w.frame.height - w.contentLayoutRect.height; rememberedFrames[name] = w.frame }
         remembered[name] = v
         record(["remember": name, "values": v.mapValues { Double($0) }], ok: true)
     }
 
-    private func tabEvent(_ type: NSEvent.EventType, at pointInStrip: NSPoint, in strip: NSView, count: Int = 1) -> NSEvent? {
-        guard let w = window else { return nil }
-        let p = strip.convert(pointInStrip, to: nil)
-        return NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                  windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: type == .leftMouseDown ? 1 : 0)
+    /// The editor window in front: the one a person would be typing into.
+    var frontController: EditorWindowController? {
+        NSApp.orderedWindows.first { $0.isVisible && $0.windowController is EditorWindowController }?.windowController as? EditorWindowController
     }
 
-    /// Clicks a tab (or, with `close`, its close button, which shows while the pointer is over it).
-    private func tabClick(_ index: Int, close: Bool) {
-        guard let strip = controller?.tabs.strip, index < strip.tabViews.count, let w = window else {
-            record(["tabClick": index, "error": "no such tab"], ok: false)
-            return
-        }
-        let tab = strip.tabViews[index]
-        let before = NSDocumentController.shared.documents.count
-        if close { tab.updateHover(true) }
-        let local = close ? NSPoint(x: 14, y: tab.bounds.midY) : NSPoint(x: tab.bounds.midX, y: tab.bounds.midY)
-        let point = tab.convert(local, to: strip)
-        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            if let e = tabEvent(type, at: point, in: strip) { w.sendEvent(e) }
-        }
-        let hit = w.contentView?.superview?.hitTest(tab.convert(local, to: nil))
-        followSelectedTab()
-        record([close ? "tabClose" : "tabClick": index, "documents_before": before, "faded": strip.isFaded, "hovering": tab.hovering,
-                "hit": hit.map { "\(Swift.type(of: $0))" } ?? "nil", "window_visible": w.isVisible, "key": w.isKeyWindow], ok: true)
-    }
-
-    /// The script's document becomes the one in the selected tab (what a person would now be typing into).
-    func followSelectedTab() {
-        if let w = window?.tabGroup?.selectedWindow ?? NSApp.keyWindow, let d = (w.windowController as? EditorWindowController)?.document as? MarkdownDocument { document = d }
+    /// The script's document becomes the one in the front window (after a click in a sidebar replaced the window's, or opened another).
+    func followFront() {
+        if let d = frontController?.document as? MarkdownDocument { document = d }
         else if let d = NSDocumentController.shared.documents.last as? MarkdownDocument { document = d }
-    }
-
-    /// Drags a tab to another place in the strip.
-    private func tabDrag(from: Int, to: Int) {
-        guard let strip = controller?.tabs.strip, from < strip.tabViews.count, to < strip.tabViews.count, let w = window else {
-            record(["tabDrag": [from, to], "error": "no such tab"], ok: false)
-            return
-        }
-        let width = strip.tabWidth
-        let start = NSPoint(x: width * (CGFloat(from) + 0.5) - strip.scrollOffset, y: strip.bounds.midY)
-        let end = NSPoint(x: width * (CGFloat(to) + 0.5) - strip.scrollOffset, y: strip.bounds.midY)
-        if let e = tabEvent(.leftMouseDown, at: start, in: strip) { w.sendEvent(e) }
-        if let e = tabEvent(.leftMouseDragged, at: end, in: strip) { w.sendEvent(e) }
-        if let e = tabEvent(.leftMouseUp, at: end, in: strip) { w.sendEvent(e) }
-        followSelectedTab()
-        record(["tabDrag": [from, to]], ok: true)
     }
 
     /// The state a menu item shows for the front window, validated the way the menu does: by the
@@ -1386,7 +1312,7 @@ final class UIScriptRunner {
         else {
             if let tv = textView { validators.append(tv) }
             if let wc = controller { validators.append(wc) }
-            if let w = window { validators.append(w) }   // the window's own actions (tabs), with no key window
+            if let w = window { validators.append(w) }   // the window's own actions, with no key window
             if let delegate = NSApp.delegate { validators.append(delegate as AnyObject) }
         }
         for v in validators where v.responds(to: action) {
@@ -2179,7 +2105,8 @@ final class UIScriptRunner {
                 web.draw(in: c.previewController.webView.convert(c.previewController.webView.bounds, to: frameView))
             }
             if let sb = c.sidebar?.view { draw(sb) }
-            if let column = c.outline?.view { draw(column) }
+            if let column = c.columnView { draw(column) }
+            if let bar = c.changeBar { draw(bar) }
             for v in c.overlayViews { draw(v) }
             if let p = c.palette, p.isOpen { draw(p.panel) }
             // Title bar: its controls one by one (the bar itself is transparent).
@@ -2347,83 +2274,44 @@ final class UIScriptRunner {
             check("title bar height unchanged since \(name)", was.map { abs($0 - bar) < 0.5 } ?? false, "was \(String(describing: was)) now \(bar)")
         }
         if a["titlebarClean"] != nil, let c = controller, let w = window {
-            // Nothing in the title bar but the window buttons, the title, and the tab strip (hidden for one tab).
+            // Nothing in the title bar but the window buttons and the title (with its proxy icon and "Edited" label).
             var strays: [String] = []
             func walk(_ v: NSView) {
                 // AppKit's own: the window buttons, the title (and its proxy icon and "Edited" label).
                 let own = c.chromeController.windowButtons.contains(v) || Swift.type(of: v) == NSTextField.self || "\(Swift.type(of: v))".hasPrefix("NSTheme")
                     || "\(Swift.type(of: v))".hasPrefix("NSButtonTextField")
                 if v is NSControl, !own { strays.append("\(Swift.type(of: v))") }
-                for s in v.subviews where !(s is TabStripView) && !s.isHidden && s.frame.height > 0 { walk(s) }
+                for s in v.subviews where !s.isHidden && s.frame.height > 0 { walk(s) }
             }
-            for bar in c.titlebarControls where !(bar is TabStripView) { walk(bar) }
-            // With the tabs in the row the title is hidden, and its document icon and versions menu with it.
-            if c.tabs.isShown {
-                for kind in [NSWindow.ButtonType.documentIconButton, .documentVersionsButton] {
-                    if let b = w.standardWindowButton(kind), !b.isHiddenOrHasHiddenAncestor { strays.append("\(Swift.type(of: b)) beside the tabs") }
-                }
-                // ... and every label of it: the "—" before "Edited" is a field of its own (it stayed, over the outline).
-                if let row = w.standardWindowButton(.closeButton)?.superview {
-                    for case let f as NSTextField in row.subviews where !f.isHidden { strays.append("title label \(f.stringValue.debugDescription) beside the tabs") }
-                }
-            }
+            for bar in c.titlebarControls { walk(bar) }
             let accessories = w.titlebarAccessoryViewControllers.filter { !$0.isHidden }
-            let others = accessories.filter { !($0.view is TabStripView) }.count
-            check("title bar has no custom controls", strays.isEmpty && others == 0,
-                  "controls \(strays) accessories \(accessories.map { "\(Swift.type(of: $0.view))" })")
+            check("title bar has no custom controls", strays.isEmpty && accessories.isEmpty && w.titleVisibility == .visible,
+                  "controls \(strays) accessories \(accessories.map { "\(Swift.type(of: $0.view))" }) title visibility \(w.titleVisibility.rawValue)")
         }
-        if let t = a["tabs"] as? [String: Any], let c = controller, let w = window {
-            let entries = TabStripModel.entries(of: w)
-            if let titles = t["titles"] as? [String] { check("tab titles \(titles)", entries.map(\.title) == titles, "\(entries.map(\.title))") }
-            if let i = t["selected"] as? Int { check("selected tab \(i)", entries.firstIndex(where: \.selected) == i, "\(entries.map(\.selected))") }
-            if let n = t["count"] as? Int { check("tab count \(n)", entries.count == n, "\(entries.count)") }
-            if let o = t["overflow"] as? [String: Bool] {
-                let strip = c.tabs.strip
-                for (side, want) in o.sorted(by: { $0.key < $1.key }) {
-                    let chevron = side == "left" ? strip.leftChevron : strip.rightChevron
-                    let shown = side == "left" ? strip.overflow.left : strip.overflow.right
-                    check("\(side) chevron \(want ? "shown" : "hidden")", shown == want && chevron.isHidden == !want,
-                          "overflow left \(strip.overflow.left) right \(strip.overflow.right), offset \(strip.scrollOffset), tabs \(strip.tabViews.count) of \(strip.tabWidth) in \(strip.available)")
-                }
-            }
-            if t["chevronsMatchClipping"] as? Bool == true {
-                // Worked out from where the tabs are, not from the strip's own flags: a chevron shows on a side exactly
-                // when a tab is cut off there.
-                let strip = c.tabs.strip
-                strip.layoutSubtreeIfNeeded()
-                let room = NSRect(x: strip.leadingInset, y: 0, width: strip.available, height: strip.bounds.height)
-                let frames = strip.tabViews.map { strip.convert($0.frame, from: $0.superview) }
-                let cutLeft = (frames.map(\.minX).min() ?? room.minX) < room.minX - 0.5
-                let cutRight = (frames.map(\.maxX).max() ?? room.maxX) > room.maxX + 0.5
-                check("chevrons shown exactly where tabs are cut off", strip.leftChevron.isHidden == !cutLeft && strip.rightChevron.isHidden == !cutRight,
-                      "cut left \(cutLeft) right \(cutRight), chevrons left \(!strip.leftChevron.isHidden) right \(!strip.rightChevron.isHidden), offset \(strip.scrollOffset), \(frames.count) tabs of \(strip.tabWidth) in \(room)")
-            }
-            if t["chevronsInside"] as? Bool == true {
-                // Over the tabs' own room, never beyond the strip or into the part above the sidebar.
-                let strip = c.tabs.strip
-                let room = NSRect(x: strip.leadingInset, y: 0, width: strip.available, height: strip.bounds.height)
-                let ok = [strip.leftChevron, strip.rightChevron].allSatisfy { room.insetBy(dx: -0.5, dy: -0.5).contains($0.frame) }
-                check("chevrons inside the strip's tabs room", ok, "left \(strip.leftChevron.frame) right \(strip.rightChevron.frame) room \(room)")
-            }
-            if let shown = t["stripShown"] as? Bool { check("tab strip shown \(shown)", c.tabs.isShown == shown && c.tabs.strip.superview != nil && !(c.tabs.strip.isHiddenOrHasHiddenAncestor) == shown, "isShown \(c.tabs.isShown)") }
-            if let native = t["nativeBarVisible"] as? Bool { check("native tab bar visible \(native)", c.tabs.nativeBarShowing == native, "showing \(c.tabs.nativeBarShowing), AppKit says \(String(describing: w.tabGroup?.isTabBarVisible)), put away \(c.tabs.nativeBarHidden) time(s)") }
+        if let t = a["windows"] as? [String: Any], let w = window {
+            // The editor windows, front to back: one document each.
+            let fronts = NSApp.orderedWindows.filter { $0.isVisible && $0.windowController is EditorWindowController }
+            let docs = fronts.compactMap { ($0.windowController as? EditorWindowController)?.markdownDocument }
+            if let n = t["count"] as? Int { check("windows \(n)", fronts.count == n, "\(fronts.count)") }
+            if let titles = (t["titles"] as? [String])?.map(expandVars) { check("window titles \(titles)", docs.map { $0.displayName ?? "" } == titles, "\(docs.map { $0.displayName ?? "" })") }
             if let n = t["documents"] as? Int { check("documents \(n)", NSDocumentController.shared.documents.count == n, "\(NSDocumentController.shared.documents.count)") }
-            if let marks = t["editedMarks"] as? [String: Bool] {
-                let wrong = marks.filter { (key, want) in Int(key).map { $0 < entries.count && entries[$0].edited != want } ?? true }
-                check("tab edited marks \(marks)", wrong.isEmpty, "\(entries.map(\.edited))")
-                // And what the strip draws (it is told, not asked, so it can lag behind the documents).
-                if c.tabs.isShown {
-                    let drawn = c.tabs.strip.entries
-                    let off = marks.filter { (key, want) in Int(key).map { $0 < drawn.count && drawn[$0].edited != want } ?? true }
-                    check("tab strip draws edited marks \(marks)", off.isEmpty, "\(drawn.map(\.edited))")
-                }
+            if t["tabbingDisallowed"] as? Bool == true {
+                let ok = fronts.allSatisfy { $0.tabbingMode == .disallowed && ($0.tabGroup?.windows.count ?? 1) <= 1 } && !NSWindow.allowsAutomaticWindowTabbing
+                check("tabbing disallowed", ok, "modes \(fronts.map { $0.tabbingMode.rawValue }) automatic \(NSWindow.allowsAutomaticWindowTabbing)")
             }
-            if let edited = t["edited"] as? [Bool] { check("tab edited marks", entries.map(\.edited) == edited, "\(entries.map(\.edited)) this window \(w.isDocumentEdited) document \(String(describing: document?.isDocumentEdited))") }
-            if let h = t["stripHeightAtMost"] as? NSNumber {
-                let bar = w.frame.height - w.contentLayoutRect.height
-                check("tab strip fits the title bar", c.tabs.strip.frame.height <= CGFloat(truncating: h) + 0.5 && c.tabs.strip.frame.height <= bar + 0.5, "strip \(c.tabs.strip.frame.height) bar \(bar)")
+            if let v = t["titleShown"] as? Bool {
+                check("title shown \(v)", (w.titleVisibility == .visible) == v, "visibility \(w.titleVisibility.rawValue) title \(w.title.debugDescription)")
+            }
+            if let v = t["title"] as? String { check("window title \(v)", w.title == v, w.title.debugDescription) }
+            // The red button's dot: the window's own flag. The title's "Edited" follows the document's.
+            if let v = t["editedDot"] as? Bool { check("edited dot \(v)", w.isDocumentEdited == v, "window \(w.isDocumentEdited) document \(String(describing: document?.isDocumentEdited))") }
+            if let v = t["documentEdited"] as? Bool { check("document edited \(v)", document?.isDocumentEdited == v, "\(String(describing: document?.isDocumentEdited))") }
+            if let v = t["frameKept"] as? String, let was = rememberedFrames[v] {
+                check("window frame as it was at \(v)", abs(was.minX - w.frame.minX) < 1.5 && abs(was.maxY - w.frame.maxY) < 1.5 && abs(was.width - w.frame.width) < 1.5 && abs(was.height - w.frame.height) < 1.5, "\(was) now \(w.frame)")
             }
         }
+        if let h = a["history"] as? [String: Any] { historyAssertions(h) }
+        if let f = a["documentFile"] as? [String: Any] { fileAssertions(f) }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }

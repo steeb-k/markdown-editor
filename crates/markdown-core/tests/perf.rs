@@ -359,3 +359,30 @@ fn select_all_format_state_does_not_read_the_whole_document() {
     println!("format_state over Select All at 1 MB: median {m:.3} ms");
     assert!(m < 2.0, "{m} ms");
 }
+
+#[test]
+#[ignore]
+fn history_diff_one_megabyte() {
+    use markdown_core::history::{diff_lines, DiffKind};
+    let old = realistic(1 << 20);
+    let mut new = old.clone();
+    let mid = new.len() / 2;
+    let at = new[mid..].find('\n').unwrap() + mid;
+    new.insert_str(at, " (edited)");
+    let mut times = vec![];
+    let mut hunks = vec![];
+    for _ in 0..11 {
+        let t = Instant::now();
+        hunks = diff_lines(&old, &new);
+        times.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    let m = med(times);
+    println!("history diff, {} bytes, one line changed: {:.2} ms median ({} hunks)", old.len(), m, hunks.len());
+    assert!(m < 50.0, "the diff of a 1 MB document must stay under 50 ms");
+    assert_eq!(hunks.iter().filter(|h| h.kind != DiffKind::Equal).count(), 2);
+    // The worst case for the search: every line differs.
+    let other: String = old.lines().map(|l| format!("{l} x\n")).collect();
+    let t = Instant::now();
+    let h = diff_lines(&old, &other);
+    println!("history diff, every line changed: {:.2} ms ({} hunks)", t.elapsed().as_secs_f64() * 1e3, h.len());
+}

@@ -349,123 +349,48 @@ final class SidebarTests: XCTestCase {
         wc.leaveWorkspace()
     }
 
-    func testWindowsMergedIntoAGroupShareItsWorkspaceAndATornOffTabGetsACopy() throws {
+    /// Each window has a workspace of its own: a window opened from another's sidebar starts with a copy of its state,
+    /// the library the same, and no later change of one reaches the other. Windows never merge into groups.
+    func testEveryWindowHasItsOwnWorkspaceAndANewWindowStartsWithACopy() throws {
         let ws = try makeWorkspace()
         let (_, a) = try makeWindow("# A\n")
         let (_, b) = try makeWindow("# B\n")
-        let (_, c) = try makeWindow("# C\n")
         a.adopt(ws)
-        let wa = try XCTUnwrap(a.window), wb = try XCTUnwrap(b.window), wc = try XCTUnwrap(c.window)
-        wa.addTabbedWindow(wb, ordered: .above)
-        XCTAssertTrue(b.workspace === ws, "a window that joins a group in notes mode is in notes mode")
-        XCTAssertNotNil(b.sidebar)
-        XCTAssertTrue(window(wb, isInGroupOf: wa))
-        wa.addTabbedWindow(wc, ordered: .above)
-        XCTAssertTrue(c.workspace === ws)
-        // A plain group is not given a workspace by a window that has none.
-        let (_, d) = try makeWindow("# D\n")
-        let (_, e) = try makeWindow("# E\n")
-        let wd = try XCTUnwrap(d.window)
-        wd.addTabbedWindow(try XCTUnwrap(e.window), ordered: .above)
-        XCTAssertNil(d.workspace)
-        XCTAssertNil(e.workspace)
-        XCTAssertTrue(e.window?.contentView === e.root)
-        // Torn off: its own group, its own workspace (a copy), the library the same.
+        XCTAssertTrue(a.workspace === ws)
+        XCTAssertNil(b.workspace, "a plain window is not given one by a window of notes mode")
         ws.setSelection(["lib:Home.md"])
-        wc.moveTabToNewWindow(nil)
-        XCTAssertFalse(window(wc, isInGroupOf: wa))
-        XCTAssertNotNil(c.workspace)
-        XCTAssertTrue(c.workspace !== ws, "one workspace per group")
-        XCTAssertTrue(c.workspace?.library === ws.library)
-        XCTAssertEqual(c.workspace?.selection, ["lib:Home.md"])
-        XCTAssertTrue(a.workspace === ws && b.workspace === ws)
-        c.workspace?.setSelection([])
-        XCTAssertEqual(ws.selection, ["lib:Home.md"], "each group its own selection")
-        // Merged back, it takes the group's.
-        wa.addTabbedWindow(wc, ordered: .above)
-        XCTAssertTrue(c.workspace === ws)
-        for w in [a, b, c, d, e] { w.leaveWorkspace() }
+        let copy = ws.copy()
+        b.adopt(copy)
+        XCTAssertTrue(b.workspace === copy && copy !== ws)
+        XCTAssertTrue(copy.library === ws.library, "the library is the app's")
+        XCTAssertEqual(copy.selection, ["lib:Home.md"])
+        XCTAssertNotNil(b.sidebar)
+        copy.setSelection([])
+        XCTAssertEqual(ws.selection, ["lib:Home.md"], "each window its own selection")
+        // No window is in a tab group with another (they refuse tabbing), so nothing is ever shared.
+        let wa = try XCTUnwrap(a.window), wb = try XCTUnwrap(b.window)
+        XCTAssertEqual(wa.tabbingMode, .disallowed)
+        XCTAssertEqual(wb.tabbingMode, .disallowed)
+        XCTAssertFalse(window(wb, isInGroupOf: wa))
+        XCTAssertTrue(a.workspace === ws && b.workspace === copy)
+        for w in [a, b] { w.leaveWorkspace() }
     }
 
-    /// The title bar's row: the strip is the editor pane's width, never over the sidebar's part of it.
+    /// The title stays where the window puts it, over the editor and the sidebar alike, whatever the sidebar's width.
     @MainActor
-    func testTheTabStripKeepsToTheEditorPaneWithFifteenTabsAndGetsTheWholeRowBack() throws {
-        let ws = try makeWorkspace()
-        var windows: [EditorWindowController] = []
-        for i in 0..<15 { windows.append(try makeWindow("# Tab \(i)\n").1) }
-        let first = try XCTUnwrap(windows.first?.window)
-        windows[0].adopt(ws)
-        for c in windows.dropFirst() { first.addTabbedWindow(try XCTUnwrap(c.window), ordered: .above) }
-        XCTAssertTrue(windows.allSatisfy { $0.workspace === ws })
-        XCTAssertEqual(first.tabGroup?.windows.count, 15)
-        ws.setSidebarWidth(240)
-
-        func settle(_ c: EditorWindowController) {
-            c.tabs.refresh()
-            c.tabs.strip.layoutSubtreeIfNeeded()
-        }
-        func check(pane expected: CGFloat, _ message: String) throws {
-            for c in windows {
-                settle(c)
-                let strip = c.tabs.strip
-                XCTAssertTrue(c.tabs.isShown, message)
-                let pane = c.root.convert(c.root.bounds, to: nil).minX
-                XCTAssertEqual(pane, expected, accuracy: 1, message)
-                let visible = strip.visibleTabFrames.filter { !$0.isEmpty }
-                XCTAssertFalse(visible.isEmpty, message)
-                for f in visible {
-                    XCTAssertGreaterThanOrEqual(strip.convert(f, to: nil).minX, pane - 0.5, "\(message): a tab reaches left of the editor pane")
-                }
-                // Nor is there a tab where the sidebar's title row is, whatever is scrolled out of the clip.
-                for x in stride(from: 80.0, to: Double(pane) - 2, by: 8.0) {
-                    let local = strip.convert(NSPoint(x: x, y: 10), from: nil)
-                    XCTAssertFalse(strip.hitTest(strip.convert(local, to: strip.superview)) is TabView, "\(message): a tab takes a click at x = \(x)")
-                }
-            }
-        }
-        try check(pane: 241, "sidebar at 240")
-        let stripLeft = windows[0].tabs.strip.convert(NSPoint.zero, to: nil).x
-        XCTAssertEqual(windows[0].tabs.strip.leadingInset, 241 - stripLeft, accuracy: 1, "the tabs begin where the editor pane does, wherever AppKit put the strip")
-        // The tabs shrank to their least and the strip scrolls, inside the pane.
-        XCTAssertEqual(windows[0].tabs.strip.tabWidth, TabStripModel.minimumTabWidth)
-        XCTAssertGreaterThan(windows[0].tabs.strip.tabWidth * 15, windows[0].tabs.strip.available)
-        // The divider moves: the tabs follow.
-        ws.setSidebarWidth(360)
-        try check(pane: 361, "sidebar at 360")
-        ws.setSidebarWidth(160)
-        try check(pane: 161, "sidebar at 160")
-        // A window that is wider or narrower: the pane starts where it did.
-        var f = first.frame
-        f.size.width = 1300
-        first.setFrame(f, display: false)
-        try check(pane: 161, "a wide window")
-        // Out of notes mode: the whole row, as before.
-        ws.setNotesMode(false)
-        for c in windows {
-            settle(c)
-            XCTAssertEqual(c.tabs.strip.leadingInset, 0)
-            XCTAssertEqual(c.tabs.strip.frame.width, (c.window?.frame.width ?? 0) - TabStripController.leadingClearance - TabStripController.trailingClearance, accuracy: 1)
-            XCTAssertTrue(c.window?.contentView === c.root)
-            XCTAssertTrue(c.tabs.isShown, "fifteen tabs: shown")
-            XCTAssertEqual(c.tabs.strip.available, c.tabs.strip.bounds.width)
-        }
-        for c in windows { c.leaveWorkspace() }
-    }
-
-    @MainActor
-    func testALoneTabInNotesModeShowsInTheStripNotTheTitleOverTheSidebar() throws {
+    func testTheTitleShowsInNotesModeAndTheSidebarsTitleRowStaysTheWindows() throws {
         let ws = try makeWorkspace()
         let (_, wc) = try makeWindow("# Alone\n")
-        XCTAssertFalse(wc.tabs.isShown, "plain: a lone window has its title")
         XCTAssertEqual(wc.window?.titleVisibility, .visible)
         wc.adopt(ws)
-        wc.tabs.refresh()
-        XCTAssertTrue(wc.tabs.isShown)
-        XCTAssertEqual(wc.window?.titleVisibility, .hidden, "the row above the sidebar is the sidebar's")
-        XCTAssertEqual(wc.tabs.strip.entries.count, 1)
+        XCTAssertEqual(wc.window?.titleVisibility, .visible, "the title is shown again; no strip takes its place")
+        XCTAssertTrue(wc.window?.titlebarAccessoryViewControllers.isEmpty ?? false)
+        let sb = try XCTUnwrap(wc.sidebar)
+        sb.view.layoutSubtreeIfNeeded()
+        let bar = (wc.window?.frame.height ?? 0) - (wc.window?.contentLayoutRect.height ?? 0)
+        XCTAssertEqual(sb.view.band.frame.height, bar, accuracy: 0.5, "the sidebar's band is the title bar's row")
+        XCTAssertTrue(sb.view.band.mouseDownCanMoveWindow)
         ws.setNotesMode(false)
-        wc.tabs.refresh()
-        XCTAssertFalse(wc.tabs.isShown)
         XCTAssertEqual(wc.window?.titleVisibility, .visible)
         wc.leaveWorkspace()
     }
@@ -538,26 +463,6 @@ final class SidebarTests: XCTestCase {
         wc.leaveWorkspace()
     }
 
-    /// Two notes groups and a plain window merged into one group: one workspace, every window in notes mode.
-    func testMergingGroupsLeavesOneWorkspace() throws {
-        let ws1 = try makeWorkspace()
-        let ws2 = ws1.fork()
-        let windows = try (0..<5).map { try makeWindow("# W\($0)\n").1 }
-        let w = try windows.map { try XCTUnwrap($0.window) }
-        windows[0].adopt(ws1)
-        w[0].addTabbedWindow(w[1], ordered: .above)
-        windows[2].adopt(ws2)
-        w[2].addTabbedWindow(w[3], ordered: .above)
-        XCTAssertTrue(windows[1].workspace === ws1 && windows[3].workspace === ws2)
-        XCTAssertNil(windows[4].workspace)
-        // What Merge All Windows does, window by window (the menu's own action needs an active app).
-        for i in [3, 2, 4] { w[0].addTabbedWindow(w[i], ordered: .above) }
-        XCTAssertEqual(w[0].tabGroup?.windows.count, 5)
-        let spaces = windows.map(\.workspace)
-        XCTAssertTrue(spaces.allSatisfy { $0 != nil && $0 === spaces[0] }, "one workspace: \(spaces.map { $0.map { ObjectIdentifier($0).hashValue } ?? 0 })")
-        XCTAssertTrue(windows.allSatisfy { $0.sidebar != nil }, "every window of a notes group shows the sidebar")
-        for c in windows { c.leaveWorkspace() }
-    }
 
     /// The sidebar and the palettes through the accessibility API: each named for what it is.
     func testTheSidebarAndThePalettesAreNamedForVoiceOver() throws {

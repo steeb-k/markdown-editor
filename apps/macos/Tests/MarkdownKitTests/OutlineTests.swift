@@ -416,41 +416,28 @@ final class OutlineTests: XCTestCase {
         XCTAssertEqual(mid - clip.bounds.minY, wc.editorScrollView.baseInsetTop + visible / 2, accuracy: 3, "centred, as a key would")
     }
 
-    func testTheTabsEndAtTheColumnAndFifteenTabsFitTheRoomThatIsLeft() throws {
+    /// The column is the right-hand part of the window and the title bar's row stays the window's own over it: no
+    /// accessory, the title shown, whatever the column's width.
+    func testTheTitleBarStaysTheWindowsOwnWithTheColumnShown() throws {
         _ = NSApplication.shared
-        var docs: [MarkdownDocument] = []
-        var first: EditorWindowController?
-        for i in 0..<15 {
-            let settings = isolatedSettings()
-            settings.showOutlineInNewWindows = true
-            let doc = MarkdownDocument(settings: settings)
-            try doc.read(from: Data("# Doc \(i)\n\ntext\n".utf8), ofType: "net.daringfireball.markdown")
-            doc.makeWindowControllers()
-            let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
-            if let f = first, let fw = f.window, let w = wc.window { fw.addTabbedWindow(w, ordered: .above) } else { first = wc; wc.showWindow(nil) }
-            docs.append(doc)
-        }
-        defer { docs.forEach { $0.close() } }
-        let wc = try XCTUnwrap(first)
+        let settings = isolatedSettings()
+        settings.showOutlineInNewWindows = true
+        let doc = MarkdownDocument(settings: settings)
+        try doc.read(from: Data("# Doc\n\ntext\n".utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        defer { doc.close() }
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        wc.showWindow(nil)
         let window = try XCTUnwrap(wc.window)
         window.setContentSize(NSSize(width: 1000, height: 700))
         window.layoutIfNeeded()
-        wc.tabs.refresh()
         pump(0.2)
-        let selected = try XCTUnwrap(window.tabGroup?.selectedWindow?.windowController as? EditorWindowController)
-        selected.tabs.refresh()
-        let strip = selected.tabs.strip
-        XCTAssertTrue(selected.tabs.isShown)
-        let left = try XCTUnwrap(selected.outlineLeft)
-        let right = strip.convert(NSPoint(x: strip.bounds.maxX - strip.trailingInset, y: 0), to: nil).x
-        XCTAssertEqual(right, left, accuracy: 1.5, "the tabs end where the column begins")
-        XCTAssertGreaterThan(strip.trailingInset, 100)
-        XCTAssertEqual(strip.available, strip.bounds.width - strip.leadingInset - strip.trailingInset, accuracy: 0.5)
-        XCTAssertTrue(strip.overflow.right || strip.overflow.left, "fifteen tabs do not fit in what is left")
-        // Without the column the strip has its whole width again.
-        selected.toggleOutline(nil)
-        selected.tabs.refresh()
-        XCTAssertEqual(strip.trailingInset, 0)
+        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertNotNil(wc.columnLeft)
+        XCTAssertEqual(wc.columnLeft ?? 0, window.frame.width - 221, accuracy: 1.5, "the column is at its width, on the right")
+        wc.toggleOutline(nil)
+        XCTAssertNil(wc.columnLeft)
     }
 
     /// Added in the test pass: a window closed with the column shown (in Split, after a jump and a fold) leaves no

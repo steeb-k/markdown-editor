@@ -117,11 +117,13 @@ final class ClickHitTestTests: XCTestCase {
             // The divider.
             let divider = wc.splitView.convert(NSPoint(x: wc.scrollView.frame.maxX + 0.5, y: wc.splitView.bounds.midY), to: nil)
             XCTAssertTrue(try hit(wc, divider) === wc.splitView, "focus \(focus): the divider")
-            // The title bar is never the content's.
+            // The title bar is never the content's: a click in its row is AppKit's own title bar's or the band's (which drags
+            // and zooms like it; with no accessory in the row AppKit's views do not reach the whole of it).
             let title = NSPoint(x: window.frame.width / 2, y: window.frame.height - 8)
             let t = try hit(wc, title)
             XCTAssertNotNil(t)
-            XCTAssertFalse(t?.isDescendant(of: try XCTUnwrap(window.contentView)) ?? true, "focus \(focus): the title bar")
+            let content = try XCTUnwrap(window.contentView)
+            XCTAssertTrue(t === wc.titlebarBand || !(t?.isDescendant(of: content) ?? true), "focus \(focus): the title bar")
             // Nor does the scroll view hand a point under the title bar to the text (AppKit gives a click there to a
             // content view that will not move the window: the title bar's drag and double-click would be lost).
             let scroll = wc.editorScrollView

@@ -105,16 +105,13 @@ final class TitlebarTests: XCTestCase {
     func testTheTitleBarHasNoCustomControls() throws {
         let (doc, wc) = try open()
         let window = try XCTUnwrap(wc.window)
-        // The only accessory is the tab strip, and it is hidden for a single tab.
-        XCTAssertEqual(window.titlebarAccessoryViewControllers.count, 1)
-        XCTAssertTrue(window.titlebarAccessoryViewControllers[0].view is TabStripView)
-        XCTAssertTrue(window.titlebarAccessoryViewControllers[0].isHidden)
-        XCTAssertFalse(wc.tabs.isShown)
-        XCTAssertEqual(window.titleVisibility, .visible, "one tab: the window's own title")
+        // No accessory of ours: the title bar is the window's own.
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertEqual(window.titleVisibility, .visible, "the window's own title")
         // Nothing else: no segmented control, no buttons but the window's.
         func controls(in view: NSView) -> [NSView] {
             var found: [NSView] = []
-            for sub in view.subviews where !sub.isHidden && sub.frame.height > 0 && !(sub is TabStripView) {
+            for sub in view.subviews where !sub.isHidden && sub.frame.height > 0 {
                 let name = "\(type(of: sub))"
                 if sub is NSControl, !(name.hasPrefix("NSTheme") || name.hasPrefix("_NSTheme") || sub.className == "NSTextField" || name.hasPrefix("NSButtonTextField")) { found.append(sub) }
                 found += controls(in: sub)
@@ -138,14 +135,15 @@ final class TitlebarTests: XCTestCase {
         XCTAssertFalse(bar.isHidden, "never hidden: it keeps taking clicks (and the double-click)")
         XCTAssertTrue(wc.titlebarButtonsIgnoreClicksWhenHidden, "the window buttons do not")
         for b in wc.chromeController.windowButtons {
-            XCTAssertFalse(b.isHidden, "not hidden either: AppKit moves the tab strip over to where hidden buttons were")
+            XCTAssertFalse(b.isHidden, "not hidden either")
             XCTAssertFalse((b as? NSControl)?.isEnabled ?? true)
         }
         // A point in the strip of the title bar finds a view in the title bar's own hierarchy, not the text.
         let frameView = try XCTUnwrap(window.contentView?.superview)
         let hit = frameView.hitTest(NSPoint(x: window.frame.width / 2, y: window.frame.height - 10))
         XCTAssertNotNil(hit)
-        XCTAssertFalse(hit?.isDescendant(of: window.contentView!) ?? true, "the click does not fall through to the text view")
+        // AppKit's own title bar views, or the band (which drags and zooms like it): never the text.
+        XCTAssertTrue(hit === wc.titlebarBand || !(hit?.isDescendant(of: window.contentView!) ?? true), "the click does not fall through to the text view")
         wc.chromeController.send(.pointerMoved)
         pump(ChromeController.fadeDuration + 0.3)
         XCTAssertTrue(wc.chromeVisible)
@@ -242,17 +240,6 @@ final class TitlebarTests: XCTestCase {
         XCTAssertEqual(setting("None"), .nothing)
     }
 
-    func testAnEmptyPartOfTheTabStripDoubleClicksLikeTheTitleBar() throws {
-        let (doc, wc) = try open()
-        var asked = 0
-        wc.tabs.strip.onTitlebarClick = { _ in asked += 1 }
-        let event = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
-                                                     windowNumber: wc.window?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
-        wc.tabs.strip.mouseDown(with: event)
-        XCTAssertEqual(asked, 1)
-        doc.close()
-    }
-
     /// The page under the transparent title bar must not refuse the window's drag (AppKit then gives the row to the
     /// window only where the file name's own button is), and what the title bar's own views do not reach is a band
     /// that drags and double-clicks like it, in every layout, over the web view and the editor alike.
@@ -271,7 +258,7 @@ final class TitlebarTests: XCTestCase {
             XCTAssertEqual(band.frame.height, bar, accuracy: 0.5, "\(layout)")
             XCTAssertEqual(band.frame.width, wc.root.frame.width, accuracy: 0.5, "\(layout)")
             XCTAssertEqual(band.frame.maxY, wc.root.frame.maxY, accuracy: 0.5, "\(layout)")
-            // Beside the tab strip's room, where nothing of the title bar's lies, the band is what a click finds.
+            // Beside the title bar's own views, where nothing of theirs lies, the band is what a click finds.
             let p = wc.root.convert(NSPoint(x: wc.root.frame.width - 3, y: wc.root.frame.maxY - bar / 2), to: nil)
             let hit = wc.root.hitTest(wc.root.convert(p, from: nil))
             XCTAssertTrue(hit === band, "\(layout): \(String(describing: hit))")
@@ -282,8 +269,8 @@ final class TitlebarTests: XCTestCase {
         }
     }
 
-    /// Found in the M8d test pass: in notes mode the title row over the sidebar, between the window buttons and the tab
-    /// strip's start, was the sidebar's own view, and a double-click there did nothing (the content view's clicks are
+    /// Found in the M8d test pass: in notes mode the title row over the sidebar, between the window buttons and the
+    /// editor's pane, was the sidebar's own view, and a double-click there did nothing (the content view's clicks are
     /// not the title bar's). The sidebar has the band too.
     func testTheTitleBarRowOverTheNotesSidebarIsTheWindows() throws {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
@@ -399,169 +386,50 @@ final class TitlebarTests: XCTestCase {
     }
 }
 
-// MARK: tabs
+// MARK: one document per window
 
 @MainActor
-final class TabStripTests: XCTestCase {
-    func testTabWidthsShrinkToAMinimumThenTheStripScrolls() {
-        XCTAssertEqual(TabStripModel.tabWidth(count: 1, available: 800), TabStripModel.maximumTabWidth)
-        XCTAssertEqual(TabStripModel.tabWidth(count: 4, available: 800), 200)
-        XCTAssertEqual(TabStripModel.tabWidth(count: 40, available: 800), TabStripModel.minimumTabWidth)
-        // With 40 tabs of 96 points in 800: the strip scrolls, and the selected tab is kept in view.
-        let w = TabStripModel.minimumTabWidth
-        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 0, tabWidth: w, count: 40, available: 800, current: 500), 0)
-        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 39, tabWidth: w, count: 40, available: 800, current: 0), w * 40 - 800)
-        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 5, tabWidth: w, count: 40, available: 800, current: 100), 100, "already in view: no scroll")
-        XCTAssertEqual(TabStripModel.scrollOffset(revealing: 2, tabWidth: 200, count: 3, available: 800, current: 50), 0, "fits: no offset")
-    }
+final class OneDocumentPerWindowTests: XCTestCase {
+    private func pump(_ s: TimeInterval = 0.05) { RunLoop.current.run(until: Date(timeIntervalSinceNow: s)) }
 
-    func testOneWindowIsOneTabAndTheGroupGivesTitlesOrderEditedAndSelection() throws {
+    func testNoWindowFormsTabsAndTheWindowMenuHasNoTabItems() throws {
         _ = NSApplication.shared
-        var docs: [MarkdownDocument] = []
-        var controllers: [EditorWindowController] = []
-        for (i, name) in ["alpha", "beta", "gamma"].enumerated() {
-            let doc = MarkdownDocument(settings: isolatedSettings())
-            try doc.read(from: Data("text \(i)\n".utf8), ofType: "net.daringfireball.markdown")
-            doc.displayName = name
-            doc.makeWindowControllers()
-            let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
-            _ = wc.window
-            docs.append(doc)
-            controllers.append(wc)
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        doc.makeWindowControllers()
+        defer { doc.close() }
+        let window = try XCTUnwrap((doc.windowControllers.first as? EditorWindowController)?.window)
+        XCTAssertEqual(window.tabbingMode, .disallowed)
+        XCTAssertEqual(window.tabGroup?.windows.count ?? 1, 1)
+        let other = MarkdownDocument(settings: isolatedSettings())
+        other.makeWindowControllers()
+        defer { other.close() }
+        let second = try XCTUnwrap((other.windowControllers.first as? EditorWindowController)?.window)
+        XCTAssertEqual(second.tabbingMode, .disallowed)
+        let titles = MainMenu.build().items.flatMap { $0.submenu?.items.map(\.title) ?? [] }
+        for t in ["New Tab", "Show Tab Bar", "Merge All Windows", "Show Next Tab", "Show Previous Tab", "Show All Tabs", "Move Tab to New Window",
+                  "Revert To", "Last Saved Version", "Browse All Versions\u{2026}"] {
+            XCTAssertFalse(titles.contains(t), "\(t) has no place any more")
         }
-        defer { docs.forEach { $0.close() } }
-        let first = try XCTUnwrap(controllers[0].window)
-        XCTAssertEqual(TabStripModel.entries(of: first).map(\.title), ["alpha"])
-        XCTAssertFalse(controllers[0].tabs.isShown)
-        controllers[0].showWindow(nil)
-        controllers[1].showWindow(nil)
-        controllers[2].showWindow(nil)
-        let second = try XCTUnwrap(controllers[1].window)
-        first.addTabbedWindow(second, ordered: .above)
-        second.addTabbedWindow(try XCTUnwrap(controllers[2].window), ordered: .above)
-        guard first.tabGroup?.windows.count == 3 else { throw XCTSkip("this environment does not form tab groups for off-screen test windows") }
-        for wc in controllers { wc.tabs.refresh() }
-        let entries = TabStripModel.entries(of: first)
-        XCTAssertEqual(entries.map(\.title), ["alpha", "beta", "gamma"], "the group's order")
-        XCTAssertEqual(entries.filter(\.selected).count, 1)
-        XCTAssertEqual(entries.map(\.edited), [false, false, false])
-        docs[1].updateChangeCount(.changeDone)
-        XCTAssertEqual(TabStripModel.entries(of: first).map(\.edited), [false, true, false])
-        // What every strip draws follows when the document tells its windows, which AppKit does at
-        // the end of the next event (`updateWindows`), not only for the window in front.
-        NSApp.updateWindows()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        for wc in controllers {
-            XCTAssertEqual(wc.tabs.strip.entries.map(\.edited), [false, true, false], "the strip of \(wc.window?.title ?? "")")
-        }
-        docs[1].updateChangeCount(.changeCleared)
-        NSApp.updateWindows()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        for wc in controllers { XCTAssertEqual(wc.tabs.strip.entries.map(\.edited), [false, false, false]) }
-        docs[1].updateChangeCount(.changeDone)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
-        // The strip shows the tabs, the title is the strip's job, and the height of the bar does not grow.
-        let selected = try XCTUnwrap(first.tabGroup?.selectedWindow)
-        let wc = try XCTUnwrap(selected.windowController as? EditorWindowController)
-        wc.tabs.refresh()
-        XCTAssertTrue(wc.tabs.isShown)
-        XCTAssertEqual(wc.tabs.strip.entries.map(\.title), ["alpha", "beta", "gamma"])
-        XCTAssertEqual(wc.tabs.strip.tabViews.count, 3)
-        XCTAssertEqual(selected.titleVisibility, .hidden)
-        XCTAssertFalse(wc.tabs.nativeBarShowing, "AppKit's own tab bar is put away")
-        XCTAssertLessThanOrEqual(wc.tabs.strip.frame.height, selected.frame.height - selected.contentLayoutRect.height + 0.5)
-        // Selecting by the strip, reordering by the strip.
-        let target = try XCTUnwrap(first.tabGroup?.windows.first { $0 !== selected })
-        wc.tabs.select(target.windowNumber)
-        XCTAssertTrue(first.tabGroup?.selectedWindow === target)
-        wc.tabs.move(target.windowNumber, to: 0)
-        XCTAssertTrue(first.tabGroup?.windows.first === target, "dragging a tab to the front moves it in the group")
     }
 
-    /// The crash of 2026-10-02 (17:55): putting AppKit's bar away from inside the tab group's
-    /// observation made AppKit fire the observation again, until the stack overflowed. Tabs are
-    /// added, merged, moved out to their own window and back, selected and closed with every strip
-    /// observing: no observation ever arrives inside another, and the native bar never shows.
-    func testTabChangesNeverReenterTheStripsObservations() throws {
+    func testTheTitleShowsInTheTitleBarWithNoAccessoryAndTheWindowsOwnEditedMark() throws {
         _ = NSApplication.shared
-        var docs: [MarkdownDocument] = []
-        var controllers: [EditorWindowController] = []
-        for i in 0..<4 {
-            let doc = MarkdownDocument(settings: isolatedSettings())
-            try doc.read(from: Data("text \(i)\n".utf8), ofType: "net.daringfireball.markdown")
-            doc.makeWindowControllers()
-            let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
-            wc.showWindow(nil)
-            docs.append(doc)
-            controllers.append(wc)
-        }
-        defer { docs.filter { !$0.windowControllers.isEmpty }.forEach { $0.close() } }
-        func pump() { RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.15)) }
-        func check(_ when: String) {
-            for wc in controllers {
-                XCTAssertEqual(wc.tabs.reentries, 0, "re-entered \(when)")
-                XCTAssertFalse(wc.tabs.nativeBarShowing, "native bar \(when)")
-            }
-        }
-        let windows = controllers.compactMap(\.window)
-        windows[0].addTabbedWindow(windows[1], ordered: .above)
-        pump()
-        guard windows[0].tabGroup?.windows.count == 2 else { throw XCTSkip("this environment does not form tab groups") }
-        check("after the second tab")
-        windows[1].addTabbedWindow(windows[2], ordered: .above)
-        pump(); check("after the third")
-        windows[3].mergeAllWindows(nil)
-        pump(); check("after merging")
-        XCTAssertEqual(windows[0].tabGroup?.windows.count, 4)
-        windows[2].moveTabToNewWindow(nil)
-        pump(); check("after moving a tab out")
-        XCTAssertEqual(windows[2].tabGroup?.windows.count ?? 1, 1)
-        windows[0].addTabbedWindow(windows[2], ordered: .below)
-        pump(); check("after bringing it back")
-        windows[0].tabGroup?.selectedWindow = windows[3]
-        windows[0].selectNextTab(nil)
-        pump(); check("after selecting")
-        docs[1].close()
-        pump(); check("after closing a tab")
-        XCTAssertEqual(windows[0].tabGroup?.windows.count, 3)
-    }
-
-    func testTabViewsAreAccessibleAsTabsWithTheirTitles() {
-        let strip = TabStripView(frame: NSRect(x: 0, y: 0, width: 500, height: 28))
-        strip.setEntries([TabEntry(windowNumber: 1, title: "One", edited: false, selected: true),
-                          TabEntry(windowNumber: 2, title: "Two", edited: true, selected: false)])
-        strip.layoutSubtreeIfNeeded()
-        XCTAssertEqual(strip.accessibilityRole(), .tabGroup)
-        XCTAssertEqual(strip.tabViews.map { $0.accessibilityLabel() }, ["One", "Two"])
-        XCTAssertEqual(strip.tabViews.map { $0.accessibilityRole() }, [.radioButton, .radioButton])
-        XCTAssertEqual(strip.tabViews.map { ($0.accessibilityValue() as? NSNumber)?.intValue }, [1, 0])
-        var pressed: [Int] = []
-        strip.onSelect = { pressed.append($0) }
-        XCTAssertTrue(strip.tabViews[1].accessibilityPerformPress())
-        XCTAssertEqual(pressed, [2])
-        // A tab of a window in the background takes the first click (it does not only activate the window).
-        XCTAssertTrue(strip.acceptsFirstMouse(for: nil))
-        XCTAssertTrue(strip.tabViews.allSatisfy { $0.acceptsFirstMouse(for: nil) })
-        // A faded strip is title bar: its tabs take no hover and no clicks.
-        strip.isFaded = true
-        strip.tabViews[0].updateHover(true)
-        XCTAssertFalse(strip.tabViews[0].hovering)
-    }
-
-    func testTheStripKeepsItsOrderAndHeightWhateverTheCount() {
-        let strip = TabStripView(frame: NSRect(x: 0, y: 0, width: 400, height: 28))
-        let entries = (0..<30).map { TabEntry(windowNumber: $0, title: "Tab \($0)", edited: $0 % 5 == 0, selected: $0 == 29) }
-        strip.setEntries(entries)
-        strip.layoutSubtreeIfNeeded()
-        XCTAssertEqual(strip.frame.height, 28, "never grows")
-        XCTAssertEqual(strip.tabViews.count, 30)
-        XCTAssertEqual(strip.tabViews[0].frame.width, TabStripModel.minimumTabWidth)
-        XCTAssertGreaterThan(strip.scrollOffset, 0, "the selected tab is scrolled into view")
-        XCTAssertEqual(strip.tabViews.map { $0.entry?.title }, entries.map(\.title))
-        strip.setEntries(Array(entries.prefix(2)))
-        strip.layoutSubtreeIfNeeded()
-        XCTAssertEqual(strip.tabViews.count, 2)
-        XCTAssertEqual(strip.scrollOffset, 0)
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        try doc.read(from: Data("# Title\n".utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        defer { doc.close() }
+        let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        let window = try XCTUnwrap(wc.window)
+        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.allSatisfy { $0.isHidden } || window.titlebarAccessoryViewControllers.isEmpty)
+        XCTAssertFalse(window.isDocumentEdited)
+        // Notes mode puts a sidebar beside the editor and the title stays: the title row is the 32 point row over both.
+        wc.startNotesMode()
+        pump(0.2)
+        XCTAssertEqual(window.titleVisibility, .visible)
+        XCTAssertTrue(window.titlebarAccessoryViewControllers.allSatisfy { $0.isHidden } || window.titlebarAccessoryViewControllers.isEmpty)
+        let hidden = wc.titlebarControls.flatMap { $0.subviews }.compactMap { $0 as? NSTextField }.filter { !$0.isHidden }
+        XCTAssertFalse(hidden.isEmpty, "the title's own label is there")
     }
 }
 
@@ -1270,7 +1138,7 @@ final class InsertTableSheetTests: XCTestCase {
 
 // MARK: a new document is not edited
 
-/// A new document carried the dot of an edited one on its tab from the start: setting its page
+/// A new document carried the dot of an edited one from the start: setting its page
 /// margins went through NSDocument's print-info setter, which registers "Change Print Settings"
 /// for undo and so marks the document edited. Closing such an untouched window asked to save it.
 @MainActor
@@ -1286,7 +1154,7 @@ final class NewDocumentStateTests: XCTestCase {
         XCTAssertEqual(doc.printInfo.leftMargin, MarkdownDocument.defaultPageMargin, "the margins are still set")
         XCTAssertEqual(doc.printInfo.topMargin, MarkdownDocument.defaultPageMargin)
         let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
-        XCTAssertEqual(TabStripModel.entries(of: try XCTUnwrap(wc.window)).map(\.edited), [false])
+        XCTAssertFalse(try XCTUnwrap(wc.window).isDocumentEdited)
         // The same for one read from a file, and the first keystroke still marks it edited.
         let other = MarkdownDocument(settings: isolatedSettings())
         try other.read(from: Data("text\n".utf8), ofType: "net.daringfireball.markdown")

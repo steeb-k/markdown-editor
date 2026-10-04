@@ -19,17 +19,6 @@ enum FileRevealer {
     }
 }
 
-/// Answers a window's request to ask before closing, for `replacing: true`.
-private final class CloseAsker: NSObject {
-    let done: (Bool) -> Void
-    init(_ done: @escaping (Bool) -> Void) { self.done = done }
-    /// The context is this object, retained for the asking; it is let go of here.
-    @objc func document(_ doc: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        done(shouldClose)
-        if let contextInfo { Unmanaged<CloseAsker>.fromOpaque(contextInfo).release() }
-    }
-}
-
 // MARK: - the workspace of a window
 
 extension EditorWindowController {
@@ -37,20 +26,9 @@ extension EditorWindowController {
     var fileURL: URL? { markdownDocument?.fileURL }
     var inNotesMode: Bool { workspace?.notesMode == true }
 
-    /// This window opens in notes mode: it joins a new workspace, or its tab group's.
+    /// This window opens in notes mode, with a workspace of its own.
     func startNotesMode() {
-        if let shared = groupWorkspace() {
-            adopt(shared)
-        } else {
-            adopt(Workspace.make(settings: session.settings, notesMode: true))
-        }
-    }
-
-    /// The workspace another window of this window's tab group has.
-    private func groupWorkspace() -> Workspace? {
-        guard let window else { return nil }
-        return (window.tabGroup?.windows ?? [window]).compactMap { ($0.windowController as? EditorWindowController) }
-            .filter { $0 !== self }.compactMap(\.workspace).first
+        adopt(Workspace.make(settings: session.settings, notesMode: true))
     }
 
     func adopt(_ ws: Workspace) {
@@ -66,7 +44,7 @@ extension EditorWindowController {
         applyNotesMode()
     }
 
-    /// The window no longer belongs to its workspace (it closed, or changed tab group).
+    /// The window no longer belongs to its workspace (it closed, or was given another).
     func leaveWorkspace(closing: Bool = false) {
         guard let ws = workspace else { return }
         ws.stopObserving(self)
@@ -78,29 +56,10 @@ extension EditorWindowController {
         removeNotesSplit()
     }
 
-    /// A window joined or left a tab group, or the group's windows changed: the window shares the
-    /// workspace its group has; a tab torn off into a window of its own gets a copy of its own.
-    func tabGroupChanged() {
-        guard let window else { return }
-        let group = window.tabGroup?.windows ?? [window]
-        if let shared = groupWorkspace() {
-            if workspace !== shared { adopt(shared) }
-        } else if let ws = workspace {
-            let others = ws.members.allObjects.compactMap { $0 as? EditorWindowController }.filter { $0 !== self }
-            if others.contains(where: { o in o.window.map { w in !group.contains { $0 === w } } ?? false }) { adopt(ws.fork()) }
-        }
-    }
-
     func workspaceChanged(_ change: Workspace.Change) {
         if change.contains(.mode) { applyNotesMode() }
         if change.contains(.layout) { applySidebarWidth() }
         sidebar?.workspaceChanged(change)
-    }
-
-    /// Where the editor pane starts, as an x in the window (the tabs begin there), or nil without a sidebar.
-    var editorPaneLeft: CGFloat? {
-        guard notesSplit != nil, let bar = sidebar?.view else { return nil }
-        return bar.frame.width + 1
     }
 
     // MARK: showing the sidebar
@@ -126,8 +85,6 @@ extension EditorWindowController {
             window.minSize.width = baseMinWidth + outlineMinExtra
         }
         updateFadeGeometry()
-        // The tabs take the pane's width, or the whole row again.
-        tabs.refresh()
         if window.isVisible || window.firstResponder != nil {
             window.makeFirstResponder(session.layout == .preview ? previewController.webView : textView)
         }
@@ -189,7 +146,6 @@ extension EditorWindowController {
         applyingSidebarWidth = true
         split.setPosition(w, ofDividerAt: 0)
         applyingSidebarWidth = false
-        tabs.refresh()
     }
 
     // MARK: the document in front
@@ -222,10 +178,10 @@ extension EditorWindowController {
 
     // MARK: opening notes
 
-    /// Opens a note in a tab of this window's group: its tab is brought forward when it is open already; with
-    /// `replacing`, it takes the place of this window's document (which asks to be saved first when it was
-    /// edited). `range` or the request's cursor is selected in it.
-    func openNote(_ request: NoteOpenRequest, replacing: Bool = false, range: NSRange? = nil,
+    /// Opens a note: it takes the place of this window's document (which is saved and snapshotted first), or, with
+    /// `newWindow`, opens in a window of its own (with a copy of this window's sidebar state). A note that is open
+    /// in a window already brings that window forward. `range` or the request's cursor is selected in it.
+    func openNote(_ request: NoteOpenRequest, newWindow: Bool = false, range: NSRange? = nil,
                   completion: ((MarkdownDocument?) -> Void)? = nil) {
         let place: (MarkdownDocument) -> Void = { doc in
             guard let tv = doc.session.textView else { return }
@@ -254,8 +210,8 @@ extension EditorWindowController {
             return
         }
         // An untitled document nobody has typed in is what a note replaces, as it would in any other app.
-        let reuse = !replacing && (markdownDocument.map { $0.fileURL == nil && !$0.isDocumentEdited && $0.session.storage.length == 0 } ?? false)
-        let replaced = replacing || reuse
+        let reuse = markdownDocument.map { $0.fileURL == nil && !$0.isDocumentEdited && $0.session.storage.length == 0 } ?? false
+        let replace = !newWindow || reuse
         let start = { [self] in
             NSDocumentController.shared.openDocument(withContentsOf: request.url, display: false) { [self] doc, _, error in
                 guard let doc = doc as? MarkdownDocument else {
@@ -263,60 +219,86 @@ extension EditorWindowController {
                     completion?(nil)
                     return
                 }
+                // The window takes this one's workspace (the sidebar stays as it was), or starts from a copy of it.
+                doc.inheritedWorkspace = replace ? ws : ws.copy()
                 doc.makeWindowControllers()
-                guard let wc = doc.windowControllers.first as? EditorWindowController, let newWindow = wc.window, let window else {
+                guard let wc = doc.windowControllers.first as? EditorWindowController, let newWindow = wc.window else {
                     completion?(doc)
                     return
                 }
-                wc.adopt(ws)
-                if replaced { window.addTabbedWindow(newWindow, ordered: .above) } else {
-                    (window.tabGroup?.windows.last ?? window).addTabbedWindow(newWindow, ordered: .above)
-                }
+                let leaving = replace ? markdownDocument : nil
+                if leaving != nil { wc.takeOver(from: self) }
                 doc.showWindows()
                 newWindow.makeKeyAndOrderFront(nil)
                 place(doc)
                 wc.documentBecameFront()
                 wc.sidebar?.consumePendingRename()
-                if replaced, let old = markdownDocument {
-                    old.updateChangeCount(.changeCleared)
-                    old.close()
-                }
+                if let leaving { wc.finishReplacing(leaving) }
                 completion?(doc)
             }
         }
-        if replaced, let doc = markdownDocument, doc.isDocumentEdited {
-            let asker = CloseAsker { ok in if ok { start() } else { completion?(nil) } }
-            doc.canClose(withDelegate: asker, shouldClose: #selector(CloseAsker.document(_:shouldClose:contextInfo:)), contextInfo: Unmanaged.passRetained(asker).toOpaque())
+        if replace, let doc = markdownDocument {
+            doc.settleForLeaving { ok in if ok { start() } else { completion?(nil) } }
         } else {
             start()
         }
     }
 
-    /// Brings an open document's tab (or window) to the front.
+    /// This window stands in for the one `old` is in: the same place and size, the same workspace (so the sidebar is as it
+    /// was), the same layout, mode and column, and no animation, so that the document seems to change in the window.
+    func takeOver(from old: EditorWindowController) {
+        guard let window, let oldWindow = old.window else { return }
+        window.animationBehavior = .none
+        window.setFrame(oldWindow.frame, display: false)
+        // What the window was showing it still shows: the layout, the mode, the tools.
+        let was = old.session
+        session.setViewMode(was.viewMode)
+        session.setLayout(was.layout)
+        session.setFocusEnabled(was.focusEnabled)
+        session.setSyntaxEnabled(was.syntaxEnabled)
+        session.setAuthorshipDisplay(was.authorshipDisplay)
+        if old.session.outlineShown != session.outlineShown { session.setOutlineShown(old.session.outlineShown) }
+        if old.session.historyShown != session.historyShown { session.setHistoryShown(old.session.historyShown) }
+        session.outlineWidth = old.session.outlineWidth
+        session.historyWidth = old.session.historyWidth
+        replacedFullScreen = oldWindow.styleMask.contains(.fullScreen)
+    }
+
+    /// The old document's window closes (the document was settled before), and the new one is the window now.
+    func finishReplacing(_ old: MarkdownDocument) {
+        old.windowControllers.first?.window?.animationBehavior = .none
+        old.close()
+        window?.makeKeyAndOrderFront(nil)
+        window?.animationBehavior = .default
+        if replacedFullScreen, window?.styleMask.contains(.fullScreen) == false { window?.toggleFullScreen(nil) }
+        replacedFullScreen = false
+    }
+
+    /// Brings an open document's window to the front.
     func bringForward(_ doc: MarkdownDocument) {
         guard let w = doc.windowControllers.first?.window else {
             doc.showWindows()
             return
         }
-        if let group = window?.tabGroup, group.windows.contains(where: { $0 === w }) { group.selectedWindow = w }
         w.makeKeyAndOrderFront(nil)
         (w.windowController as? EditorWindowController)?.documentBecameFront(force: true)
     }
 
-    func openBacklink(_ link: NoteBacklink) {
+    func openBacklink(_ link: NoteBacklink, newWindow: Bool = false) {
         guard let url = workspace?.library.url(for: link.from) else { return }
-        openNote(NoteOpenRequest(url: url), range: NSRange(location: Int(link.range.start), length: Int(link.range.end - link.range.start)))
+        openNote(NoteOpenRequest(url: url), newWindow: newWindow, range: NSRange(location: Int(link.range.start), length: Int(link.range.end - link.range.start)))
     }
 
     // MARK: wikilinks
 
-    /// Cmd-click on `[[target#heading]]` (or a click on one in the preview): the note it names opens in a
-    /// tab; with no such note, the user is offered `target.md` beside this one.
-    func openWikilink(target: String, heading: String?) {
+    /// Cmd-click on `[[target#heading]]` (or a click on one in the preview): the note it names replaces this
+    /// window's document (Cmd-Option-click: opens in a window of its own); with no such note, the user is offered
+    /// `target.md` beside this one.
+    func openWikilink(target: String, heading: String?, newWindow: Bool = false) {
         let name = WikilinkResolver.name(of: target)
         let open: (URL) -> Void = { [self] url in
             if let ws = workspace, ws.notesMode {
-                openNote(NoteOpenRequest(url: url)) { [weak self] doc in
+                openNote(NoteOpenRequest(url: url), newWindow: newWindow) { [weak self] doc in
                     guard let heading, let doc, let self, let ref = ws.library.ref(for: url) else { return }
                     ws.library.meta(of: ref) { meta in
                         guard let h = meta?.headings.first(where: { $0.text.caseInsensitiveCompare(heading) == .orderedSame }),
@@ -555,9 +537,6 @@ extension EditorWindowController {
         } else {
             let ws = Workspace.make(settings: session.settings, notesMode: true)
             adopt(ws)
-            for w in window?.tabGroup?.windows ?? [] {
-                if let c = w.windowController as? EditorWindowController, c !== self { c.adopt(ws) }
-            }
         }
     }
 
@@ -590,7 +569,7 @@ extension EditorWindowController {
         }, choose: { [weak self] row, alternate in
             let parts = row.key.split(separator: "\n", maxSplits: 1).map(String.init)
             guard parts.count == 2, let url = ws.library.url(for: NoteRef(root: parts[0], path: parts[1])) else { return }
-            self?.openNote(NoteOpenRequest(url: url), replacing: alternate)
+            self?.openNote(NoteOpenRequest(url: url), newWindow: alternate)
         })
         p.onClose = { [weak self] in self?.focusEditor(); self?.palette = nil }
         palette = p
@@ -656,12 +635,10 @@ extension EditorWindowController: NSSplitViewDelegate {
 
     /// A window's resize is the editor's: the sidebar and the outline keep their widths.
     public func splitView(_ splitView: NSSplitView, shouldAdjustSizeOfSubview view: NSView) -> Bool {
-        splitView === paneHost ? view !== outline?.view : view !== sidebar?.view
+        splitView === paneHost ? view !== columnView : view !== sidebar?.view
     }
 
     public func splitViewDidResizeSubviews(_ notification: Notification) {
-        // The tabs follow the divider as it is dragged.
-        tabs.refresh()
         if (notification.object as? NSSplitView) === paneHost {
             outlineDividerMoved()
             return

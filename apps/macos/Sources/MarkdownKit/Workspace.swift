@@ -1,11 +1,11 @@
 import AppKit
 import MarkdownCore
 
-/// What a tab group of notes shares: the library, the selection, the filters, the sort and the
-/// folders opened in the sidebar. Every window of the group draws its own sidebar from the same
-/// workspace (as Finder's tabs do), so switching tabs shows the same thing.
+/// What one window of notes has: the library (the app's, shared), the selection, the filters, the sort
+/// and the folders opened in the sidebar. A window opened from another's sidebar starts with a copy
+/// (`copy()`) and goes its own way; a note replacing a window's document hands the window's workspace on.
 ///
-/// A workspace is plain state plus file operations. Windows, tabs and sheets belong to the window
+/// A workspace is plain state plus file operations. Windows and sheets belong to the window
 /// controllers, which call into it and are told what changed.
 public final class Workspace {
     public struct Change: OptionSet {
@@ -26,7 +26,7 @@ public final class Workspace {
     public let library: LibraryController
     public let settings: Settings
 
-    /// Whether the windows of the group show the sidebar.
+    /// Whether the window shows the sidebar.
     public private(set) var notesMode: Bool
     public private(set) var snapshot = LibrarySnapshot()
     /// What is selected in the sidebar's tree (node ids).
@@ -40,16 +40,18 @@ public final class Workspace {
     public private(set) var collapsedTags = false
     public private(set) var backlinksShown = false
     public private(set) var sidebarWidth: CGFloat
-    /// The sidebar's scroll position, shared so a tab switch does not move the list.
+    /// The sidebar's scroll position, kept so a document replacing the window's does not move the list.
     public private(set) var scrollOffset: CGFloat = 0
     /// A node that was just created: the sidebar starts renaming it when it appears.
     public var pendingRename: String?
+    /// A note to open the folders above when the library's snapshot has it.
+    var pendingReveal: String?
 
     private struct Observer {
         weak var owner: AnyObject?
         let handler: (Change) -> Void
     }
-    /// The window controllers of the tab group this workspace belongs to.
+    /// The window controllers using this workspace (two while a replacing window takes over from the one it closes).
     public let members = NSHashTable<AnyObject>.weakObjects()
     private var observers: [Observer] = []
     private var requestSeq = 0
@@ -77,9 +79,9 @@ public final class Workspace {
 
     deinit { library.stopObserving(self) }
 
-    /// A workspace for another tab group that starts as this one is (its own selection and filters
-    /// from here on): a tab torn off into a window of its own.
-    public func fork() -> Workspace {
+    /// A workspace for another window that starts as this one is (its own selection and filters
+    /// from here on): the window a Command-click opens.
+    public func copy() -> Workspace {
         let w = Workspace(library: library, settings: settings, notesMode: notesMode)
         w.selection = selection
         w.selectedTags = selectedTags
@@ -137,6 +139,11 @@ public final class Workspace {
             for r in s.roots where !seenRoots.contains(r.id) {
                 seenRoots.insert(r.id)
                 expanded.insert(r.id)
+            }
+            // A note that was just made (a draft) is shown once the library has it.
+            if let id = pendingReveal, s.node(withID: id) != nil {
+                pendingReveal = nil
+                reveal(id)
             }
             // A tag that no note has any more cannot filter.
             let known = Set(s.tags.map(\.tag))
@@ -216,7 +223,11 @@ public final class Workspace {
 
     /// Opens every folder that leads to `id` (a note a link opened, so it can be seen in the tree).
     public func reveal(_ id: String) {
-        guard let node = snapshot.node(withID: id) else { return }
+        guard let node = snapshot.node(withID: id) else {
+            // Not in the tree yet (the note was made a moment ago): shown when it arrives.
+            pendingReveal = id
+            return
+        }
         var path = node.path
         var changed = false
         while let slash = path.lastIndex(of: "/") {

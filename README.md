@@ -26,6 +26,7 @@ cargo test --workspace
 # RENDER_FUZZ_CASES=50000 cargo test --profile fuzz -p markdown-core --test render   # render fuzzing, sanitizer soup checked by a browser-faithful tokenizer
 # RENDER_DIFF_CASES=1000000 cargo test --profile fuzz -p markdown-core --test render_diff   # the renderer against pulldown-cmark's own writer, additions normalised away
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture worst_case   # no 1 MB render over 100 ms (highlighting budget)
+# cargo test --release -p markdown-core --test perf -- --ignored --nocapture history_diff   # the history's line diff of a 1 MB document with one line changed (under 50 ms)
 # cargo test --release -p markdown-core --test robustness -- --ignored --nocapture one_megabyte   # 1 MB worst cases
 # cargo test --release -p markdown-core --test code -- --ignored --nocapture            # editor code highlighting: 1 MB with 200 blocks, a 2 000-line block
 
@@ -79,13 +80,16 @@ scripts/macos/ui-script.sh scripts/macos/ui/polish.json         # code panels in
 scripts/macos/ui-script.sh scripts/macos/ui/first-run.json      # the first window, the scroll limit, Help and Acknowledgements
 scripts/macos/ui-script.sh scripts/macos/ui/lifecycle.json      # 50 documents opened and closed: everything freed, memory flat
 scripts/macos/ui-script.sh scripts/macos/ui/robust.json         # 10 MB, a 5 MB line, binary, changed on disk, read-only, odd names, empty, mixed endings
-scripts/macos/ui-script.sh scripts/macos/ui/edge.json           # tiny window, documents of only front matter/table/picture/nothing, tabs, everything on at once
+scripts/macos/ui-script.sh scripts/macos/ui/edge.json           # tiny window, documents of only front matter/table/picture/nothing, windows in different modes, everything on at once
 scripts/macos/ui-script.sh scripts/macos/ui/scroll-limits.json  # the editor's scroll limits in every layout, resized, with the find bar
-scripts/macos/ui-script.sh scripts/macos/ui/notes.json          # notes mode: sidebar, tabs, Option-click, search, tags, backlinks within a second, tab-switch measurement
+scripts/macos/ui-script.sh scripts/macos/ui/notes.json          # notes mode: sidebar, a click replaces the window's document, Command-click opens a window, search, tags, backlinks within a second
 scripts/macos/ui-script.sh scripts/macos/ui/notes-files.json    # new note and folder, rename with link updates and undo, drag, Trash, templates, today's note
 scripts/macos/ui-script.sh scripts/macos/ui/notes-links.json    # wikilinks: Cmd-click and preview clicks, plain mode and notes mode, a link to nothing
-scripts/macos/ui-script.sh scripts/macos/ui/quick-open.json     # the palette: fuzzy on titles and paths, arrows, Return, Option-Return, Escape
-scripts/macos/ui-script.sh scripts/macos/ui/outline.json        # the outline column: real clicks jump the editor and the preview, the mark follows caret and page, keys, folds, divider, notes mode, tabs
+scripts/macos/ui-script.sh scripts/macos/ui/quick-open.json     # the palette: fuzzy on titles and paths, arrows, Return, Command-Return, Escape
+scripts/macos/ui-script.sh scripts/macos/ui/windows.json        # one document per window: no tabs, the title in the title bar, a click replaces the document, Command-click and Command-Option-click open windows
+scripts/macos/ui-script.sh scripts/macos/ui/autosave.json       # written 2 s after the last keystroke, no edited dot, nothing asked on close, another app's newer file, drafts
+scripts/macos/ui-script.sh scripts/macos/ui/history.json        # snapshots after a pause, Save, the panel, diff colours, Restore and Copy, rename, a draft
+scripts/macos/ui-script.sh scripts/macos/ui/outline.json        # the outline column: real clicks jump the editor and the preview, the mark follows caret and page, keys, folds, divider, notes mode
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/outline-big.json   # 1000 headings: main-thread cost of each kind of update (under 10 ms but one rare shape)
 ```
 
@@ -106,13 +110,14 @@ the heading at the top of the page) and kept in view without taking the keyboard
 moves the caret there and scrolls the editor so the heading is at the top (in the middle with focus centring on), and the
 preview to the same heading by its source line; the arrow keys move through the list and fold. It comes from the core
 (`Document::outline()`, built from the blocks the analysis already has), is asked for a quarter of a second after the last
-analysis (typing only moves a timer), and is told apart from the tab strip, which ends at its left edge. Each window keeps
+analysis (typing only moves a timer), and shares the column with the History panel (showing one hides the other). Each window keeps
 its own visibility and width; Settings has "Show outline in new windows" (the last width dragged is where new windows start).
 
 ## Notes mode
 
-View > Notes Mode (⌃⌘L) puts a sidebar beside the editor in every window of a tab group; the app is otherwise unchanged
-(a window that never used it is the same views it always was). Turn it on for new windows in Settings.
+View > Notes Mode (⌃⌘L) puts a sidebar beside the editor in the window; the app is otherwise unchanged
+(a window that never used it is the same views it always was). Turn it on for new windows in Settings. Every window has
+its own sidebar state; a window opened from another's sidebar starts with a copy of it.
 
 - **The library** is a folder (by default `~/Documents/Markdown Notes`, made from the sidebar's first-use invitation, or any
   folder: Library > Choose Library Folder…) plus any folders added with Library > Add Folder…, each remembered as a
@@ -121,18 +126,57 @@ View > Notes Mode (⌃⌘L) puts a sidebar beside the editor in every window of 
   (titles, tags, wikilinks, search, backlinks); the shell reads and watches the folders (FSEvents) off the main thread.
 - **Sidebar**: search (⇧⌘F; Escape clears) replaces the tree with ranked hits and snippets; roots as folder trees,
   sorted by name or modified time (View > Sort Notes); Tags with counts, several selected filter with AND. A click opens
-  a note as a tab of the group (or brings its tab forward); Option-click replaces the current tab's document. Return
+  the note in the window, replacing its document (saved and snapshotted first); Command-click opens it in a window of
+  its own; a note that is open in a window already brings that window forward. Return
   renames, ⌘⌫ moves to the Trash (never unlinks), drag moves, files dropped from Finder are copied in; the context
   menu has New Note, New Folder, Rename, Duplicate, Reveal in Finder. Renaming a note that others link to asks "Update
   N links in M notes?" and rewrites the links (undoable in each open document). Backlinks (⌥⌘B) is a panel under the
   list for the front document.
-- **Quick Open** (⇧⌘O): type a few letters of a title or path, arrow, Return (Option-Return replaces the tab).
+- **Quick Open** (⇧⌘O): type a few letters of a title or path, arrow, Return (Command-Return opens a window).
 - **Daily notes and templates**: File > Today's Note (⌃⌘N) opens `Daily/YYYY-MM-DD.md`, made once from
   `Templates/Daily.md`; File > New from Template (⇧⌘N chooses) fills `{{date}}`, `{{time}}`, `{{title}}`, `{{today}}`
   and puts the caret at `{{cursor}}`. Folder names and the file name format are in Settings.
 - **Wikilinks and tags**: `[[Title]]`, `[[Title|label]]`, `[[Title#Heading]]` and `#tag` are styled in the editor
-  (Live mode conceals the brackets); ⌘-click opens the note, or offers to make it beside the current one; in the preview
-  a click does the same. Without notes mode, a wikilink opens the note beside the document.
+  (Live mode conceals the brackets); ⌘-click replaces the window's document with the note (⌘⌥-click opens it in a
+  window of its own), or offers to make it beside the current one; in the preview a click does the same. Without notes mode, a wikilink opens the note beside the document.
+
+## One document per window
+
+There are no tabs: a window shows one document, the title and the window's own "Edited" label are in the title bar, and the
+window refuses tabbing (no Merge All Windows, no tab items anywhere). A note chosen in the sidebar, a backlink, a
+wikilink, Quick Open, Today's Note, a template or a link in the preview replaces the window's document, which is written
+and snapshotted first; the new document takes the old one's place and size, its workspace (so the sidebar is as it was),
+its layout and mode, and its column. Command-click (⌘-Return in Quick Open, ⌘⌥-click on a wikilink) opens a new window instead.
+
+## Autosave
+
+A titled document is written 2 seconds after the last keystroke, and when it leaves its window (closing, being
+replaced, quitting), through NSDocument's own autosave (`autosavesInPlace`: the same coordinated, asynchronous write
+as ⌘S, over the file itself); typing that never pauses is written by NSDocument's timer after 15 s at the latest. The
+undo stack is never touched by a write, the window never shows the edited dot and closing asks nothing. File > Save
+(⌘S) saves now and takes a snapshot of its own. An untitled document is written into the library's `Drafts` folder as
+`Untitled N.md` when a library exists (it becomes titled and shows in the sidebar); without a library it asks, as it
+always did, when it closes. If another app wrote the file meanwhile (its date is newer than what this window last
+read or wrote), the text here is snapshotted (with a message, so it is kept for good), the file is read again and a
+bar under the title bar says so, with a Show History button; the other app's version is never overwritten.
+
+## History
+
+Every titled document has a history of snapshots, kept by the core (`markdown_core::history`, the same on every
+platform) in `~/Library/Application Support/Markdown/history`: one folder per document with an `index.json` and one
+`<sha256>.md` per distinct text, so a person can recover a text without the app. A snapshot is taken 2 s after the last
+keystroke (with the autosave), when a document leaves its window, on ⌘S, on Restore and when a draft is made; nothing is
+recorded when the text equals the latest snapshot, and the first snapshot of a session is the text as it was opened. They
+are kept for 24 hours, then one per hour for a week, then one per day, at most 10 MB per document, and a snapshot with
+a message is never thinned. The key is the note in the library (so a rename or a move keeps the history) or a hash of the
+file's path.
+
+View > History (⌃⌘H) puts the timeline on the right, in the outline's column (showing one hides the other; each has its
+own toggle and width): versions grouped by day, each with its time, the reason (pause, close, save, restore, draft),
+the lines added and removed and its message. A version shows its diff against the text as it is now below the list
+(removed lines in the theme's reference colour, added lines in its AI colour, both muted); Restore records the text as
+it is, then puts the version's text in as one undoable edit, "Restore Version"; Copy puts the version's text on the
+clipboard. The panel follows snapshots as they are taken.
 
 ## Code in the editor
 

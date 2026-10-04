@@ -14,7 +14,7 @@ extension EditorTextView {
 
     public override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        if event.modifierFlags.contains(.command), openLink(at: p) { return }
+        if event.modifierFlags.contains(.command), openLink(at: p, newWindow: event.modifierFlags.contains(.option)) { return }
         if handleBadgeClick(at: p) { return }
         if handleCheckboxClick(at: p) { return }
         super.mouseDown(with: event)
@@ -343,11 +343,12 @@ extension EditorTextView {
     }
 
     /// Cmd-click: opens the link under the point (web links in the browser, relative links to
-    /// local files with their default app). Returns whether there was one.
+    /// local files with their default app). A wikilink opens in the window's place, or with Option too in a window
+    /// of its own (`newWindow`). Returns whether there was one.
     @discardableResult
-    func openLink(at viewPoint: NSPoint) -> Bool {
+    func openLink(at viewPoint: NSPoint, newWindow: Bool = false) -> Bool {
         if link(atViewPoint: viewPoint) == nil, let wiki = wikilink(atViewPoint: viewPoint) {
-            session?.onOpenWikilink?(wiki)
+            if newWindow, let open = session?.onOpenWikilinkInNewWindow { open(wiki) } else { session?.onOpenWikilink?(wiki) }
             return true
         }
         guard let target = link(atViewPoint: viewPoint) else { return false }

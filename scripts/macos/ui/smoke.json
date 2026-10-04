@@ -673,7 +673,7 @@
   "settingsWindow": "hide"
  },
  {
-  "newTab": true
+  "new": true
  },
  {
   "viewMode": "source"

@@ -100,6 +100,7 @@ public final class Settings: NSObject {
         static let sidebarWidth = "sidebarWidth"
         static let outlineByDefault = "outlineByDefault"
         static let outlineWidth = "outlineWidth"
+        static let historyWidth = "historyWidth"
         static func syntaxClass(_ c: SyntaxClass) -> String { "syntax." + c.rawValue }
     }
 
@@ -133,6 +134,7 @@ public final class Settings: NSObject {
             Key.sidebarWidth: 240.0,
             Key.outlineByDefault: false,
             Key.outlineWidth: 220.0,
+            Key.historyWidth: 300.0,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -215,6 +217,12 @@ public final class Settings: NSObject {
     public var outlineWidth: Double {
         get { min(max(defaults.double(forKey: Key.outlineWidth), 160), 480) }
         set { defaults.set(min(max(newValue, 160), 480), forKey: Key.outlineWidth) }
+    }
+
+    /// The history column's width in points: the last one the user dragged it to, where new windows start.
+    public var historyWidth: Double {
+        get { min(max(defaults.double(forKey: Key.historyWidth), 200), 480) }
+        set { defaults.set(min(max(newValue, 200), 480), forKey: Key.historyWidth) }
     }
 
     public var autoHideChrome: Bool {

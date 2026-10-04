@@ -3,7 +3,7 @@ import XCTest
 import MarkdownCore
 @testable import MarkdownKit
 
-/// What a tab group shares: the library's snapshot, the selection, the filters, the sort, the open
+/// What a window has of notes: the library's snapshot, the selection, the filters, the sort, the open
 /// folders; and the operations that make notes and folders.
 final class WorkspaceTests: XCTestCase {
     private var lib: TempLibrary!
@@ -136,11 +136,11 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(ws.destinationFolder()?.id, "lib:")
     }
 
-    func testAForkStartsAsItsParentWasAndGoesItsOwnWay() {
+    func testACopyStartsAsItsParentWasAndGoesItsOwnWay() {
         ws.setSelection(["lib:Home.md"])
         ws.setExpanded("lib:Projects", true)
         ws.setBacklinksShown(true)
-        let copy = ws.fork()
+        let copy = ws.copy()
         XCTAssertTrue(copy !== ws)
         XCTAssertEqual(copy.selection, ["lib:Home.md"])
         XCTAssertTrue(copy.expanded.contains("lib:Projects"))

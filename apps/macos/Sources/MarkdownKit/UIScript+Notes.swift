@@ -7,10 +7,9 @@ import MarkdownCore
 /// the search field's delegate); what a step cannot do through the real dialogs it does through
 /// the same calls the dialogs make.
 extension UIScriptRunner {
-    /// The window controller of the tab in front.
-    var notesController: EditorWindowController? {
-        (controller?.window?.tabGroup?.selectedWindow?.windowController as? EditorWindowController) ?? controller
-    }
+    /// The window controller the notes steps act on: the editor window in front (a note replacing the document of the
+    /// script's window leaves that one closed; a window a click opened is in front).
+    var notesController: EditorWindowController? { frontController ?? controller }
 
     var workspaceNow: Workspace? { notesController?.workspace }
 
@@ -76,7 +75,7 @@ extension UIScriptRunner {
                 done()
             }
         } else if let id = str("click") {
-            click(nodeID(id), option: n["option"] as? Bool ?? false, times: n["times"] as? Int ?? 1, then: done)
+            click(nodeID(id), newWindow: n["command"] as? Bool ?? false, times: n["times"] as? Int ?? 1, then: done)
         } else if let ids = n["select"] as? [String] {
             workspaceNow?.setSelection(ids.map(nodeID))
             record(["notes select": ids], ok: workspaceNow != nil)
@@ -127,7 +126,7 @@ extension UIScriptRunner {
             sb.commitRename(text)
             waitFor(5, { !sb.isRenaming && (ws?.library.isIdle ?? true) }) { _ in
                 later(0.4) {
-                    self.followSelectedTab()
+                    self.followFront()
                     self.record(["notes commitRename": text, "document": self.document?.fileURL?.lastPathComponent ?? ""], ok: true)
                     done()
                 }
@@ -151,11 +150,11 @@ extension UIScriptRunner {
                 done()
                 return
             }
-            let before = NSDocumentController.shared.documents.count
+            let before = c.markdownDocument
             c.newNote(fromTemplate: t)
-            waitFor(5, { NSDocumentController.shared.documents.count > before }) { ok in
+            waitFor(5, { self.notesController?.markdownDocument !== before }) { ok in
                 later(0.3) {
-                    self.followSelectedTab()
+                    self.followFront()
                     self.record(["notes newFromTemplate": name, "document": self.document?.fileURL?.lastPathComponent ?? ""], ok: ok)
                     done()
                 }
@@ -166,13 +165,13 @@ extension UIScriptRunner {
             menuAction(#selector(EditorWindowController.todaysNote(_:)))
             waitFor(5, { NSDocumentController.shared.documents.count > before || (self.notesController?.markdownDocument !== front) }) { _ in
                 later(0.3) {
-                    self.followSelectedTab()
+                    self.followFront()
                     self.record(["notes todaysNote": self.document?.fileURL?.lastPathComponent ?? "", "documents": NSDocumentController.shared.documents.count], ok: self.document != nil)
                     done()
                 }
             }
         } else if let needle = str("cmdClickWikilink") {
-            cmdClickWikilink(needle, expect: str("expect") ?? "open", then: done)
+            cmdClickWikilink(needle, expect: str("expect") ?? "open", newWindow: n["newWindow"] as? Bool ?? false, then: done)
         } else if let b = n["backlinks"] as? [String: Any] {
             awaitBacklinks(b, then: done)
         } else if let title = str("clickBacklink") {
@@ -186,7 +185,7 @@ extension UIScriptRunner {
             c.sidebar?.view.backlinks.onOpen?(link)
             waitFor(5, { self.notesController?.markdownDocument?.fileURL.map { DocumentFileAccess.canonical($0) == DocumentFileAccess.canonical(url) } ?? false }) { ok in
                 later(0.3) {
-                    self.followSelectedTab()
+                    self.followFront()
                     self.record(["notes clickBacklink": title, "selection": self.textView.map { NSStringFromRange($0.selectedRange()) } ?? "",
                                  "selectedText": self.textView.map { ((self.session?.text ?? "") as NSString).substring(with: $0.selectedRange()) } ?? ""], ok: ok)
                     done()
@@ -249,8 +248,6 @@ extension UIScriptRunner {
             workspaceNow?.setSidebarWidth(CGFloat(w))
             record(["notes sidebarWidth": w], ok: workspaceNow != nil)
             later(0.3, done)
-        } else if let p = n["probeTabSwitch"] as? [String: Any], let to = p["to"] as? Int {
-            probeTabSwitch(to: to, then: done)
         } else if n["settle"] != nil {
             guard let ws = workspaceNow else { done(); return }
             ws.requestSnapshot()
@@ -288,7 +285,7 @@ extension UIScriptRunner {
     // MARK: clicking, searching, creating
 
     /// `times`: clicks one after another before the first has opened anything (a double-click on a row).
-    private func click(_ id: String, option: Bool, times: Int = 1, then done: @escaping () -> Void) {
+    private func click(_ id: String, newWindow: Bool, times: Int = 1, then done: @escaping () -> Void) {
         guard let c = notesController, let sb = c.sidebar, let item = sb.item(withID: id) else {
             record(["notes click": id, "error": "no such row"], ok: false)
             done()
@@ -296,7 +293,7 @@ extension UIScriptRunner {
         }
         let target = item.node?.url
         let docsBefore = NSDocumentController.shared.documents.count
-        for _ in 0..<max(1, times) { sb.activate(item, replacing: option) }
+        for _ in 0..<max(1, times) { sb.activate(item, newWindow: newWindow) }
         func arrived() -> Bool {
             if self.window?.attachedSheet != nil { return true }
             guard let target else { return true }
@@ -305,10 +302,10 @@ extension UIScriptRunner {
         }
         waitFor(5, arrived) { ok in
             later(0.25) {
-                self.followSelectedTab()
-                let tabs = self.window.map { TabStripModel.entries(of: $0).map(\.title) } ?? []
-                self.record(["notes click": id, "option": option, "documents": NSDocumentController.shared.documents.count, "documents_before": docsBefore,
-                             "tabs": tabs, "sheet": self.window?.attachedSheet != nil], ok: ok || option)
+                self.followFront()
+                let windows = NSApp.orderedWindows.filter { $0.isVisible && $0.windowController is EditorWindowController }.count
+                self.record(["notes click": id, "command": newWindow, "documents": NSDocumentController.shared.documents.count, "documents_before": docsBefore,
+                             "windows": windows, "sheet": self.window?.attachedSheet != nil], ok: ok)
                 done()
             }
         }
@@ -327,12 +324,12 @@ extension UIScriptRunner {
     }
 
     private func newNote(then done: @escaping () -> Void) {
-        let before = NSDocumentController.shared.documents.count
+        let before = notesController?.markdownDocument
         // File > New. (Sent to the window's controller itself: with the app not active the menu's action would
         // reach the document controller, whose New makes an untitled document.)
         notesController?.newDocument(nil)
-        waitFor(6, { NSDocumentController.shared.documents.count > before && self.notesController?.sidebar?.isRenaming == true }) { ok in
-            self.followSelectedTab()
+        waitFor(6, { self.notesController?.markdownDocument !== before && self.notesController?.sidebar?.isRenaming == true }) { ok in
+            self.followFront()
             self.record(["notes newNote": self.document?.fileURL?.lastPathComponent ?? "", "renaming": self.notesController?.sidebar?.isRenaming ?? false], ok: ok)
             done()
         }
@@ -353,7 +350,7 @@ extension UIScriptRunner {
             // The harness's own copy is cleaned out of the Trash again; nothing of the user's is touched.
             if let t = trashed.first?.1, t.path.contains("/.Trash/") { try? FileManager.default.removeItem(at: t) }
             later(0.5) {
-                self.followSelectedTab()
+                self.followFront()
                 self.record(["notes trash": path, "trashed": trashed.map { $0.1?.path ?? "" }, "inTrash": landed, "originalGone": !original], ok: ok)
                 done()
             }
@@ -376,7 +373,7 @@ extension UIScriptRunner {
 
     // MARK: wikilinks and backlinks
 
-    private func cmdClickWikilink(_ needle: String, expect: String, then done: @escaping () -> Void) {
+    private func cmdClickWikilink(_ needle: String, expect: String, newWindow: Bool = false, then done: @escaping () -> Void) {
         guard let tv = notesController?.textView ?? textView, let lm = tv.layoutManager, let tc = tv.textContainer else {
             record(["notes cmdClickWikilink": needle, "error": "no editor"], ok: false)
             done()
@@ -391,7 +388,7 @@ extension UIScriptRunner {
         let beforeDoc = notesController?.markdownDocument
         let beforeDocs = NSDocumentController.shared.documents.count
         Self.opened = nil
-        let hit = tv.openLink(at: NSPoint(x: b.midX + o.x, y: b.midY + o.y))
+        let hit = tv.openLink(at: NSPoint(x: b.midX + o.x, y: b.midY + o.y), newWindow: newWindow)
         waitFor(3, {
             self.window?.attachedSheet != nil || NSDocumentController.shared.documents.count > beforeDocs
                 || self.notesController?.markdownDocument !== beforeDoc || Self.opened != nil
@@ -399,7 +396,7 @@ extension UIScriptRunner {
             later(0.3) {
                 let sheet = self.window?.attachedSheet != nil
                 let opened = self.notesController?.markdownDocument !== beforeDoc
-                self.followSelectedTab()
+                self.followFront()
                 let ok: Bool
                 switch expect {
                 case "offer": ok = hit && sheet
@@ -438,90 +435,6 @@ extension UIScriptRunner {
         }
     }
 
-    // MARK: tab switches
-
-    /// Does a per-window sidebar show anything different at the moment of a tab switch? Draws the sidebar of the
-    /// window about to be shown, switches, draws it again at once and after it has settled, and says where the
-    /// pixels differ: only the rows whose selection changed may.
-    private func probeTabSwitch(to index: Int, then done: @escaping () -> Void) {
-        guard let a = notesController, let group = a.window?.tabGroup, index < group.windows.count,
-              let b = group.windows[index].windowController as? EditorWindowController, a !== b,
-              let sa = a.sidebar, let sb = b.sidebar, let bw = b.window else {
-            record(["notes probeTabSwitch": index, "error": "no such window with a sidebar"], ok: false)
-            done()
-            return
-        }
-        a.window?.displayIfNeeded()
-        let hidden = sidebarPixels(sb.view)
-        let rowsA = sa.visibleRowIDs, rowsB = sb.visibleRowIDs
-        let scrollA = sa.view.scroll.contentView.bounds.minY, scrollB = sb.view.scroll.contentView.bounds.minY
-        let reloadsA = sa.reloads, reloadsB = sb.reloads
-        let selBefore = sb.selectedRowIDs
-        let t0 = CFAbsoluteTimeGetCurrent()
-        group.selectedWindow = bw
-        bw.makeKeyAndOrderFront(nil)
-        // Before the run loop turns: what the window shows the instant it is brought forward.
-        let immediate = sidebarPixels(sb.view)
-        let switchMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
-        later(0.5) {
-            bw.displayIfNeeded()
-            let settled = self.sidebarPixels(sb.view)
-            let selAfter = sb.selectedRowIDs
-            // Rows whose look may change: those selected before or after.
-            let allowed = (selBefore + selAfter).compactMap { sb.rowFrame(forID: $0) }
-            let viewWidth = sb.view.bounds.width
-            func outside(_ x: SidebarPixels, _ y: SidebarPixels) -> (total: Int, outside: Int) {
-                // (A window that was hidden while the group was resized takes the group's size when it is
-                // shown: that is AppKit's, as in a plain window, and nothing to compare pixel by pixel.)
-                guard x.width == y.width, x.height == y.height else { return (0, 0) }
-                var total = 0, out = 0
-                let scale = Double(x.width) / Double(max(1, viewWidth))
-                for py in 0..<x.height {
-                    let rowStart = py * x.width * 4
-                    if x.bytes[rowStart..<(rowStart + x.width * 4)] == y.bytes[rowStart..<(rowStart + x.width * 4)] { continue }
-                    for px in 0..<x.width where x.bytes[rowStart + px * 4..<(rowStart + px * 4 + 4)] != y.bytes[rowStart + px * 4..<(rowStart + px * 4 + 4)] {
-                        total += 1
-                        let p = NSPoint(x: Double(px) / scale, y: Double(py) / scale)
-                        if !allowed.contains(where: { $0.insetBy(dx: -2, dy: -2).contains(p) }) { out += 1 }
-                    }
-                }
-                return (total, out)
-            }
-            let first = outside(hidden, immediate)
-            let later_ = outside(immediate, settled)
-            let ok = sb.reloads == reloadsB && sa.reloads == reloadsA && rowsA == rowsB && abs(scrollA - scrollB) < 0.5
-                && first.outside == 0 && later_.total == 0
-            self.followSelectedTab()
-            self.record(["notes probeTabSwitch": index, "switch_ms": (switchMs * 100).rounded() / 100,
-                         "rows_same": rowsA == rowsB, "scroll_same": abs(scrollA - scrollB) < 0.5,
-                         "reloads_on_switch": ["shown": sb.reloads - reloadsB, "left": sa.reloads - reloadsA],
-                         "pixels_changed_by_switch": first.total, "pixels_changed_outside_selected_rows": first.outside,
-                         "pixels_changed_after_settling": later_.total, "selected_before": selBefore, "selected_after": selAfter,
-                         "window_resized_by_the_switch": hidden.width != immediate.width || hidden.height != immediate.height,
-                         "same_workspace": a.workspace === b.workspace], ok: ok)
-            done()
-        }
-    }
-
-    struct SidebarPixels {
-        var width: Int, height: Int
-        var bytes: [UInt8]
-    }
-
-    func sidebarPixels(_ view: NSView) -> SidebarPixels {
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return SidebarPixels(width: 0, height: 0, bytes: []) }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        let n = rep.bytesPerRow * rep.pixelsHigh
-        var bytes = [UInt8](repeating: 0, count: n)
-        if let data = rep.bitmapData { bytes.withUnsafeMutableBufferPointer { $0.baseAddress?.update(from: data, count: n) } }
-        // Rows may be padded: compact them to width * 4.
-        if rep.bytesPerRow != rep.pixelsWide * 4 {
-            var packed: [UInt8] = []
-            for y in 0..<rep.pixelsHigh { packed.append(contentsOf: bytes[(y * rep.bytesPerRow)..<(y * rep.bytesPerRow + rep.pixelsWide * 4)]) }
-            bytes = packed
-        }
-        return SidebarPixels(width: rep.pixelsWide, height: rep.pixelsHigh, bytes: bytes)
-    }
 
     // MARK: the palette
 
@@ -555,10 +468,10 @@ extension UIScriptRunner {
         } else if d["choose"] != nil {
             let before = c.markdownDocument
             let docs = NSDocumentController.shared.documents.count
-            pal.chooseSelected(alternate: d["option"] as? Bool ?? false)
+            pal.chooseSelected(alternate: d["command"] as? Bool ?? false)
             waitFor(5, { self.notesController?.markdownDocument !== before || NSDocumentController.shared.documents.count > docs || self.window?.attachedSheet != nil }) { ok in
                 later(0.3) {
-                    self.followSelectedTab()
+                    self.followFront()
                     self.record(["palette choose": self.document?.fileURL?.lastPathComponent ?? "", "documents": NSDocumentController.shared.documents.count], ok: ok)
                     done()
                 }
@@ -592,27 +505,6 @@ extension UIScriptRunner {
         if let v = a["sidebarShown"] as? Bool {
             let shown = sb != nil && sb?.view.window != nil && c?.notesSplit != nil && c?.window?.contentView === c?.notesContainer
             check("sidebar shown \(v)", shown == v, "sidebar \(sb != nil) split \(c?.notesSplit != nil)")
-        }
-        if let v = a["tabsBeginAtPane"] as? Bool, let c, let w = c.window {
-            // No tab (what can be seen of it) and no click on the strip reaches left of the editor pane.
-            let pane = c.root.convert(c.root.bounds, to: nil).minX
-            let strip = c.tabs.strip
-            let tabsLeft = strip.visibleTabFrames.filter { !$0.isEmpty }.map { strip.convert($0, to: nil).minX }.min() ?? pane
-            let hitLeft = (stride(from: 70.0, to: Double(pane) - 2, by: 12.0)).contains { x in
-                let hit = w.contentView?.superview?.hitTest(NSPoint(x: x, y: w.frame.height - 14))
-                return hit is TabView
-            }
-            check("tabs begin at the editor pane \(v)", ((tabsLeft >= pane - 0.5) && !hitLeft) == v,
-                  "pane \(pane), leftmost visible tab \(tabsLeft), a tab under the sidebar's title row \(hitLeft), inset \(strip.leadingInset), tabs \(strip.tabViews.count)")
-        }
-        if let v = a["tabInset"] as? Double, let c {
-            check("tab strip starts \(v) pt in", abs(c.tabs.strip.leadingInset - CGFloat(v)) < 1, "\(c.tabs.strip.leadingInset)")
-        }
-        if let v = a["tabStripWidthIsTheWindows"] as? Bool, let c, let w = c.window {
-            // Without a sidebar the strip fills the row between the window buttons and the trailing edge, as before.
-            let strip = c.tabs.strip
-            let whole = abs(strip.frame.width - (w.frame.width - TabStripController.leadingClearance - TabStripController.trailingClearance)) < 1
-            check("tab strip has the whole row \(v)", (whole && strip.leadingInset == 0) == v, "width \(strip.frame.width) window \(w.frame.width) inset \(strip.leadingInset)")
         }
         if let v = a["sidebarOpaque"] as? Bool, let sb {
             // Not faded and not hidden, whatever the chrome is doing.
@@ -667,17 +559,14 @@ extension UIScriptRunner {
         if let v = a["backlinksShown"] as? Bool { check("backlinks panel shown \(v)", (sb?.view.showsBacklinks ?? false) == v && (ws?.backlinksShown ?? false) == v) }
         if let v = a["renaming"] as? Bool { check("renaming \(v)", (sb?.isRenaming ?? false) == v) }
         if let v = a["sort"] as? String { check("sort \(v)", ws?.sort.rawValue == v, ws?.sort.rawValue ?? "") }
-        if let v = a["sameWorkspace"] as? Bool, let c {
-            let others = (c.window?.tabGroup?.windows ?? []).compactMap { ($0.windowController as? EditorWindowController)?.workspace }
-            let same = !others.isEmpty && others.allSatisfy { $0 === c.workspace }
-            check("one workspace for the tab group \(v)", same == v, "\(others.count) windows")
+        if let v = a["ownWorkspace"] as? Bool, let c {
+            // Every window has a workspace of its own: no other window of the app is on this one.
+            let others = NSApp.windows.compactMap { ($0.windowController as? EditorWindowController) }.filter { $0 !== c }.compactMap(\.workspace)
+            let own = c.workspace != nil && others.allSatisfy { $0 !== c.workspace }
+            check("a workspace of its own \(v)", own == v, "\(others.count) other window(s) with one")
         }
         if let v = a["sidebarWidth"] as? Double, let sb {
             check("sidebar width \(v)", abs(sb.view.frame.width - v) < 1.5, "\(sb.view.frame.width)")
-        }
-        if let v = a["backlinksSidebarsSharePosition"] as? Bool, v {
-            let ys = (c?.window?.tabGroup?.windows ?? []).compactMap { ($0.windowController as? EditorWindowController)?.sidebar?.view.scroll.contentView.bounds.minY }
-            check("sidebars of the group are scrolled alike", Set(ys.map { ($0 * 2).rounded() }).count <= 1, "\(ys)")
         }
         if let f = a["file"] as? [String: Any], let root = ws?.primaryRoot, let path = f["path"] as? String {
             let url = root.url.appendingPathComponent(expandVars(path))
@@ -701,7 +590,6 @@ extension UIScriptRunner {
             if v["offMainThread"] != nil { check("the library never worked on the main thread", ws?.library.isIdle == true) }
         }
         if let ids = a["revealed"] as? [String], let sb { check("rows revealed \(ids)", ids.allSatisfy { sb.item(withID: nodeID($0)) != nil && sb.rowFrame(forID: nodeID($0)) != nil }) }
-        if let t = a["title"] as? String, let w = window { check("window title \(t)", TabStripModel.title(of: w) == t, TabStripModel.title(of: w)) }
         if let v = a["externalOpened"] as? String { check("opened outside notes mode: \(v)", Self.opened?.lastPathComponent == v, Self.opened?.lastPathComponent ?? "nil") }
         if let v = a["documentURLEndsWith"] as? String {
             let got = notesController?.markdownDocument?.fileURL?.path ?? ""

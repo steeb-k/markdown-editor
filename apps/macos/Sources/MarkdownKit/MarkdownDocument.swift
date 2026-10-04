@@ -9,8 +9,24 @@ public final class MarkdownDocument: NSDocument {
     var isPreparingPrint = false
     /// The print operation File > Print last ran (tests end its panel).
     weak var lastPrintOperation: NSPrintOperation?
-    /// A document the app made for itself (Help): never opened in notes mode.
+    /// A document the app made for itself (Help): never opened in notes mode, never drafted or snapshotted.
     var isBundled = false
+    /// The workspace the window this document is about to get adopts (a note opened from a window's sidebar), in
+    /// place of starting a workspace of its own.
+    var inheritedWorkspace: Workspace?
+    /// The text as it was read: the first snapshot of a document's history in this session, so that what the first
+    /// edit changed can be seen and got back.
+    var openedText: String?
+    var baselineRecorded = false
+    /// Autosave (see `MarkdownDocument+Autosave`): the timer that writes 2 s after the last edit, and the saves in flight.
+    var autosaveTimer: Timer?
+    var savesInFlight = 0
+    /// Why the next write's snapshot is taken, when not the usual (a draft).
+    var nextSnapshotReason: HistoryReason?
+    /// How long after the last edit the document is written and a snapshot taken.
+    nonisolated(unsafe) public static var autosaveDelay: TimeInterval = 2
+    /// The longest a stream of edits goes unwritten (NSDocument's own timer, from the first edit).
+    nonisolated(unsafe) public static var autosaveCeiling: TimeInterval = 15
 
     public override init() {
         session = EditorSession(settings: .shared)
@@ -25,13 +41,20 @@ public final class MarkdownDocument: NSDocument {
     }
 
     public override var fileURL: URL? {
-        didSet { if fileURL != oldValue { session.documentURLChanged() } }
+        didSet {
+            guard fileURL != oldValue else { return }
+            session.documentURLChanged()
+            if let old = oldValue, let new = fileURL { renamedHistory(from: old, to: new) }
+            (windowControllers.first as? EditorWindowController)?.documentKeyChanged()
+        }
     }
 
+    /// A titled document is written as it is typed (see `MarkdownDocument+Autosave`); the file is the one place the
+    /// text lives and the history is the app's own, so the system's Versions have nothing left to do.
     public override class var autosavesInPlace: Bool { true }
     public override class var autosavesDrafts: Bool { true }
     public override class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { false }
-    public override class var preservesVersions: Bool { true }
+    public override class var preservesVersions: Bool { false }
 
     /// Saves an untitled document (the standard save panel) so files can be written beside it.
     /// `done` is told whether the document has a file afterwards.
@@ -48,14 +71,26 @@ public final class MarkdownDocument: NSDocument {
         box.done(ok && fileURL != nil)
     }
 
+    public override func close() {
+        cancelAutosave()
+        super.close()
+    }
+
     public override func makeWindowControllers() {
         session.requestSave = { [weak self] done in self?.saveForAssets(done) ?? done(false) }
         session.onAuthorshipDiscarded = { [weak self] in self?.updateChangeCount(.changeDone) }
+        session.onDocumentTextChange = { [weak self] in self?.textChanged() }
         let controller = EditorWindowController(document: self)
         addWindowController(controller)
-        // New windows start in notes mode when the setting says so (the library is the app's: the sidebar
-        // is drawn from the same index as every other window's).
-        if session.settings.notesModeByDefault, !isBundled { controller.startNotesMode() }
+        // A note opened from a window's sidebar starts with its workspace. Otherwise new windows start in notes mode
+        // when the setting says so (the library is the app's: the sidebar is drawn from the same index as every
+        // other window's).
+        if let ws = inheritedWorkspace {
+            inheritedWorkspace = nil
+            controller.adopt(ws)
+        } else if session.settings.notesModeByDefault, !isBundled {
+            controller.startNotesMode()
+        }
     }
 
     // MARK: reading and writing (all file access through DocumentFileAccess)
@@ -81,6 +116,11 @@ public final class MarkdownDocument: NSDocument {
         // Remembered so that a file nobody changed is written back byte for byte.
         authorship.setOrigin(body: body, rawTail: split.rawTail ?? "", ending: decoded.lineEnding.annotationEnding)
         session.load(body, authorship: authorship)
+        // The text as first read is the baseline; a re-read (another app's change) keeps it.
+        if openedText == nil {
+            openedText = body
+            baselineRecorded = false
+        }
         undoManager?.removeAllActions()
         switch split.status {
         case .hashMismatch, .malformed: session.requireAuthorshipDecision(split.status)
@@ -133,6 +173,27 @@ public final class MarkdownDocument: NSDocument {
         writesOnMainThread.append(Thread.isMainThread)
         if !Thread.isMainThread { unblockUserInteraction() }
         try DocumentFileAccess.write(snapshot.encoded(), to: url)
+    }
+}
+
+/// Answers NSDocument's own question on closing (`MarkdownDocument.askStandard`).
+private final class CloseAsker: NSObject {
+    let done: (Bool) -> Void
+    init(_ done: @escaping (Bool) -> Void) { self.done = done }
+    /// The context is this object, retained for the asking; it is let go of here.
+    @objc func document(_ doc: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        done(shouldClose)
+        if let contextInfo { Unmanaged<CloseAsker>.fromOpaque(contextInfo).release() }
+    }
+}
+
+extension MarkdownDocument {
+    /// NSDocument's own question ("Do you want to save the changes?") for what the app cannot save by itself: an
+    /// untitled document with text and no library to draft it in. `done` is told whether the window may close.
+    func askStandard(_ done: @escaping (Bool) -> Void) {
+        let asker = CloseAsker(done)
+        super.canClose(withDelegate: asker, shouldClose: #selector(CloseAsker.document(_:shouldClose:contextInfo:)),
+                       contextInfo: Unmanaged.passRetained(asker).toOpaque())
     }
 }
 

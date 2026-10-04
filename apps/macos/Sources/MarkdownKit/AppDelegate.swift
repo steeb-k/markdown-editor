@@ -14,8 +14,22 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         FontStore.registerBundledFonts()
         // The menu has its own Enter Full Screen (with Control-Command-F); AppKit would add a second one.
         UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])
-        NSWindow.allowsAutomaticWindowTabbing = true
+        // One document per window: AppKit adds no tab items to the Window menu and never merges windows.
+        NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.mainMenu = MainMenu.build()
+        // NSDocument's own autosave stays as the ceiling for typing that never pauses; the 2-second pause is the document's.
+        NSDocumentController.shared.autosavingDelay = MarkdownDocument.autosaveCeiling
+        #if DEBUG || UI_SCRIPT
+        // A UI script keeps the history in its own output folder (see `UIScriptRunner`), never in the user's.
+        if !UIScriptRunner.isRequested { HistoryService.current = HistoryService(directory: DocumentFileAccess.historyDirectory) }
+        #else
+        HistoryService.current = HistoryService(directory: DocumentFileAccess.historyDirectory)
+        #endif
+    }
+
+    /// The snapshots asked for so far reach the disk before the process ends.
+    public func applicationWillTerminate(_ notification: Notification) {
+        HistoryService.current?.flush()
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {

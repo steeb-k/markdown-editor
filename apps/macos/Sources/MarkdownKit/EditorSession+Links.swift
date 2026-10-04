@@ -2,6 +2,24 @@ import AppKit
 import MarkdownCore
 
 extension EditorSession {
+    /// Replaces the whole text with `text` as one undoable change (a version of the history coming back). The caret
+    /// stays where it was, as far as the new text goes.
+    func restoreText(_ text: String, actionName: String) {
+        guard let tv = textView, text != storage.string else { return }
+        let selection = tv.selectedRange()
+        tv.undoManager?.beginUndoGrouping()
+        tv.breakUndoCoalescing()
+        isApplyingEdit = true
+        _ = tv.replaceThroughUndo(range: NSRange(location: 0, length: storage.length), with: text)
+        isApplyingEdit = false
+        tv.breakUndoCoalescing()
+        tv.undoManager?.setActionName(actionName)
+        tv.undoManager?.endUndoGrouping()
+        let length = storage.length
+        tv.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
+        selectionChanged(in: tv)
+    }
+
     /// Writes the library's link edits (ranges in this text) into the document, all as one undoable
     /// change: a rename that others link to updates them in the notes that are open. False, with the
     /// text untouched, when an edit does not fit the text.

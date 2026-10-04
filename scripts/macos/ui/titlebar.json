@@ -43,10 +43,10 @@
   "assert": {
    "titlebarClean": true,
    "chromeVisible": true,
-   "tabs": {
+   "windows": {
     "count": 1,
-    "stripShown": false,
-    "nativeBarVisible": false
+    "titleShown": true,
+    "tabbingDisallowed": true
    }
   }
  },
@@ -3067,7 +3067,7 @@
   }
  },
  {
-  "log": "--- the row over the notes sidebar, right of the window buttons (once the sidebar's own view: nothing happened), and over the outline column: real double-clicks zoom and unzoom"
+  "log": "--- the row over the notes sidebar, right of the window buttons (once the sidebar's own view: nothing happened), and over the outline column: real double-clicks zoom and unzoom (the title's own text sits near 100 pt, so the point on the zoomed window is chosen clear of it)"
  },
  {
   "layout": "split"
@@ -3097,7 +3097,7 @@
  {
   "click": {
    "at": "titlebar",
-   "x": 0.085,
+   "x": 0.055,
    "count": 2,
    "expectWindowAction": true,
    "expectHitIn": "titlebar",

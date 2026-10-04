@@ -868,8 +868,7 @@
    "outline": {
     "shown": true,
     "width": 220,
-    "windowWidth": 1100,
-    "tabsEnd": true
+    "windowWidth": 1100
    }
   }
  },
@@ -916,8 +915,7 @@
   "assert": {
    "outline": {
     "width": 280,
-    "windowWidth": 1100,
-    "tabsEnd": true
+    "windowWidth": 1100
    },
    "notes": {
     "sidebarWidth": 240

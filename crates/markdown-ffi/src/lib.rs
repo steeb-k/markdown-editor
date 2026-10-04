@@ -9,7 +9,9 @@ uniffi::setup_scaffolding!();
 
 mod authorship;
 pub use authorship::*;
+mod history;
 mod library;
+pub use history::*;
 pub use library::*;
 
 // ----- records and enums ------------------------------------------------------------------

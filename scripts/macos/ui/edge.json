@@ -316,7 +316,7 @@
   "viewMode": "source"
  },
  {
-  "newTab": true
+  "new": true
  },
  {
   "load": "# Tab two\n\n*emphasis* text\n"

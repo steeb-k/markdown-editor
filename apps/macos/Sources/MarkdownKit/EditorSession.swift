@@ -26,6 +26,11 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public internal(set) var outlineShown: Bool
     public var outlineWidth: CGFloat
     public var onOutlineVisibilityChange: (() -> Void)?
+    /// Whether this window shows the history column instead (the two share the column on the right), and how wide
+    /// it is here. Set through `setHistoryShown`.
+    public internal(set) var historyShown = false
+    public var historyWidth: CGFloat
+    public var onHistoryVisibilityChange: (() -> Void)?
     /// The headings as the core last gave them, while the outline is shown, and who hears of a change
     /// (see `EditorSession+Outline`).
     public internal(set) var outlineEntries: [OutlineEntry] = []
@@ -38,8 +43,12 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onTextChange: (() -> Void)?
     /// Told after every edit, for a window in notes mode: the library hears of the new text.
     public var onLibraryTextChange: (() -> Void)?
+    /// Told after every edit of the text but not a load: the document schedules its autosave and snapshot.
+    public var onDocumentTextChange: (() -> Void)?
     /// Command-click on a wikilink: the window opens the note it names.
     public var onOpenWikilink: ((WikilinkRef) -> Void)?
+    /// Command-Option-click on a wikilink: the note it names opens in a window of its own.
+    public var onOpenWikilinkInNewWindow: ((WikilinkRef) -> Void)?
     /// The text range the layout manager's live state was last computed for.
     var liveWindow = NSRange(location: 0, length: 0)
     /// The text range focus mode's ranges were last asked for.
@@ -153,6 +162,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         layout = settings.defaultLayout
         outlineShown = settings.showOutlineInNewWindows
         outlineWidth = CGFloat(settings.outlineWidth)
+        historyWidth = CGFloat(settings.historyWidth)
         focusEnabled = settings.focusMode
         syntaxEnabled = settings.syntaxHighlight
         authorship = Authorship(me: settings.authorName)
@@ -268,7 +278,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         coordinator.waitForResult(seq: seq)
         inDelegate = false
         onTextChange?()
-        if !isLoading { onLibraryTextChange?() }
+        if !isLoading {
+            onLibraryTextChange?()
+            onDocumentTextChange?()
+        }
     }
 
     // MARK: results

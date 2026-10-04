@@ -10,6 +10,7 @@ mod document;
 mod edit;
 mod focus;
 pub mod highlight;
+pub mod history;
 pub mod library;
 mod lines;
 mod offsets;

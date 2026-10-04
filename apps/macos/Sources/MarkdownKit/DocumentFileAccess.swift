@@ -155,6 +155,15 @@ public enum DocumentFileAccess {
         ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.intValue ?? 0
     }
 
+    // MARK: the history store
+
+    /// Where the app keeps the snapshot history (`~/Library/Application Support/Markdown/history`; inside the container
+    /// in a sandboxed build). The core owns what is inside; the folder is made when the store opens it.
+    public static var historyDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Markdown/history", isDirectory: true)
+    }
+
     // MARK: folders the user grants
 
     /// A folder the user chose, as it is remembered: a security-scoped bookmark (which an

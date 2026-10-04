@@ -2,8 +2,7 @@ import AppKit
 import MarkdownCore
 
 /// Draws a window's sidebar from its workspace and turns what the user does there into workspace
-/// and window changes. Each window of a tab group has one; they all read the same `Workspace`, so
-/// they look alike at every moment.
+/// and window changes. Each window has one, reading its own `Workspace`.
 final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSSearchFieldDelegate,
                                NSMenuDelegate, NSTextFieldDelegate {
     let view: SidebarView
@@ -50,7 +49,9 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         view.emptyState.make.action = #selector(createDefaultLibrary(_:))
         view.emptyState.choose.target = self
         view.emptyState.choose.action = #selector(chooseLibraryFolder(_:))
-        view.backlinks.onOpen = { [weak self] link in self?.controller?.openBacklink(link) }
+        view.backlinks.onOpen = { [weak self] link in
+            self?.controller?.openBacklink(link, newWindow: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+        }
         let clip = view.scroll.contentView
         clip.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
@@ -138,8 +139,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
 
     /// A note or folder the user just made starts being renamed in the sidebar of the window in front.
     func consumePendingRename() {
-        guard let id = workspace.pendingRename, index[id] != nil, let window = view.window,
-              window.tabGroup?.selectedWindow == nil || window.tabGroup?.selectedWindow === window else { return }
+        guard let id = workspace.pendingRename, index[id] != nil, view.window != nil else { return }
         workspace.pendingRename = nil
         beginRename(id: id, thenEditor: true)
     }
@@ -261,16 +261,17 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         let row = outline.clickedRow
         guard row >= 0, let item = outline.item(atRow: row) as? SidebarItem else { return }
         let mods = NSApp.currentEvent?.modifierFlags ?? []
-        activate(item, replacing: mods.contains(.option), extending: !mods.intersection([.command, .shift]).isEmpty,
+        activate(item, newWindow: mods.contains(.command) && !mods.contains(.shift), extending: mods.contains(.shift),
                  again: (NSApp.currentEvent?.clickCount ?? 1) > 1)
     }
 
-    /// What a click on a row does: a note opens (in a new tab, or replacing the current tab's document with
-    /// Option), a folder opens or closes, a tag filters, another file opens in its own app.
+    /// What a click on a row does: a note opens (replacing the window's document, or in a window of its own with
+    /// Command), a folder opens or closes, a tag filters, another file opens in its own app. Shift extends the
+    /// selection and opens nothing.
     ///
     /// `again`: the second click of a double-click (the outline sends its action for each click). A folder
     /// opened by the first stays open, as a double-click in Finder leaves it.
-    func activate(_ item: SidebarItem, replacing: Bool = false, extending: Bool = false, again: Bool = false) {
+    func activate(_ item: SidebarItem, newWindow: Bool = false, extending: Bool = false, again: Bool = false) {
         switch item.kind {
         case .tag(let name, _):
             workspace.toggleTag(name)
@@ -278,14 +279,14 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             if outline.isItemExpanded(item) { outline.collapseItem(item) } else { outline.expandItem(item) }
         case .hit(let h):
             guard !extending, let url = workspace.library.url(for: h.note) else { return }
-            controller?.openNote(NoteOpenRequest(url: url), replacing: replacing)
+            controller?.openNote(NoteOpenRequest(url: url), newWindow: newWindow)
         case .node(let n):
             guard !extending else { return }
             switch n.kind {
-            case .note: controller?.openNote(NoteOpenRequest(url: n.url), replacing: replacing)
+            case .note: controller?.openNote(NoteOpenRequest(url: n.url), newWindow: newWindow)
             case .other: LinkOpener.open(n.url)
             case .root, .folder:
-                guard !again else { return }
+                guard !again, !newWindow else { return }
                 if outline.isItemExpanded(item) { outline.collapseItem(item) } else { outline.expandItem(item) }
             }
         case .message: break
@@ -439,6 +440,10 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             open.target = self
             open.representedObject = first.id
             menu.addItem(open)
+            let window = NSMenuItem(title: "Open in New Window", action: #selector(openFromMenuInNewWindow(_:)), keyEquivalent: "")
+            window.target = self
+            window.representedObject = first.id
+            menu.addItem(window)
             menu.addItem(.separator())
         }
         if let first = nodes.first, nodes.count == 1, first.kind == .root, first.root != LibraryRootInfo.libraryID {
@@ -463,7 +468,12 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
 
     @objc private func openFromMenu(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let n = index[id]?.node else { return }
-        controller?.openNote(NoteOpenRequest(url: n.url), replacing: false)
+        controller?.openNote(NoteOpenRequest(url: n.url))
+    }
+
+    @objc private func openFromMenuInNewWindow(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let n = index[id]?.node else { return }
+        controller?.openNote(NoteOpenRequest(url: n.url), newWindow: true)
     }
 
     // MARK: dragging

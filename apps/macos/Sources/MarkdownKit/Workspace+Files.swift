@@ -229,6 +229,8 @@ extension Workspace {
                         return
                     }
                     library.moved(from: old, to: new)
+                    // What is remembered of the notes that moved goes with them (an open document's own move did it already).
+                    for (from, to) in pairs { HistoryService.current?.rekeyMoved(from: from, to: to) }
                     library.refresh(touched.filter { Self.canonicalPlace($0) != DocumentFileAccess.canonical(old) })
                     completion(.success(new))
                 }

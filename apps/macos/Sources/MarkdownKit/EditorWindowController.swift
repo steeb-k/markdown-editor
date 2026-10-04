@@ -23,13 +23,12 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     private var applyingSplitPosition = false
     /// Focus mode's vertical centring (see `FocusCentring`).
     let centring = FocusCentring()
-    /// The tabs, drawn in the title-bar row (see `TabStripController`).
-    private(set) var tabs: TabStripController!
     private var fadeHeight: NSLayoutConstraint!
     let root = EditorRootView()
     private var chrome: ChromeController!
-    /// The notes of this window's tab group (see `EditorWindowController+Notes`): nil until notes mode
-    /// has been turned on in the group. A plain window never makes one.
+    /// The notes of this window (see `EditorWindowController+Notes`): nil until notes mode has been turned on
+    /// in it. A plain window never makes one. Every window has its own; a window opened from another's
+    /// sidebar starts with a copy of its state.
     var workspace: Workspace?
     var sidebar: SidebarController?
     var notesSplit: NotesSplitView?
@@ -37,13 +36,19 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     var notesContainer: EditorRootView?
     /// The narrowest the window may be without notes mode's sidebar.
     var baseMinWidth: CGFloat = 360
-    /// The document whose note the sidebar last selected (a tab switch selects it again).
+    /// The document whose note the sidebar last selected.
     var syncedSelectionURL: URL?
     var palette: PaletteController?
     var applyingSidebarWidth = false
     /// The outline column (see `EditorWindowController+Outline`), and the split view that holds it beside the
     /// editor's pane while it is shown.
     var outline: OutlineController?
+    /// The history column, in the outline's place (see `EditorWindowController+History`).
+    var history: HistoryController?
+    /// The window this one replaced was full screen: it enters full screen once the old one has closed.
+    var replacedFullScreen = false
+    /// The bar that says another app changed the file (see `ExternalChangeBar`).
+    var changeBar: ExternalChangeBar?
     var paneHost: NotesSplitView?
     var applyingOutlineWidth = false
     /// The source line at the top of the preview as the page last reported it, and how many jumps the outline made.
@@ -51,7 +56,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     var jumps = 0
     /// Instrumentation: the main-thread seconds the last arrival of the headings took.
     var lastOutlineArrival: TimeInterval = 0
-    private var observers: [NSObjectProtocol] = []
+    var observers: [NSObjectProtocol] = []
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
     /// on a big one, never more than nine tenths of the visible screen on a small one.
@@ -73,8 +78,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .visible
         window.isReleasedWhenClosed = false
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = "io.github.steeb-k.Markdown.document"
+        window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 360, height: 280)
 
         textView = session.makeTextView()
@@ -103,7 +107,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         web.translatesAutoresizingMaskIntoConstraints = false
         previewPane.addSubview(web)
         // The two panes sit side by side in a view that lays them out by frames: NSSplitView's own
-        // Auto Layout constraints clash with the panes' (and break when a window becomes a tab).
+        // Auto Layout constraints clash with the panes'.
         splitView.translatesAutoresizingMaskIntoConstraints = false
         splitView.setPanes(first: scroll, second: previewPane)
         root.addSubview(splitView)
@@ -188,11 +192,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         }
         session.onTextChange = { [weak self] in self?.previewController.textChanged() }
         session.onOpenWikilink = { [weak self] ref in self?.openWikilink(target: ref.target, heading: ref.heading) }
+        session.onOpenWikilinkInNewWindow = { [weak self] ref in self?.openWikilink(target: ref.target, heading: ref.heading, newWindow: true) }
         session.onLayoutChange = { [weak self] in
             self?.applyLayout()
             self?.outlineLayoutChanged()
         }
         session.onOutlineVisibilityChange = { [weak self] in self?.applyOutline() }
+        session.onHistoryVisibilityChange = { [weak self] in self?.applyColumn() }
         session.onOutline = { [weak self] entries in self?.outlineArrived(entries) }
         previewController.onPageLine = { [weak self] line in self?.outlinePageScrolled(to: line) }
         observers.append(NotificationCenter.default.addObserver(
@@ -202,31 +208,19 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         applyChrome()
         applyLayout()
         if session.outlineShown { applyOutline() }
+        observeChangesOnDisk()
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
 
-    /// The title bar holds the window buttons, the title and (with two tabs or more) the tab strip,
-    /// and nothing else: every switch lives in the menus. The window state the menus show comes
-    /// from the session, so nothing here has to be kept in step with it.
+    /// The title bar holds the window buttons and the title, and nothing else: every switch lives in
+    /// the menus. The window state the menus show comes from the session, so nothing here has to be
+    /// kept in step with it.
     private func installTitlebar(in window: NSWindow) {
-        tabs = TabStripController(window: window)
-        chrome.extraTitlebarViews = [tabs.strip]
-        chrome.onFaded = { [weak self] faded in self?.tabs.setFaded(faded) }
-        // Never narrower than the formatting bar, and room for the window buttons and a tab or two.
+        // Never narrower than the formatting bar, and room for the window buttons and a title.
         window.minSize = NSSize(width: max(window.minSize.width, (toolbar.fittingSize.width + 40).rounded(), 360),
                                 height: window.minSize.height)
         baseMinWidth = window.minSize.width
-        tabs.onGroupChange = { [weak self] in self?.tabGroupChanged() }
-        tabs.tabsBegin = { [weak self] in self?.editorPaneLeft }
-        tabs.tabsEnd = { [weak self] in self?.outlineLeft }
-        tabs.showsSingleTab = { [weak self] in self?.notesSplit != nil }
-        tabs.onSelectedTabChange = { [weak self] in
-            // The tab now in front tells the sidebar which note is open (the window becoming key does the same
-            // when the app is active).
-            guard let self, self.window?.tabGroup?.selectedWindow === self.window else { return }
-            documentBecameFront(force: true)
-        }
         session.onFocusToolsChange = { [weak self] in self?.focusToolsChanged() }
         session.onAuthorshipDecisionNeeded = { [weak self] in
             DispatchQueue.main.async { self?.presentAuthorshipSheetIfNeeded() }
@@ -427,6 +421,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
         case #selector(toggleOutline(_:)): item.state = session.outlineShown ? .on : .off; return true
+        case #selector(toggleHistory(_:)): item.state = session.historyShown ? .on : .off; return markdownDocument?.isBundled == false
         case #selector(copyAsHTML(_:)), #selector(copyAsRichText(_:)): return session.storage.length > 0
         case #selector(exportPDF(_:)): return true
         case .some(let action) where Self.forwardedToEditor.contains(action):
@@ -473,7 +468,6 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         window.backgroundColor = session.appearance.palette.background
         titlebarFade.color = session.appearance.palette.background
         splitView.dividerTint = session.appearance.palette.rule
-        tabs?.strip.fadeColor = session.appearance.palette.background
         if let sidebar {
             // Only a change of colours redraws the rows (this runs on every window activation too).
             let style = SidebarStyle(session.appearance.palette)
@@ -491,6 +485,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
                 outline.styleChanged()
             }
         }
+        history?.styleChanged(style: SidebarStyle(session.appearance.palette), diffStyle: historyDiffStyle)
         updateFadeGeometry()
         let appearance = ThemeStore.windowAppearance(for: session.settings.theme)
         if window.appearance?.name != appearance?.name { window.appearance = appearance }
@@ -506,6 +501,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         titlebarFade.solid = max(0, bar - 6)
         fadeHeight.constant = bar + 22
         bandHeight.constant = bar
+        positionChangeBar()
         titlebarFade.isHidden = bar == 0
         previewController.setChrome(top: bar, bottom: 0)
         let bottom = toolbar.isHidden ? 0 : toolbar.fittingSize.height + Self.toolbarBottomMargin
@@ -552,37 +548,15 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         DispatchQueue.main.async { [weak self] in self?.presentAuthorshipSheetIfNeeded() }
     }
 
-    /// The "+" in the tab bar and File > New Tab.
-    @objc public override func newWindowForTab(_ sender: Any?) {
-        guard let doc = try? NSDocumentController.shared.openUntitledDocumentAndDisplay(true),
-              let newWindow = doc.windowControllers.last?.window, let window else { return }
-        window.addTabbedWindow(newWindow, ordered: .above)
-        newWindow.makeKeyAndOrderFront(nil)
-    }
-
-    /// The document's edited state or name changed: every strip in the tab group shows it at once
-    /// (a save finishes off the main thread, with no event after it to refresh them). The strips
-    /// also watch their window's edited flag and title; this covers a document that tells its
-    /// controller without changing the window.
-    public override func setDocumentEdited(_ dirtyFlag: Bool) {
-        super.setDocumentEdited(dirtyFlag)
-        tabs?.refreshGroup()
-    }
-
-    public override func synchronizeWindowTitleWithDocumentName() {
-        super.synchronizeWindowTitleWithDocumentName()
-        tabs?.refreshGroup()
-    }
-
     public func windowWillClose(_ notification: Notification) {
         session.outlineTimer?.invalidate()
+        history?.service = nil
         previewController.tearDown()
         leaveWorkspace(closing: true)
     }
 
     public func windowDidBecomeKey(_ notification: Notification) {
         session.refreshAppearance()
-        tabs?.refresh()
         documentBecameFront()
         // Pictures another app changed while this window was in the background.
         session.imageController.revalidate()

@@ -209,7 +209,7 @@ extension MarkdownDocument {
         info.isVerticallyCentered = false
         // Set without NSDocument's setter's side effects: it registers "Change Print Settings" for
         // undo and so marks the document edited, which made every new document "Edited" from its
-        // first moment (an Undo item before any typing, a dot on its tab, a question on closing it).
+        // first moment (an Undo item before any typing, a dot on its window, a question on closing it).
         undoManager?.disableUndoRegistration()
         printInfo = info
         undoManager?.enableUndoRegistration()

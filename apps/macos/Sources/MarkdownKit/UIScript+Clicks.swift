@@ -7,7 +7,7 @@ import WebKit
 /// the text view's own tracking loop) exactly as the window server's would. The other steps call
 /// handlers directly and cannot see a view that swallows a click.
 extension UIScriptRunner {
-    /// The window in front of the script (the selected tab's in notes mode).
+    /// The window in front of the script (the editor window in front).
     private var clickController: EditorWindowController? { notesController ?? controller }
 
     /// Where a click goes, in window coordinates, and what it is over.

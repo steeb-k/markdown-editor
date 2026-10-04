@@ -104,7 +104,7 @@ final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSou
         case #selector(NSResponder.moveDown(_:)): move(1); return true
         case #selector(NSResponder.moveUp(_:)): move(-1); return true
         case #selector(NSResponder.insertNewline(_:)):
-            chooseSelected(alternate: NSApp.currentEvent?.modifierFlags.contains(.option) == true)
+            chooseSelected(alternate: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
             return true
         case #selector(NSResponder.cancelOperation(_:)): close(); return true
         default: return false
@@ -131,7 +131,7 @@ final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSou
 
     @objc private func clicked(_ sender: Any?) {
         guard panel.table.clickedRow >= 0 else { return }
-        chooseSelected(alternate: NSApp.currentEvent?.modifierFlags.contains(.option) == true)
+        chooseSelected(alternate: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
     }
 }
 

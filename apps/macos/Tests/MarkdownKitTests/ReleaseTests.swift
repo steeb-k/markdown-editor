@@ -99,8 +99,11 @@ final class ReleaseTests: XCTestCase {
         let find = try XCTUnwrap(edit.items.first { $0.title == "Find" }?.submenu)
         XCTAssertEqual(titles(find), ["Find…", "Find and Replace…", "Find Next", "Find Previous", "Use Selection for Find", "Jump to Selection"])
         let window = try menu("Window")
-        for t in ["Minimize", "Zoom", "Show Previous Tab", "Show Next Tab", "Show All Tabs", "Merge All Windows", "Bring All to Front"] { XCTAssertTrue(titles(window).contains(t), "Window lacks \(t)") }
-        XCTAssertFalse(titles(window).contains("Show Tab Bar"), "the tabs live in the title bar: AppKit's own tab bar is never shown")
+        for t in ["Minimize", "Zoom", "Bring All to Front"] { XCTAssertTrue(titles(window).contains(t), "Window lacks \(t)") }
+        // One document per window: no tab item of any kind, and the menu is only what the app made.
+        for t in ["Show Previous Tab", "Show Next Tab", "Show All Tabs", "Move Tab to New Window", "Merge All Windows", "Show Tab Bar", "Hide Tab Bar"] {
+            XCTAssertFalse(titles(window).contains(t), "Window has \(t): windows do not tab")
+        }
         XCTAssertTrue(NSApp.windowsMenu === window)
         let help = try menu("Help")
         XCTAssertEqual(titles(help).filter { !$0.isEmpty }, ["Markdown Help", "Markdown Syntax Reference", "Acknowledgements"])
@@ -126,9 +129,9 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(table["View > Focus Mode"], "⌘D")
         XCTAssertEqual(table["View > Source"], "⌥⌘1")
         XCTAssertEqual(table["View > Enter Full Screen"], "⌃⌘F")
-        XCTAssertNil(table["Window > Show Tab Bar"], "the native tab bar has no switch: the tabs are in the title bar")
-        XCTAssertEqual(table["Window > Show Next Tab"], "⌃⇥")
-        XCTAssertEqual(table["Window > Show Previous Tab"], "⌃⇧⇥")
+        XCTAssertNil(table["Window > Show Tab Bar"], "no tabs: no switch for them")
+        XCTAssertNil(table["Window > Show Next Tab"])
+        XCTAssertEqual(table["View > History"], "⌃⌘H", "⌥⌘H is Hide Others")
         XCTAssertNil(table["View > Keep Focused Line Centred"], "no key of its own")
         XCTAssertEqual(table["View > Hide Formatting Toolbar"], "⌃⌘T")
     }
@@ -166,7 +169,7 @@ final class ReleaseTests: XCTestCase {
         doc.makeWindowControllers()
         let wc = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
         let window = try XCTUnwrap(wc.window)
-        // The title bar holds the window buttons, a title and a tab or two; the formatting bar is the widest thing.
+        // The title bar holds the window buttons and a title; the formatting bar is the widest thing.
         XCTAssertGreaterThanOrEqual(window.minSize.width, 360)
         XCTAssertGreaterThanOrEqual(window.minSize.width, wc.toolbar.fittingSize.width + 32)
         doc.close()

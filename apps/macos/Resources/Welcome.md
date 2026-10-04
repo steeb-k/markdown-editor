@@ -55,9 +55,15 @@ Three independent aids, all in the View menu:
 - **Syntax Highlight** colours the parts of speech: adjectives, nouns, adverbs, verbs and conjunctions, each of which can be switched off. It is for rereading: long runs of one colour are where a draft is flabby.
 - **Authorship** keeps track of whose words are whose. Paste text with Edit > Paste As > AI or Reference, or select text and use Mark As, and it is coloured as borrowed. Your own writing stays the plain text colour. The marks are saved at the end of the file in the open Markdown Annotations format other editors read; a file with no borrowed text is never touched. Show Authorship hides the colours without removing the marks.
 
+## Saving and history
+
+There is nothing to remember to save: a document with a file is written two seconds after you stop typing, and when you close it or open another note in its window. File > Save (Command-S) writes at once. A new document you have not saved is kept in the `Drafts` folder of your library when you have one, and asks when you close it when you do not. If another app changes the file you have open, what you had is kept and the file is read again.
+
+Every pause also keeps a snapshot of the text, so nothing you looked at is lost. View > History puts the list of them in the column on the right (in place of the outline): pick one to see what changed since, Restore to put it back (Edit > Undo takes the restore back), or Copy to take its text. Snapshots are kept for a day, then one an hour for a week, then one a day; plain files under `~/Library/Application Support/Markdown/history`.
+
 ## Notes mode
 
-View > Notes Mode puts a sidebar beside the editor: a folder of notes (and any others you add under Library) as a tree, with search, tags and, under the list, the notes that link to the one you are reading. A click opens a note in a tab; Option-click replaces the tab you are in. Quick Open finds a note by a few letters of its title or path. Today's Note (File menu) opens a note named for the day, made from a `Daily` template if you have one, and New from Template fills in the date, the time and the title wherever the template has them in double braces, and puts the caret where it says `cursor`. Write `[[Another note]]` to link to a note, `[[Note|a label]]` to show other words, and `#tag` anywhere in the text; Command-click a link to open it. Renaming a note that others link to offers to update their links.
+View > Notes Mode puts a sidebar beside the editor: a folder of notes (and any others you add under Library) as a tree, with search, tags and, under the list, the notes that link to the one you are reading. A click opens a note in the window you are in (the one you were writing is saved first); Command-click opens it in a window of its own. Quick Open finds a note by a few letters of its title or path. Today's Note (File menu) opens a note named for the day, made from a `Daily` template if you have one, and New from Template fills in the date, the time and the title wherever the template has them in double braces, and puts the caret where it says `cursor`. Write `[[Another note]]` to link to a note, `[[Note|a label]]` to show other words, and `#tag` anywhere in the text; Command-click a link to open it (Command-Option-click opens a wikilink's note in a window of its own). Renaming a note that others link to offers to update their links.
 
 ## Getting it out
 
@@ -65,7 +71,7 @@ File > Export > PDF writes the preview as a paginated PDF; File > Print prints i
 
 ## Look and feel
 
-Settings (in the app menu) chooses the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom, the window buttons and the title fade away while you type and return when you move the pointer, open a menu, or stop typing for a couple of seconds. With two or more tabs, the tabs take the place of the title in the title bar.
+Settings (in the app menu) chooses the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom, the window buttons and the title fade away while you type and return when you move the pointer, open a menu, or stop typing for a couple of seconds.
 
 ## Keyboard shortcuts
 

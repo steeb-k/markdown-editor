@@ -4,11 +4,25 @@ import MarkdownCore
 /// The outline column's side of a session: whether it is shown here, and the headings, asked of the core's
 /// analysis queue a moment after the last answer to an edit, so typing never waits for them.
 extension EditorSession {
+    /// Showing the outline takes the column from the history, if that was in it.
     public func setOutlineShown(_ on: Bool) {
         guard on != outlineShown else { return }
         outlineShown = on
+        if on { historyShown = false }
         if on { requestOutline() } else { outlineTimer?.invalidate(); outlineTimer = nil }
         onOutlineVisibilityChange?()
+    }
+
+    /// Showing the history takes the column from the outline, if that was in it.
+    public func setHistoryShown(_ on: Bool) {
+        guard on != historyShown else { return }
+        historyShown = on
+        if on, outlineShown {
+            outlineShown = false
+            outlineTimer?.invalidate()
+            outlineTimer = nil
+        }
+        onHistoryVisibilityChange?()
     }
 
     /// An analysis answered: the headings may have changed. One timer, moved on by each answer.

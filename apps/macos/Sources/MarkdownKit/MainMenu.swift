@@ -48,7 +48,6 @@ enum MainMenu {
 
         _ = submenu(main, "File") { m in
             _ = item(m, "New", #selector(NSDocumentController.newDocument(_:)), "n")
-            _ = item(m, "New Tab", #selector(NSResponder.newWindowForTab(_:)), "t")
             _ = item(m, "New Folder", #selector(EditorWindowController.newFolder(_:)), "n", [.command, .option])
             _ = item(m, "Today\u{2019}s Note", #selector(EditorWindowController.todaysNote(_:)), "n", [.command, .control])
             nested(m, "New from Template") { t in
@@ -61,16 +60,12 @@ enum MainMenu {
             }
             m.addItem(.separator())
             _ = item(m, "Close", #selector(NSWindow.performClose(_:)), "w")
-            _ = item(m, "Save…", #selector(NSDocument.save(_:)), "s")
+            _ = item(m, "Save", #selector(NSDocument.save(_:)), "s")
             _ = item(m, "Duplicate", #selector(NSDocument.duplicate(_:)), "s", [.command, .shift])
             let saveAs = item(m, "Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift, .option])
             saveAs.isAlternate = true
             _ = item(m, "Rename…", #selector(NSDocument.rename(_:)))
             _ = item(m, "Move To…", #selector(NSDocument.move(_:)))
-            nested(m, "Revert To") { r in
-                _ = item(r, "Last Saved Version", #selector(NSDocument.revertToSaved(_:)))
-                _ = item(r, "Browse All Versions…", #selector(NSDocument.browseVersions(_:)))
-            }
             m.addItem(.separator())
             nested(m, "Export") { e in
                 _ = item(e, "PDF…", #selector(EditorWindowController.exportPDF(_:)))
@@ -231,6 +226,7 @@ enum MainMenu {
             m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
             _ = item(m, "Outline", #selector(EditorWindowController.toggleOutline(_:)), "o", [.command, .control])
+            _ = item(m, "History", #selector(EditorWindowController.toggleHistory(_:)), "h", [.command, .control])
             m.addItem(.separator())
             _ = item(m, "Notes Mode", #selector(EditorWindowController.toggleNotesMode(_:)), "l", [.command, .control])
             _ = item(m, "Show Backlinks", #selector(EditorWindowController.toggleBacklinks(_:)), "b", [.command, .option])
@@ -249,12 +245,6 @@ enum MainMenu {
         let window = submenu(main, "Window") { m in
             _ = item(m, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
             _ = item(m, "Zoom", #selector(NSWindow.performZoom(_:)))
-            m.addItem(.separator())
-            _ = item(m, "Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "\t", [.control, .shift])
-            _ = item(m, "Show Next Tab", #selector(NSWindow.selectNextTab(_:)), "\t", [.control])
-            _ = item(m, "Show All Tabs", #selector(NSWindow.toggleTabOverview(_:)))
-            _ = item(m, "Move Tab to New Window", #selector(NSWindow.moveTabToNewWindow(_:)))
-            _ = item(m, "Merge All Windows", #selector(NSWindow.mergeAllWindows(_:)))
             m.addItem(.separator())
             _ = item(m, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
         }

@@ -1,15 +1,14 @@
 import AppKit
 
 /// Feeds window events into a `ChromeState` and animates the result: the title bar contents
-/// (the title, the window buttons, the tab strip) and the formatting toolbar fade, they never move
+/// (the title, the window buttons) and the formatting toolbar fade, they never move
 /// or take layout space. Typing hides them; the pointer, a menu or the window losing focus brings
 /// them back, and so does a pause in typing (the state machine says when, a timer wakes it).
 ///
 /// The title bar itself is never hidden: it keeps taking clicks (a double-click zooms the window
 /// whether or not the chrome is showing, and the window can still be dragged by it). Only the three
 /// window buttons are switched off once they have faded, so that a click where they were does not
-/// close the window. (Switched off, not hidden: AppKit moves the title-bar accessories, the tab
-/// strip among them, over to where hidden buttons were.)
+/// close the window.
 final class ChromeController {
     private(set) var state: ChromeState
     private weak var window: NSWindow?
@@ -19,8 +18,6 @@ final class ChromeController {
     static let fadeDuration: TimeInterval = 0.25
     /// The clock the state machine is given (tests and the harness may substitute their own).
     var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
-    /// Told when the chrome has been hidden or shown (the tab strip stops taking clicks while it is hidden).
-    var onFaded: ((Bool) -> Void)?
     /// How often the chrome came back by itself (instrumentation).
     private(set) var pauseReappearances = 0
 
@@ -77,18 +74,15 @@ final class ChromeController {
     /// What fades: the whole title bar view, so that labels AppKit adds later ("— Edited",
     /// which appears with the very keystroke that hides the chrome) fade with it.
     var titlebarViews: [NSView] {
-        guard let window else { return extraTitlebarViews }
-        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] + extraTitlebarViews }
-        return windowButtons + extraTitlebarViews
+        guard let window else { return [] }
+        if let bar = window.standardWindowButton(.closeButton)?.superview { return [bar] }
+        return windowButtons
     }
 
     /// The three window buttons.
     var windowButtons: [NSView] {
         [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window?.standardWindowButton($0) }
     }
-
-    /// Views the window adds to the title bar itself (the tab strip), which fade with it.
-    var extraTitlebarViews: [NSView] = []
 
     private var generation = 0
 
@@ -107,7 +101,6 @@ final class ChromeController {
         let views = titlebarViews
         let buttons = windowButtons
         if visible { for v in buttons { (v as? NSControl)?.isEnabled = true } }
-        onFaded?(!visible)
         if !visible { NSCursor.setHiddenUntilMouseMoves(true) }
         // The end state, whether or not the animation ran: invisible buttons must not take clicks
         // (the toolbar refuses them in hitTest); the title bar around them stays hit-testable.
@@ -161,9 +154,8 @@ final class EditorRootView: NSView {
 }
 
 /// A strip over the top of the content view, as high as the title bar, that does what the title bar does where AppKit's
-/// own title bar views do not reach: a few points beside the tab strip's room at each end, and the gaps between the
-/// window buttons, where the text view, the web view or the scroll view's backdrop took the click and a drag or a
-/// double-click on the row did nothing. AppKit's views stay above it (the buttons, the tab strip, the file name's own
+/// own title bar views do not reach: the gaps between the window buttons and the title, where the text view, the web view or the scroll view's backdrop took the click and a drag or a
+/// double-click on the row did nothing. AppKit's views stay above it (the buttons, the file name's own
 /// button), and it is clear: nothing is drawn.
 final class TitlebarBandView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
@@ -176,3 +168,32 @@ final class TitlebarBandView: NSView {
         }
     }
 }
+
+/// What the window's title-bar double-click does, as the user set it in System Settings
+/// (Desktop & Dock, "Double-click a window's title bar to"): zoom (the default), minimize or nothing.
+enum TitlebarDoubleClick {
+    case zoom, minimize, nothing
+
+    /// `AppleActionOnDoubleClick` in the global domain: "Maximize" (when unset), "Minimize" or "None".
+    /// (Older systems kept a Boolean, `AppleMiniaturizeOnDoubleClick`.)
+    static func setting(_ defaults: UserDefaults = .standard) -> TitlebarDoubleClick {
+        switch defaults.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": return .minimize
+        case "None": return .nothing
+        case "Maximize", "Fill": return .zoom
+        default: return defaults.bool(forKey: "AppleMiniaturizeOnDoubleClick") ? .minimize : .zoom
+        }
+    }
+
+    @MainActor
+    func perform(on window: NSWindow?) {
+        switch self {
+        case .zoom: window?.performZoom(nil)
+        case .minimize: window?.performMiniaturize(nil)
+        case .nothing: break
+        }
+    }
+}
+
+// MARK: model
+

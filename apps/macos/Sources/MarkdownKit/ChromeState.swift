@@ -1,6 +1,6 @@
 import Foundation
 
-/// When the window chrome (the title, the window buttons, the tab strip and the formatting
+/// When the window chrome (the title, the window buttons and the formatting
 /// toolbar) is shown. Pure logic, no windows and no clock: the controller feeds it events and the
 /// time they happened at, and animates whatever it answers.
 ///
