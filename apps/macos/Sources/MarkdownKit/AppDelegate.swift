@@ -11,6 +11,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     }
 
     public func applicationWillFinishLaunching(_ notification: Notification) {
+        // A hidden launch argument for the demo history (`scripts/macos/seed-history-demo.sh`): seed, print, exit.
+        if let seed = HistorySeeder.requested() { exit(HistorySeeder.runFromLaunch(file: seed.file, json: seed.json)) }
         FontStore.registerBundledFonts()
         // The menu has its own Enter Full Screen (with Control-Command-F); AppKit would add a second one.
         UserDefaults.standard.register(defaults: ["NSFullScreenMenuItemEverywhere": false])

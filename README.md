@@ -140,6 +140,11 @@ its own sidebar state; a window opened from another's sidebar starts with a copy
   (Live mode conceals the brackets); ⌘-click replaces the window's document with the note (⌘⌥-click opens it in a
   window of its own), or offers to make it beside the current one; in the preview a click does the same. Without notes mode, a wikilink opens the note beside the document.
 
+- **A history to try**: `examples/History Demo.md` is a short note meant for View > History (⌃⌘H). With the app quit, run
+  `scripts/macos/seed-history-demo.sh` (`UI_BUILD=dir` for another build): the app writes eight versions of it, spread
+  over ten days and with every reason and two messages, into the real history folder under the key a normal open derives,
+  and exits. Running it again records nothing new.
+
 ## One document per window
 
 There are no tabs: a window shows one document, the title and the window's own "Edited" label are in the title bar, and the

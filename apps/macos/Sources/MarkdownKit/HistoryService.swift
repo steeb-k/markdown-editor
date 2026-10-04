@@ -42,6 +42,13 @@ public final class HistoryService: @unchecked Sendable {
         }
     }
 
+    /// Records and waits, announcing nothing (the seeder, which has no window to tell). The new version's id, nil when
+    /// the latest snapshot already holds `text`.
+    @discardableResult
+    public func recordNow(key: String, text: String, reason: HistoryReason, message: String?, at time: Int64) -> UInt64? {
+        queue.sync { store?.recordAt(key: key, text: text, reason: reason, message: message, now: time) }
+    }
+
     public func versions(key: String, completion: @escaping ([HistoryVersion]) -> Void) {
         queue.async { [self] in
             let v = store?.versions(key: key) ?? []
