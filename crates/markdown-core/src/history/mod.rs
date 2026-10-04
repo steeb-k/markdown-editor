@@ -107,6 +107,24 @@ pub struct History {
     dir: PathBuf,
     max_bytes: Mutex<u64>,
     lock: Mutex<()>,
+    /// The store folder itself, held (`flock`) for each call, so two stores on one folder (two processes, or two `History`
+    /// values in one) take turns instead of losing each other's index updates. None when it cannot be opened: the
+    /// in-process lock still holds.
+    file_lock: Option<fs::File>,
+}
+
+/// One call's hold on the store: the in-process lock, then the folder's file lock.
+struct Guard<'a> {
+    _g: std::sync::MutexGuard<'a, ()>,
+    file: Option<&'a fs::File>,
+}
+
+impl Drop for Guard<'_> {
+    fn drop(&mut self) {
+        if let Some(f) = self.file {
+            let _ = f.unlock();
+        }
+    }
 }
 
 fn now_secs() -> i64 {
@@ -121,10 +139,13 @@ fn sha_of(text: &str) -> String {
     hex(&Sha256::digest(text.as_bytes()))
 }
 
-/// Writes `data` to `path` through a temp file in the same folder.
+/// Writes `data` to `path` through a temp file in the same folder. The temp file's name is this write's own (process
+/// and a counter), so two stores on one folder never write into each other's temp file or rename it away.
 fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let tmp = path.with_file_name(format!(".{name}.tmp"));
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_file_name(format!(".{name}.{}.{seq}.tmp", std::process::id()));
     let mut f = fs::File::create(&tmp)?;
     f.write_all(data)?;
     f.sync_all()?;
@@ -139,7 +160,14 @@ impl History {
     pub fn open(dir: impl Into<PathBuf>) -> std::io::Result<History> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
-        Ok(History { dir, max_bytes: Mutex::new(DEFAULT_MAX_BYTES), lock: Mutex::new(()) })
+        let file_lock = fs::File::open(&dir).ok();
+        Ok(History { dir, max_bytes: Mutex::new(DEFAULT_MAX_BYTES), lock: Mutex::new(()), file_lock })
+    }
+
+    fn guard(&self) -> Guard<'_> {
+        let g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let file = self.file_lock.as_ref().filter(|f| f.lock().is_ok());
+        Guard { _g: g, file }
     }
 
     /// Changes the per-key size cap (the default is 10 MB). For tests and for the shell's tuning.
@@ -158,22 +186,26 @@ impl History {
     }
 
     pub fn record_at(&self, key: &str, text: &str, reason: Reason, message: Option<&str>, now: i64) -> Option<VersionId> {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         let mut idx = self.load(key);
         let sha = sha_of(text);
+        let kdir = self.key_dir(key);
+        let file = kdir.join(format!("{sha}.md"));
         if idx.entries.last().is_some_and(|e| e.sha == sha) {
+            // The latest already is this text; only its file is put back if something took it away.
+            if !file.exists() && fs::create_dir_all(&kdir).is_ok() {
+                let _ = write_atomic(&file, text.as_bytes());
+            }
             return None;
         }
         let prev = idx.entries.last().and_then(|e| self.read_text(key, &e.sha)).unwrap_or_default();
         let (added, removed) = line_counts(&prev, text);
-        let kdir = self.key_dir(key);
         fs::create_dir_all(&kdir).ok()?;
-        let file = kdir.join(format!("{sha}.md"));
         if !file.exists() {
             write_atomic(&file, text.as_bytes()).ok()?;
         }
         let id = idx.next_id;
-        idx.next_id += 1;
+        idx.next_id = idx.next_id.saturating_add(1);
         let message = message.filter(|m| !m.is_empty()).map(str::to_string);
         idx.entries.push(Entry { v: Version { id, time: now, reason, message, bytes: text.len() as u64, added, removed }, sha });
         let before = referenced(&idx);
@@ -185,13 +217,13 @@ impl History {
 
     /// The versions of `key`, newest first.
     pub fn versions(&self, key: &str) -> Vec<Version> {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         self.load(key).entries.into_iter().rev().map(|e| e.v).collect()
     }
 
     /// The text of one version; `None` when the version or its file is gone.
     pub fn text(&self, key: &str, id: VersionId) -> Option<String> {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         let idx = self.load(key);
         let e = idx.entries.iter().find(|e| e.v.id == id)?;
         self.read_text(key, &e.sha)
@@ -209,7 +241,7 @@ impl History {
         if old == new {
             return false;
         }
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         let (from, to) = (self.key_dir(old), self.key_dir(new));
         if !from.exists() {
             return false;
@@ -246,7 +278,7 @@ impl History {
 
     /// Every key that has a history (read from the indexes; for moving a folder's notes, which are keys that share a prefix).
     pub fn keys(&self) -> Vec<String> {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         let Ok(rd) = fs::read_dir(&self.dir) else { return Vec::new() };
         let mut keys: Vec<String> = rd
             .flatten()
@@ -261,7 +293,7 @@ impl History {
 
     /// Deletes the whole history of `key`.
     pub fn forget(&self, key: &str) {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         let _ = fs::remove_dir_all(self.key_dir(key));
     }
 
@@ -271,7 +303,7 @@ impl History {
     }
 
     pub fn prune_at(&self, key: &str, now: i64) -> usize {
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _g = self.guard();
         if !self.key_dir(key).exists() {
             return 0;
         }
@@ -343,7 +375,7 @@ impl History {
         }
         match fs::read_to_string(kdir.join("index.json")).ok().and_then(|s| parse_index(&s)) {
             Some(mut idx) if idx.key == key => {
-                idx.next_id = idx.next_id.max(idx.entries.iter().map(|e| e.v.id + 1).max().unwrap_or(1));
+                idx.next_id = idx.next_id.max(idx.entries.iter().map(|e| e.v.id.saturating_add(1)).max().unwrap_or(1));
                 idx
             }
             _ => self.recover(key, &kdir, empty),
@@ -387,15 +419,21 @@ fn parse_index(s: &str) -> Option<Index> {
     let j = json::parse(s)?;
     let key = j.get("key")?.as_str()?.to_string();
     let next_id = j.get("next_id")?.as_i64()?.max(1) as u64;
-    let mut entries = Vec::new();
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut ids = HashSet::new();
     for e in j.get("entries")?.as_arr()? {
         let sha = e.get("sha")?.as_str()?.to_string();
         if sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;
         }
+        // An id below zero, or one used twice, is damage: the index is rebuilt from the text files.
+        let id = u64::try_from(e.get("id")?.as_i64()?).ok()?;
+        if !ids.insert(id) {
+            return None;
+        }
         entries.push(Entry {
             v: Version {
-                id: e.get("id")?.as_i64()? as u64,
+                id,
                 time: e.get("time")?.as_i64()?,
                 reason: Reason::parse(e.get("reason")?.as_str()?),
                 message: e.get("message").and_then(|m| m.as_str()).map(str::to_string),
@@ -423,7 +461,7 @@ fn retain(idx: &mut Index, now: i64, max_bytes: u64) {
     let mut seen: HashSet<(u8, i64)> = HashSet::new();
     for i in (0..n).rev() {
         let v = &idx.entries[i].v;
-        let age = (now - v.time).max(0);
+        let age = now.saturating_sub(v.time).max(0);
         let bucket = if age < DAY {
             None
         } else if age < WEEK {

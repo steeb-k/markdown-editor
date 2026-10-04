@@ -33,14 +33,17 @@ extension MarkdownDocument {
 
     /// Records the document's text (or `text`) in its history, after the text it was opened with when that has not
     /// been recorded yet. Nothing for a document without a file, or when history is off; the store records nothing
-    /// when the text is what its latest snapshot holds.
+    /// when the text is what its latest snapshot holds, and nothing is recorded while the text is still the one the
+    /// document was opened with (a note looked at and left unchanged gets no history).
     func recordSnapshot(_ reason: HistoryReason, message: String? = nil, text: String? = nil) {
         guard !isBundled, let service = HistoryService.current, let key = historyKey else { return }
+        let text = text ?? session.text
         if !baselineRecorded {
+            if let opened = openedText, opened == text { return }
             baselineRecorded = true
             if let opened = openedText { service.record(key: key, text: opened, reason: .close) }
         }
-        service.record(key: key, text: text ?? session.text, reason: reason, message: message)
+        service.record(key: key, text: text, reason: reason, message: message)
     }
 
     // MARK: autosave
@@ -81,6 +84,10 @@ extension MarkdownDocument {
     public override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType,
                               completionHandler: @escaping (Error?) -> Void) {
         let text = session.text
+        // Typing goes on in a new undo group after a write. Coalesced into the group the write already counted, it
+        // would never mark the document edited again: the next pause would snapshot it but not write it, and closing
+        // would write nothing (AppKit's own advice for `breakUndoCoalescing`, which TextEdit follows for autosaves too).
+        session.textView?.breakUndoCoalescing()
         let explicit = saveOperation == .saveOperation || saveOperation == .saveAsOperation
         let reason = nextSnapshotReason ?? (explicit ? .save : .pause)
         nextSnapshotReason = nil
@@ -177,15 +184,17 @@ extension MarkdownDocument {
 
     // MARK: another app changed the file
 
-    /// The file on disk is newer than what this document last wrote or read: it was changed by another app. Never
-    /// overwritten: the text here is snapshotted (with a message when it had changes of its own, so the thinning keeps
-    /// it), the file is read again, and the window says so in a bar. True when it did.
+    /// The file on disk has another date than the one this document last wrote or read: it was changed by another app
+    /// (a newer date, or an older one: a copy put back with its own date, as `cp -p`, `rsync -t` or a restored backup
+    /// leave it, which NSDocument would otherwise meet at the next autosave with its "changed by another application"
+    /// sheet). Never overwritten: the text here is snapshotted (with a message when it had changes of its own, so the
+    /// thinning keeps it), the file is read again, and the window says so in a bar. True when it did.
     @discardableResult
     func handleExternalChange() -> Bool {
         guard !isBundled, savesInFlight == 0, let url = fileURL, let disk = DocumentFileAccess.modificationDate(of: url),
-              let known = fileModificationDate, disk.timeIntervalSince(known) > 0.001 else { return false }
+              let known = fileModificationDate, abs(disk.timeIntervalSince(known)) > 0.001 else { return false }
         let wasEdited = isDocumentEdited
-        // A newer date and the very bytes this document would write (a sync tool touched the file): nothing changed.
+        // Another date on the very bytes this document would write (a sync tool touched the file): nothing changed.
         if let onDisk = try? DocumentFileAccess.read(url), onDisk == saveSnapshot().encoded() {
             fileModificationDate = disk
             return false

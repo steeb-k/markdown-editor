@@ -267,7 +267,13 @@ extension EditorWindowController {
     /// The old document's window closes (the document was settled before), and the new one is the window now.
     func finishReplacing(_ old: MarkdownDocument) {
         old.windowControllers.first?.window?.animationBehavior = .none
-        old.close()
+        // A key that reached the old window after it was settled (while the note was read, or while its own write was
+        // finishing) is written and snapshotted too before it goes; closing would drop it.
+        if old.isDocumentEdited || old.autosaveTimer?.isValid == true {
+            old.settleForLeaving { ok in if ok { old.close() } }
+        } else {
+            old.close()
+        }
         window?.makeKeyAndOrderFront(nil)
         window?.animationBehavior = .default
         if replacedFullScreen, window?.styleMask.contains(.fullScreen) == false { window?.toggleFullScreen(nil) }

@@ -27,8 +27,10 @@ enum HistoryModel {
 
     static func dayTitle(_ day: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
         let today = calendar.startOfDay(for: now)
-        if day == today { return "Today" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), day == yesterday { return "Yesterday" }
+        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
+        // By the day, not by its first instant: where the clocks change at midnight a day starts at 01:00, and the day
+        // before at 00:00, so "a day before today's start" is not yesterday's start.
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(day, inSameDayAs: yesterday) { return "Yesterday" }
         let f = DateFormatter()
         f.locale = locale
         f.calendar = calendar
@@ -99,41 +101,111 @@ enum HistoryModel {
     /// The unchanged lines kept on each side of a change; a longer stretch shows how many lines it hides.
     static let diffContext = 2
 
-    /// The diff as text, one line each, `+ ` and `\u{2212} ` in front of what changed.
+    /// The diff as text, one line each, `+ ` and `\u{2212} ` in front of what changed. The lines of a hunk go in as one
+    /// run with its attributes made once, and of a long unchanged stretch only the lines shown are taken out of it (a
+    /// one-line change in a megabyte is four lines of text, not the megabyte split into lines on the main thread).
     static func diffText(_ hunks: [HistoryHunk], style: DiffStyle) -> NSAttributedString {
         let out = NSMutableAttributedString()
-        func append(_ line: String, color: NSColor, background: NSColor? = nil, italic: Bool = false) {
-            var attrs: [NSAttributedString.Key: Any] = [.font: italic ? NSFontManager.shared.convert(style.font, toHaveTrait: .italicFontMask) : style.font,
-                                                       .foregroundColor: color]
-            if let background { attrs[.backgroundColor] = background }
-            out.append(NSAttributedString(string: line + "\n", attributes: attrs))
+        func attributes(_ color: NSColor, background: NSColor? = nil, italic: Bool = false) -> [NSAttributedString.Key: Any] {
+            var a: [NSAttributedString.Key: Any] = [.font: italic ? NSFontManager.shared.convert(style.font, toHaveTrait: .italicFontMask) : style.font,
+                                                    .foregroundColor: color]
+            if let background { a[.backgroundColor] = background }
+            return a
         }
-        func lines(_ text: String) -> [String] {
-            var l = text.split(separator: "\n", omittingEmptySubsequences: false).map { String($0).replacingOccurrences(of: "\r", with: "") }
-            if l.last == "" { l.removeLast() }
-            return l
+        let removed = attributes(style.removed.withAlphaComponent(DiffStyle.mute), background: style.removed.withAlphaComponent(DiffStyle.wash))
+        let added = attributes(style.added.withAlphaComponent(DiffStyle.mute), background: style.added.withAlphaComponent(DiffStyle.wash))
+        let equal = attributes(style.equal)
+        let hiddenNote = attributes(style.equal.withAlphaComponent(0.7), italic: true)
+        func append<S: Sequence>(_ lines: S, prefix: String, _ attrs: [NSAttributedString.Key: Any]) where S.Element: StringProtocol {
+            var run = ""
+            for l in lines {
+                run += prefix
+                run += l.contains("\r") ? l.replacingOccurrences(of: "\r", with: "") : String(l)
+                run += "\n"
+            }
+            if !run.isEmpty { out.append(NSAttributedString(string: run, attributes: attrs)) }
         }
         for (i, h) in hunks.enumerated() {
-            let ls = lines(h.text)
             switch h.kind {
-            case .removed:
-                for l in ls { append("\u{2212} " + l, color: style.removed.withAlphaComponent(DiffStyle.mute), background: style.removed.withAlphaComponent(DiffStyle.wash)) }
-            case .added:
-                for l in ls { append("+ " + l, color: style.added.withAlphaComponent(DiffStyle.mute), background: style.added.withAlphaComponent(DiffStyle.wash)) }
+            case .removed: append(lines(h.text), prefix: "\u{2212} ", removed)
+            case .added: append(lines(h.text), prefix: "+ ", added)
             case .equal:
                 let c = diffContext
                 let head = i == 0 ? 0 : c, tail = i == hunks.count - 1 ? 0 : c
-                if ls.count <= head + tail + 1 {
-                    for l in ls { append("  " + l, color: style.equal) }
+                let count = lineCount(h.text)
+                if count <= head + tail + 1 {
+                    append(lines(h.text), prefix: "  ", equal)
                 } else {
-                    for l in ls.prefix(head) { append("  " + l, color: style.equal) }
-                    let hidden = ls.count - head - tail
-                    append("  \u{22EF} \(hidden) unchanged \(hidden == 1 ? "line" : "lines")", color: style.equal.withAlphaComponent(0.7), italic: true)
-                    for l in ls.suffix(tail) { append("  " + l, color: style.equal) }
+                    append(firstLines(h.text, head), prefix: "  ", equal)
+                    let hidden = count - head - tail
+                    append(["\u{22EF} \(hidden) unchanged \(hidden == 1 ? "line" : "lines")"], prefix: "  ", hiddenNote)
+                    append(lastLines(h.text, tail), prefix: "  ", equal)
                 }
             }
         }
         return out
+    }
+
+    /// The lines of a hunk's text, without their terminators (a final line ending gives no empty line after it). Split on
+    /// the byte: a Swift `Character` holds "\r\n" whole, so splitting the characters on "\n" would miss every CRLF line.
+    static func lines(_ text: String) -> [String] {
+        var l = text.utf8.split(separator: 10, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
+        if l.last == "" { l.removeLast() }
+        return l
+    }
+
+    /// How many lines `lines` would give, counted without making them.
+    static func lineCount(_ text: String) -> Int {
+        var text = text
+        return text.withUTF8 { buf -> Int in
+            guard let base = buf.baseAddress, buf.count > 0 else { return 0 }
+            var n = 0
+            var p = UnsafeRawPointer(base)
+            let end = p + buf.count
+            while p < end, let hit = memchr(p, 10, end - p) {
+                n += 1
+                p = UnsafeRawPointer(hit) + 1
+            }
+            return buf[buf.count - 1] == 10 ? n : n + 1
+        }
+    }
+
+    /// The first `n` lines (n below the count).
+    static func firstLines(_ text: String, _ n: Int) -> [String] {
+        guard n > 0 else { return [] }
+        let u = text.utf8
+        var seen = 0
+        var end = u.endIndex
+        var i = u.startIndex
+        while i < u.endIndex {
+            if u[i] == 10 {
+                seen += 1
+                if seen == n { end = i; break }
+            }
+            i = u.index(after: i)
+        }
+        // Everything before the n-th line ending: n lines, the last of them possibly empty.
+        return u[..<end].split(separator: 10, omittingEmptySubsequences: false).prefix(n).map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    /// The last `n` lines (n below the count).
+    static func lastLines(_ text: String, _ n: Int) -> [String] {
+        guard n > 0 else { return [] }
+        let u = text.utf8
+        var start = u.startIndex
+        var seen = 0
+        var i = u.endIndex
+        // A final line ending closes the last line; it does not start one.
+        if let last = u.last, last == 10 { i = u.index(before: i) }
+        while i > u.startIndex {
+            let j = u.index(before: i)
+            if u[j] == 10 {
+                seen += 1
+                if seen == n { start = i; break }
+            }
+            i = j
+        }
+        return Array(lines(String(decoding: u[start...], as: UTF8.self)).suffix(n))
     }
 }
 

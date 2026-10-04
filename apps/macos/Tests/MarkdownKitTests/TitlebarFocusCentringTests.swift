@@ -412,6 +412,39 @@ final class OneDocumentPerWindowTests: XCTestCase {
         }
     }
 
+    /// Found in the test pass: ⌘-Return in Quick Open (open in a new window) did nothing but beep. It has no key
+    /// binding, so the field editor sends `noop:`, not `insertNewline:`; the harness had called `chooseSelected`
+    /// directly. Real key events here, through the window.
+    func testCommandReturnInThePaletteChoosesForANewWindowAndReturnForThisOne() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        var chosen: [(String, Bool)] = []
+        let palette = PaletteController(placeholder: "Open note", style: SidebarStyle(ThemeStore.shared.palette(ThemeStore.shared.theme(id: "light"))),
+                                        source: { _, deliver in deliver([PaletteRow(title: "Alpha", detail: "", key: "a"), PaletteRow(title: "Beta", detail: "", key: "b")]) },
+                                        choose: { row, alternate in chosen.append((row.key, alternate)) })
+        let host = try XCTUnwrap(window.contentView)
+        window.makeKeyAndOrderFront(nil)
+        func press(_ mods: NSEvent.ModifierFlags, keyCode: UInt16 = 36, chars: String = "\r") throws {
+            palette.show(over: host)
+            XCTAssertTrue(waitUntil { palette.rows.count == 2 })
+            let e = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: window.windowNumber,
+                                                   context: nil, characters: chars, charactersIgnoringModifiers: chars, isARepeat: false, keyCode: keyCode))
+            // Through the app's queue, so that the event is the app's current one while it is handled (what the
+            // palette reads the modifiers from), then to the window (the app need not be active).
+            NSApp.postEvent(e, atStart: true)
+            let ev = try XCTUnwrap(NSApp.nextEvent(matching: .keyDown, until: Date(timeIntervalSinceNow: 1), inMode: .default, dequeue: true))
+            if !window.performKeyEquivalent(with: ev) { window.sendEvent(ev) }
+        }
+        try press(.command)
+        try press([])
+        try press(.command, keyCode: 76, chars: "\u{3}")
+        XCTAssertEqual(chosen.map(\.0), ["a", "a", "a"])
+        XCTAssertEqual(chosen.map(\.1), [true, false, true], "⌘-Return and ⌘-Enter open a new window, Return replaces")
+        XCTAssertFalse(palette.isOpen)
+    }
+
     func testTheTitleShowsInTheTitleBarWithNoAccessoryAndTheWindowsOwnEditedMark() throws {
         _ = NSApplication.shared
         let doc = MarkdownDocument(settings: isolatedSettings())

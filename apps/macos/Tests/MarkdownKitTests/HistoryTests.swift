@@ -67,6 +67,66 @@ final class HistoryModelTests: XCTestCase {
         XCTAssertFalse(same(st.removed, st.added))
     }
 
+    /// Found in the test pass: where the clocks go forward at midnight (Chile, on 6 September 2026) that day starts at
+    /// 01:00, and on it the day before was titled with its date: "a day before today's first instant" is 01:00 the
+    /// day before, not its start.
+    func testYesterdayIsYesterdayWhereTheClocksChangeAtMidnight() {
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = TimeZone(identifier: "America/Santiago")!
+        let iso = ISO8601DateFormatter()
+        func v(_ id: UInt64, _ s: String) -> HistoryVersion { version(id, Int64(iso.date(from: s)!.timeIntervalSince1970)) }
+        let versions = [v(3, "2026-09-06T14:00:00Z"), v(2, "2026-09-05T14:00:00Z"), v(1, "2026-09-04T14:00:00Z")]
+        let en = Locale(identifier: "en_US")
+        // On the short day itself.
+        XCTAssertEqual(HistoryModel.sections(versions, now: iso.date(from: "2026-09-06T15:00:00Z")!, calendar: santiago, locale: en).map(\.title).prefix(2),
+                       ["Today", "Yesterday"])
+        // And the day after it.
+        XCTAssertEqual(HistoryModel.sections(versions, now: iso.date(from: "2026-09-07T15:00:00Z")!, calendar: santiago, locale: en).map(\.title).prefix(2),
+                       ["Yesterday", "Saturday, September 5"])
+        // Versions either side of local midnight fall on their own days.
+        var berlin = Calendar(identifier: .gregorian)
+        berlin.timeZone = TimeZone(identifier: "Europe/Berlin")!
+        let s = HistoryModel.sections([v(2, "2026-10-03T22:01:00Z"), v(1, "2026-10-03T21:59:00Z")], now: iso.date(from: "2026-10-04T10:00:00Z")!, calendar: berlin, locale: en)
+        XCTAssertEqual(s.map(\.title), ["Today", "Yesterday"])
+        XCTAssertEqual(s.map(\.versions.count), [1, 1])
+    }
+
+    /// Found in the test pass: selecting a version of a 1 MB document with one line changed split both megabyte-long
+    /// unchanged stretches into lines on the main thread to show four of them (about 40 ms in a debug build), and built
+    /// every changed line's attributes anew (160 ms for a megabyte of changed lines). The stretches' first and last lines
+    /// are taken without splitting them now. Lines are split on the byte: split on the `Character` "\n", a CRLF text
+    /// was one line ("\r\n" is one character), its lines run together under one mark.
+    func testALongStretchShowsItsContextWithoutBeingSplitAndLineEndingsAreRight() {
+        let n = 50_000
+        let crlf = (1...n).map { "line \($0)" }.joined(separator: "\r\n")   // no final newline
+        let lf = (1...n).map { "line \($0)\n" }.joined()
+        let hunks = [HistoryHunk(kind: .equal, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: lf),
+                     HistoryHunk(kind: .removed, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: "old\r\nold 2\r\n"),
+                     HistoryHunk(kind: .added, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: "new"),
+                     HistoryHunk(kind: .equal, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: crlf)]
+        _ = HistoryModel.diffText([hunks[1]], style: style())   // the fonts made once, outside the timing
+        let started = Date()
+        let s = HistoryModel.diffText(hunks, style: style()).string
+        let ms = Date().timeIntervalSince(started) * 1000
+        XCTAssertEqual(s, "  \u{22EF} 49998 unchanged lines\n  line 49999\n  line 50000\n\u{2212} old\n\u{2212} old 2\n+ new\n  line 1\n  line 2\n  \u{22EF} 49998 unchanged lines\n")
+        XCTAssertLessThan(ms, 30, "the stretches are not split into lines")
+        XCTAssertEqual(HistoryModel.lineCount(crlf), n)
+        XCTAssertEqual(HistoryModel.lineCount(lf), n)
+        XCTAssertEqual(HistoryModel.lineCount("a\n\n"), 2)
+        XCTAssertEqual(HistoryModel.firstLines("a\n\nb\n", 2), ["a", ""])
+        XCTAssertEqual(HistoryModel.lastLines("a\n\nb\n", 2), ["", "b"])
+        XCTAssertEqual(HistoryModel.lastLines("a\nb", 1), ["b"])
+        // Short stretches are shown whole, as the full split gives them.
+        for text in ["a\n", "a\nb", "\n", "a\r\n\r\nb\r\n", "x\ny\nz\nw\nv\n"] {
+            let h = [HistoryHunk(kind: .added, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: "+\n"),
+                     HistoryHunk(kind: .equal, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: text),
+                     HistoryHunk(kind: .added, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: "+\n")]
+            let whole = text.replacingOccurrences(of: "\r", with: "").split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            let ls = whole.last == "" ? Array(whole.dropLast()) : whole
+            XCTAssertEqual(HistoryModel.diffText(h, style: style()).string, "+ +\n" + ls.map { "  \($0)\n" }.joined() + "+ +\n", text.debugDescription)
+        }
+    }
+
     func testALongUnchangedStretchShowsHowManyLinesItHides() {
         let many = (1...20).map { "line \($0)\n" }.joined()
         let hunks = [HistoryHunk(kind: .equal, oldRange: Utf16Range(start: 0, end: 0), newRange: Utf16Range(start: 0, end: 0), text: many),
@@ -308,6 +368,185 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(doc.writesOnMainThread.count, 1)
     }
 
+    /// Found in the test pass: a note opened and left without a change recorded the text it was opened with (reason
+    /// close), so looking through notes in the sidebar gave each one a history. 3.15: an unchanged document records
+    /// nothing.
+    func testANoteLookedAtAndLeftUnchangedGetsNoHistory() throws {
+        let (doc, wc, _) = try open("# Looked at\n")
+        var allowed: Bool?
+        doc.settleForLeaving { allowed = $0 }
+        XCTAssertTrue(waitUntil { allowed != nil })
+        doc.textChanged()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
+        var saved = false
+        doc.save(to: try XCTUnwrap(doc.fileURL), ofType: "net.daringfireball.markdown", for: .saveOperation) { _ in saved = true }
+        XCTAssertTrue(waitUntil { saved })
+        service.flush()
+        XCTAssertEqual(service.versionsNow(key: try XCTUnwrap(doc.historyKey)).count, 0, "leaving, a pause and ⌘S on an unchanged text record nothing")
+        // Typing something and taking it back is unchanged too.
+        type("x", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))   // the undo group closes
+        doc.undoManager?.undo()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
+        service.flush()
+        XCTAssertEqual(service.versionsNow(key: try XCTUnwrap(doc.historyKey)).count, 0)
+        // The first real change records the opening text, then the change.
+        type("y", in: wc)
+        XCTAssertTrue(waitUntil { self.service.versionsNow(key: doc.historyKey ?? "").count == 2 })
+        XCTAssertEqual(service.versionsNow(key: try XCTUnwrap(doc.historyKey)).map(\.reason), [.pause, .close])
+    }
+
+    /// Found in the test pass: typing that went on in the same place after an autosave was coalesced into the undo
+    /// group the write had already counted, so the document never became edited again. The next pause snapshotted the
+    /// text but did not write it, and closing wrote nothing: the file kept the text of the first pause. A write now
+    /// breaks the typing's coalescing, as AppKit advises (and TextEdit does for its autosaves).
+    func testTypingOnAfterAnAutosaveIsWrittenAtTheNextPauseAndOnLeaving() throws {
+        let (doc, wc, url) = try open("one\n")
+        type("a", in: wc)
+        XCTAssertTrue(waitUntil { !doc.isDocumentEdited && self.onDisk(url) == "one\na" })
+        type("b", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertTrue(doc.isDocumentEdited, "a key after a write is a change to write")
+        XCTAssertTrue(waitUntil { self.onDisk(url) == "one\nab" }, "written at the next pause")
+        type("c", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        var allowed: Bool?
+        doc.settleForLeaving { allowed = $0 }
+        XCTAssertTrue(waitUntil { allowed != nil })
+        XCTAssertEqual(onDisk(url), "one\nabc", "and on leaving")
+        // Undo still works, a write at a time.
+        doc.undoManager?.undo()
+        XCTAssertEqual(doc.session.text, "one\nab")
+    }
+
+    /// Keys a little closer together than the pause are never written while they come; the write follows the pause
+    /// after the last one. And typing that never pauses is still written by NSDocument's own ceiling.
+    func testTypingThatNeverPausesWaitsForThePauseOrTheCeiling() throws {
+        MarkdownDocument.autosaveDelay = 0.6
+        let ceiling = NSDocumentController.shared.autosavingDelay
+        NSDocumentController.shared.autosavingDelay = 3
+        defer { NSDocumentController.shared.autosavingDelay = ceiling }
+        let (doc, wc, url) = try open("p\n")
+        for i in 0..<6 {
+            type("\(i)", in: wc)
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.3))
+            XCTAssertEqual(onDisk(url), "p\n", "key \(i): not written while the keys come faster than the pause")
+        }
+        let last = Date()
+        XCTAssertTrue(waitUntil { self.onDisk(url).hasSuffix("5") })
+        XCTAssertGreaterThan(Date().timeIntervalSince(last), 0.25, "written a pause after the last key")
+        XCTAssertEqual(doc.writesOnMainThread.count, 1)
+        // The ceiling: keys every 0.3 s with a pause of 0.6 s never pause, and the ceiling (3 s here) writes anyway,
+        // again and again (each write breaks the typing's coalescing, so the keys after it are a change again).
+        var seen: Set<String> = [onDisk(url)]
+        for i in 0..<30 {
+            type("\(i % 10)", in: wc)
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.3))
+            seen.insert(onDisk(url))
+        }
+        XCTAssertGreaterThanOrEqual(seen.count - 1, 2, "the ceiling wrote at least twice in 9 s of typing that never paused")
+    }
+
+    /// Found in the test pass: another app putting back an older copy of the file with its own date (`cp -p`, `rsync
+    /// -t`, a backup restored) was not seen (only a newer date was); the next autosave then met NSDocument's own
+    /// "changed by another application" refusal instead of the read-again and the bar.
+    func testAnOlderCopyPutBackByAnotherAppIsReadAgainNotOverwritten() throws {
+        let (doc, wc, url) = try open("mine\n")
+        type("more", in: wc)
+        XCTAssertTrue(waitUntil { !doc.isDocumentEdited && self.onDisk(url) == "mine\nmore" })
+        type(" unsaved", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        try Data("from the backup\n".utf8).write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: url.path)
+        XCTAssertTrue(doc.handleExternalChange())
+        XCTAssertEqual(doc.session.text, "from the backup\n")
+        XCTAssertEqual(onDisk(url), "from the backup\n")
+        XCTAssertTrue(waitUntil { self.service.versionsNow(key: doc.historyKey ?? "").first.map { self.service.textNow(key: doc.historyKey ?? "", id: $0.id) } == "from the backup\n" })
+        let v = service.versionsNow(key: try XCTUnwrap(doc.historyKey))
+        XCTAssertEqual(v.dropFirst().first?.message, "Before another app changed this file")
+        XCTAssertEqual(service.textNow(key: try XCTUnwrap(doc.historyKey), id: v[1].id), "mine\nmore unsaved")
+        XCTAssertFalse(doc.handleExternalChange(), "known now")
+    }
+
+    /// Found in the test pass: a key that reached the old window after it had been settled for a note to replace it
+    /// (while the note was being read, or the old one's own write finished) was dropped when the old document closed.
+    func testAKeyAfterSettlingIsWrittenBeforeTheReplacedDocumentCloses() throws {
+        let settings = isolatedSettings()
+        let (doc, wc, url) = try open("leaving\n", settings: settings)
+        type(" first", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        var allowed: Bool?
+        doc.settleForLeaving { allowed = $0 }
+        XCTAssertTrue(waitUntil { allowed != nil })
+        XCTAssertEqual(onDisk(url), "leaving\n first")
+        type(" late", in: wc)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        let next = MarkdownDocument(settings: settings)
+        try next.read(from: Data("# Next\n".utf8), ofType: "net.daringfireball.markdown")
+        next.makeWindowControllers()
+        docs.append(next)
+        let nwc = try XCTUnwrap(next.windowControllers.first as? EditorWindowController)
+        nwc.takeOver(from: wc)
+        nwc.finishReplacing(doc)
+        docs.removeAll { $0 === doc }
+        XCTAssertTrue(waitUntil { self.onDisk(url) == "leaving\n first late" })
+        XCTAssertTrue(waitUntil { doc.windowControllers.isEmpty }, "and then it closed")
+        XCTAssertTrue(waitUntil { self.service.versionsNow(key: HistoryKey.key(forFile: url)).first.map { self.service.textNow(key: HistoryKey.key(forFile: url), id: $0.id) } == "leaving\n first late" })
+    }
+
+    /// Fifty replacements of a window's document (what a click in the sidebar does once the old one is settled): one
+    /// window throughout, at the first one's frame, with its workspace, layout and column, and every document, window
+    /// controller and session that left freed.
+    func testFiftyReplacementsKeepOneWindowAndFreeEveryDocumentThatLeft() throws {
+        let lib = try TempLibrary(["One.md": "# One\n"])
+        defer { lib.remove() }
+        let settings = isolatedSettings()
+        let ws = Workspace.make(settings: settings, notesMode: true)
+        ws.setLibraryFolder(lib.url)
+        XCTAssertTrue(waitUntil { ws.library.roots.count == 1 })
+        var gone: [() -> AnyObject?] = []
+        var current: (MarkdownDocument, EditorWindowController)?
+        var frame = NSRect.zero
+        try autoreleasepool {
+            let (doc, wc, _) = try open("# Start\n", name: "start.md", settings: settings)
+            wc.adopt(ws)
+            wc.showWindow(nil)
+            doc.session.setLayout(.split)
+            doc.session.setOutlineShown(true)
+            frame = try XCTUnwrap(wc.window).frame
+            current = (doc, wc)
+            docs.removeAll { $0 === doc }
+        }
+        for i in 0..<50 {
+            try autoreleasepool {
+                let (doc, wc) = try XCTUnwrap(current)
+                let next = MarkdownDocument(settings: settings)
+                try next.read(from: Data("# Note \(i)\n".utf8), ofType: "net.daringfireball.markdown")
+                next.inheritedWorkspace = ws
+                next.makeWindowControllers()
+                let nwc = try XCTUnwrap(next.windowControllers.first as? EditorWindowController)
+                nwc.takeOver(from: wc)
+                next.showWindows()
+                nwc.finishReplacing(doc)
+                weak let d = doc, c = wc, s = doc.session
+                gone += [{ d }, { c }, { s }]
+                current = (next, nwc)
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+        }
+        let (doc, wc) = try XCTUnwrap(current)
+        docs.append(doc)
+        XCTAssertTrue(waitUntil { gone.allSatisfy { $0() == nil } }, "\(gone.filter { $0() != nil }.count) of \(gone.count) still alive")
+        let window = try XCTUnwrap(wc.window)
+        XCTAssertEqual(window.frame, frame)
+        XCTAssertEqual(doc.session.layout, .split)
+        XCTAssertTrue(doc.session.outlineShown)
+        XCTAssertTrue(wc.workspace === ws)
+        XCTAssertEqual(NSApp.windows.filter { $0.isVisible && $0.windowController is EditorWindowController }.count, 1)
+        wc.leaveWorkspace()
+        ws.library.stopObserving(ws)
+    }
+
     func testAnAutosaveLeavesUndoWorking() throws {
         let (doc, wc, url) = try open("one\n")
         type("two", in: wc)
@@ -466,7 +705,12 @@ final class AutosaveTests: XCTestCase {
         XCTAssertTrue(waitUntil { self.service.versionsNow(key: doc.historyKey ?? "").count == 2 })
         let key = try XCTUnwrap(doc.historyKey)
         let oldest = try XCTUnwrap(service.versionsNow(key: key).last)
+        // The pause's write is over (it snapshots the text as it is when it starts, which could otherwise be the next keys).
+        XCTAssertTrue(waitUntil { !doc.isDocumentEdited && doc.savesInFlight == 0 })
         type(" and unsaved", in: wc)
+        // The key's undo group closes before the click on Restore, as between two events. (Typing after a write is a
+        // group of its own now, so without this the restore would join the key's group and one undo would take both.)
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         wc.restore(oldest, text: "original\n")
         XCTAssertEqual(doc.session.text, "original\n")
         XCTAssertEqual(doc.undoManager?.undoActionName, "Restore Version")

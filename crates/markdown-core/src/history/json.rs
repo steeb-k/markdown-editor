@@ -255,3 +255,44 @@ impl Parser<'_> {
         String::from_utf8(out).ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(2000))]
+        /// Any string, control characters, quotes, backslashes, lone surrogate escapes and non-BMP included, is
+        /// written so that it reads back the same.
+        #[test]
+        fn strings_round_trip(s in "\\PC*|[\\u{0}-\\u{1f}\"\\\\\\u{7f}\\u{2028}\\u{fffd}\\u{1F600}a]{0,20}") {
+            let doc = Json::Obj(vec![(s.clone(), Json::Arr(vec![Json::Str(s.clone()), Json::Int(-1), Json::Null, Json::Obj(vec![(s.clone(), Json::Str(s.clone()))])]))]);
+            let mut out = String::new();
+            doc.write(&mut out, 0);
+            prop_assert_eq!(parse(&out), Some(doc));
+        }
+
+        /// The reader never panics: on arbitrary text, and on a valid index with bytes changed.
+        #[test]
+        fn reader_never_panics(s in ".{0,64}", cuts in proptest::collection::vec((0usize..400, any::<u8>()), 0..6)) {
+            let _ = parse(&s);
+            let mut b = br#"{"version": 1, "key": "k\u00e9\ud83d\ude00", "next_id": 3, "entries": [{"id": 1, "message": "a\"b\\c\n"}, []]}"#.to_vec();
+            for (at, byte) in cuts {
+                let at = at % (b.len() + 1);
+                if byte % 3 == 0 && at < b.len() { b.remove(at); } else { b.insert(at, byte); }
+            }
+            if let Ok(t) = std::str::from_utf8(&b) { let _ = parse(t); }
+        }
+    }
+
+    #[test]
+    fn odd_inputs() {
+        for s in ["", "-", "--1", "1-", "99999999999999999999", "\"\\ud800\"", "\"\\udc00\"", "\"\\ud800\\u0041\"", "\"\\u12\"", "\"\\u+123\"", "[1,]", "{\"a\" 1}", "nul", "[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]", "\"\\uD83D\\uDE00\""] {
+            let _ = parse(s);
+        }
+        assert_eq!(parse("\"\\uD83D\\uDE00\""), Some(Json::Str("\u{1F600}".into())));
+        assert_eq!(parse("\"\\ud800\""), None);
+        assert_eq!(parse(&format!("{}{}", "[".repeat(100_000), "]".repeat(100_000))), None);
+    }
+}

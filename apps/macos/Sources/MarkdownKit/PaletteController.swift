@@ -12,7 +12,7 @@ struct PaletteRow: Equatable {
 }
 
 /// A palette over a window: a field, and under it a list that follows what is typed. Arrow keys
-/// move, Return chooses (Option-Return in a new place: see the caller), Escape closes. It is a view
+/// move, Return chooses (Command-Return in a new place: see the caller), Escape closes. It is a view
 /// in the window, not a window of its own, so it needs no focus juggling and appears in snapshots.
 final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     let panel = PalettePanelView()
@@ -25,7 +25,7 @@ final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSou
     var isOpen: Bool { panel.superview != nil }
 
     /// `source` is asked for the rows of a query, and answers (on the main thread) when it has them; `choose`
-    /// is told which row was chosen, and whether Option was held.
+    /// is told which row was chosen, and whether Command was held.
     init(placeholder: String, style: SidebarStyle,
          source: @escaping (String, @escaping ([PaletteRow]) -> Void) -> Void,
          choose: @escaping (PaletteRow, Bool) -> Void) {
@@ -106,9 +106,20 @@ final class PaletteController: NSObject, NSTextFieldDelegate, NSTableViewDataSou
         case #selector(NSResponder.insertNewline(_:)):
             chooseSelected(alternate: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
             return true
+        case Selector(("noop:")) where Self.isCommandReturn(NSApp.currentEvent):
+            // ⌘-Return has no key binding: the field editor sends `noop:` for it (and beeps unless it is taken here).
+            chooseSelected(alternate: true)
+            return true
         case #selector(NSResponder.cancelOperation(_:)): close(); return true
         default: return false
         }
+    }
+
+    /// Return or Enter with Command held (and no other modifier that has a binding of its own).
+    static func isCommandReturn(_ event: NSEvent?) -> Bool {
+        guard let event, event.type == .keyDown else { return false }
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        return mods.contains(.command) && !mods.contains(.control) && ["\r", "\u{3}", "\n"].contains(event.charactersIgnoringModifiers ?? "")
     }
 
     func move(_ delta: Int) {

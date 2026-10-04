@@ -326,3 +326,175 @@ proptest! {
         prop_assert!(same.iter().all(|h| h.kind == DiffKind::Equal));
     }
 }
+
+#[test]
+fn retention_boundaries_are_exactly_a_day_and_a_week() {
+    let (h, _) = store();
+    // Two snapshots in one clock hour, and a newest one well after them.
+    let a = 1_000 * D + 3 * H;
+    let b = a + 60;
+    h.record_at("day", "a\n", Reason::Pause, None, a).unwrap();
+    h.record_at("day", "b\n", Reason::Pause, None, b).unwrap();
+    h.record_at("day", "n\n", Reason::Pause, None, b + 1).unwrap();
+    // One second short of 24 hours `b` is still recent, so `a` is alone in its hour.
+    assert_eq!(h.prune_at("day", b + D - 1), 0);
+    // At exactly 24 hours `b` is the hour's newest and `a` goes.
+    assert_eq!(h.prune_at("day", b + D), 1);
+    assert_eq!(h.versions("day").len(), 2);
+
+    // Two snapshots in one day, in different hours (and the newest in a third): both kept until the later one is
+    // exactly a week old.
+    let a = 2_000 * D + H;
+    let b = a + H;
+    h.record_at("week", "a\n", Reason::Pause, None, a).unwrap();
+    h.record_at("week", "b\n", Reason::Pause, None, b).unwrap();
+    h.record_at("week", "n\n", Reason::Pause, None, b + H).unwrap();
+    assert_eq!(h.prune_at("week", b + 7 * D - 1), 0);
+    assert_eq!(h.prune_at("week", b + 7 * D), 1);
+    let v = h.versions("week");
+    assert_eq!(v.iter().map(|x| x.time).collect::<Vec<_>>(), vec![b + H, b]);
+}
+
+#[test]
+fn a_damaged_id_or_time_never_panics() {
+    // Found in the test pass: an id of -1 in a hand-edited index overflowed (`id + 1`) and panicked.
+    let (h, dir) = store();
+    h.record_at("z", "one\n", Reason::Pause, None, 1).unwrap();
+    h.record_at("z", "two\n", Reason::Pause, None, 2).unwrap();
+    let key_dir = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
+    let good = std::fs::read_to_string(key_dir.join("index.json")).unwrap();
+    for (i, damage) in [
+        good.replace("\"id\": 1,", "\"id\": -1,"),
+        good.replace("\"id\": 2,", "\"id\": 1,"),
+        good.replace("\"time\": 1,", "\"time\": -9223372036854775808,"),
+        good.replace("\"next_id\": 3", "\"next_id\": 9223372036854775807"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_ne!(damage, good);
+        std::fs::write(key_dir.join("index.json"), &damage).unwrap();
+        h.prune_at("z", 100 * D);
+        // (A rebuilt index also finds the texts the earlier rounds left, so each round records a text of its own.)
+        let text = format!("three {i}\n");
+        let id = h.record_at("z", &text, Reason::Pause, None, 100 * D).unwrap();
+        let v = h.versions("z");
+        let mut ids: Vec<u64> = v.iter().map(|x| x.id).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), v.len(), "ids unique after {damage}");
+        assert_eq!(h.text("z", id).unwrap(), text);
+        std::fs::write(key_dir.join("index.json"), &good).unwrap();
+    }
+}
+
+#[test]
+fn recording_the_latest_text_again_puts_back_a_lost_file() {
+    // Found in the test pass: with the latest snapshot's file gone, recording the same text was skipped as a repeat
+    // and the text stayed lost.
+    let (h, dir) = store();
+    let id = h.record_at("m", "kept\n", Reason::Pause, None, 1).unwrap();
+    let key_dir = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
+    for e in std::fs::read_dir(&key_dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.extension().is_some_and(|x| x == "md") {
+            std::fs::remove_file(p).unwrap();
+        }
+    }
+    assert_eq!(h.text("m", id), None);
+    assert_eq!(h.record_at("m", "kept\n", Reason::Close, None, 2), None);
+    assert_eq!(h.text("m", id).as_deref(), Some("kept\n"));
+    assert_eq!(h.versions("m").len(), 1);
+}
+
+#[test]
+fn two_stores_on_one_folder_lose_nothing() {
+    // Found in the test pass: two stores on one folder wrote the same temp file (records failed) and lost each
+    // other's index updates (half the versions went). Writes now use their own temp files and the folder is locked
+    // for each call.
+    let (h1, dir) = store();
+    let h1 = std::sync::Arc::new(h1);
+    let h2 = std::sync::Arc::new(History::open(&dir).unwrap());
+    let handles: Vec<_> = [h1.clone(), h2.clone(), h1.clone(), h2.clone()]
+        .into_iter()
+        .enumerate()
+        .map(|(t, h)| std::thread::spawn(move || (0..25).filter(|i| h.record_at("same", &format!("{t}-{i}\n"), Reason::Pause, None, 1).is_some()).count()))
+        .collect();
+    let recorded: usize = handles.into_iter().map(|j| j.join().unwrap()).sum();
+    assert_eq!(recorded, 100);
+    let v = h2.versions("same");
+    assert_eq!(v.len(), 100);
+    assert!(v.iter().all(|x| x.reason == Reason::Pause && h1.text("same", x.id).is_some()));
+}
+
+#[test]
+fn odd_keys_and_messages_round_trip() {
+    let (h, dir) = store();
+    let long = "\u{e9}".repeat(5000);
+    let keys = ["", ".", "..", "/", "a/../../b", "a\u{0}b", long.as_str(), "\u{1F600}", "CASE", "case", "e\u{301}", "\u{e9}", "\\", " "];
+    let message = "\"q\" \\ \u{0} \u{1} \u{1f} \u{7f} \u{2028} \u{1F600} \r\n\t end";
+    for (i, k) in keys.iter().enumerate() {
+        assert!(h.record_at(k, &format!("{i}\n"), Reason::Save, Some(message), 1).is_some(), "{k:?}");
+    }
+    let h = History::open(&dir).unwrap();
+    for (i, k) in keys.iter().enumerate() {
+        let v = h.versions(k);
+        assert_eq!(v.len(), 1, "{k:?}");
+        assert_eq!(v[0].message.as_deref(), Some(message));
+        assert_eq!(h.text(k, v[0].id).unwrap(), format!("{i}\n"));
+    }
+    assert_eq!(h.keys().len(), keys.len());
+    // Every key's folder is directly in the store.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), keys.len());
+}
+
+fn texts() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        prop_oneof![
+            Just("a\n".to_string()),
+            Just("b\n".to_string()),
+            Just("a\r\n".to_string()),
+            Just("\r".to_string()),
+            Just("\n".to_string()),
+            Just("\u{1F600}".to_string()),
+            "[ab\\r\\n]{0,3}"
+        ],
+        0..30,
+    )
+    .prop_map(|v| v.concat())
+}
+
+/// The longest common subsequence of lines, by brute force.
+fn lcs(a: &[&str], b: &[&str]) -> usize {
+    let mut dp = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for i in (0..a.len()).rev() {
+        for j in (0..b.len()).rev() {
+            dp[i][j] = if a[i] == b[j] { dp[i + 1][j + 1] + 1 } else { dp[i + 1][j].max(dp[i][j + 1]) };
+        }
+    }
+    dp[0][0]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(1000))]
+    /// The diff is minimal (its equal lines are a longest common subsequence), its hunks tile both texts, and the
+    /// line counts agree with it.
+    #[test]
+    fn diff_is_minimal_against_a_brute_force_reference(old in texts(), new in texts()) {
+        let hunks = diff_lines(&old, &new);
+        prop_assert_eq!(apply(&hunks, true), old.clone());
+        prop_assert_eq!(apply(&hunks, false), new.clone());
+        let (mut oa, mut ob) = (0, 0);
+        for h in &hunks {
+            prop_assert_eq!((h.old_range.start, h.new_range.start), (oa, ob));
+            oa = h.old_range.end;
+            ob = h.new_range.end;
+        }
+        prop_assert_eq!((oa, ob), (old.len(), new.len()));
+        let a: Vec<&str> = old.split_inclusive('\n').collect();
+        let b: Vec<&str> = new.split_inclusive('\n').collect();
+        let equal: usize = hunks.iter().filter(|h| h.kind == DiffKind::Equal).map(|h| h.text.split_inclusive('\n').count()).sum();
+        prop_assert_eq!(equal, lcs(&a, &b));
+        prop_assert_eq!(line_counts(&old, &new), ((b.len() - equal) as u32, (a.len() - equal) as u32));
+    }
+}
