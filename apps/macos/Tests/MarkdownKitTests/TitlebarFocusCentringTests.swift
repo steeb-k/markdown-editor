@@ -282,6 +282,25 @@ final class TitlebarTests: XCTestCase {
         }
     }
 
+    /// Found in the M8d test pass: in notes mode the title row over the sidebar, between the window buttons and the tab
+    /// strip's start, was the sidebar's own view, and a double-click there did nothing (the content view's clicks are
+    /// not the title bar's). The sidebar has the band too.
+    func testTheTitleBarRowOverTheNotesSidebarIsTheWindows() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.titlebarAppearsTransparent = true
+        let sidebar = SidebarView(style: SidebarStyle(ThemeStore.shared.palette(ThemeStore.shared.theme(id: "light"))))
+        sidebar.frame = window.contentView?.bounds ?? .zero
+        window.contentView?.addSubview(sidebar)
+        sidebar.layoutSubtreeIfNeeded()
+        let bar = window.frame.height - window.contentLayoutRect.height
+        XCTAssertGreaterThan(bar, 0)
+        XCTAssertEqual(sidebar.band.frame, NSRect(x: 0, y: 0, width: sidebar.bounds.width, height: bar))
+        XCTAssertTrue(sidebar.hitTest(sidebar.convert(NSPoint(x: 80, y: bar / 2), to: sidebar.superview)) === sidebar.band)
+        XCTAssertFalse(sidebar.hitTest(sidebar.convert(NSPoint(x: 80, y: bar + 10), to: sidebar.superview)) === sidebar.band, "the search field is below")
+        XCTAssertTrue(sidebar.band.mouseDownCanMoveWindow)
+    }
+
     // MARK: the View menu
 
     func testEachViewMenuItemShowsTheStateOfTheWindow() throws {

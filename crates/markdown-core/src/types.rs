@@ -137,7 +137,9 @@ pub struct OutlineEntry {
     /// 1 to 6.
     pub level: u8,
     /// What a reader reads: the heading's inline markup stripped (emphasis, code ticks, link and image
-    /// syntax, entities and escapes decoded), a line break as a space, blanks trimmed. May be empty (`#`).
+    /// syntax, entities and escapes decoded, reference links resolved against the whole document, footnote
+    /// references left out, a wikilink as its label as the preview shows it), a line break as a space, blanks
+    /// trimmed. May be empty (`#`).
     pub text: String,
     /// The whole heading as written, markers included (an ATX heading's `#`s, a setext heading's underline).
     pub range: TextRange,

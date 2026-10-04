@@ -878,6 +878,12 @@
   "bitmap": true
  },
  {
+  "assert": {
+   "titlebarClean": true,
+   "edited": true
+  }
+ },
+ {
   "click": {
    "at": "outline",
    "text": "Third part"

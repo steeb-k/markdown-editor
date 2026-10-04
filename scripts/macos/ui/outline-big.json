@@ -98,13 +98,13 @@
   }
  },
  {
-  "log": "the rare shape: a heading that takes the ones after it (a reload; it is not held to 10 ms)"
+  "log": "the rare shape: a heading that takes the ones after it (only the subtree of the `#` it is under is read again: 6 to 11 ms, the whole tree was about 30)"
  },
  {
   "outline": {
    "measure": {
     "count": 4,
-    "maxMs": 80,
+    "maxMs": 20,
     "needle": "## Section",
     "added": "## Added heading"
    }

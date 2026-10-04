@@ -185,12 +185,25 @@ impl Document {
             self.analysis.blocks.iter().filter(|b| b.kind == BlockKind::Heading).collect();
         let pairs: Vec<(usize, usize)> = headings.iter().map(|b| (b.start, b.end)).collect();
         let conv = self.convert_nested(&pairs);
+        let spans = &self.analysis.spans;
+        let context = |b: &crate::analysis::IBlock| {
+            let mut c = crate::outline::HeadingContext::default();
+            let from = spans.partition_point(|s| s.start < b.start);
+            for s in spans[from..].iter().take_while(|s| s.start < b.end) {
+                match s.kind {
+                    SpanKind::Link | SpanKind::Image => c.links.push(s.start - b.start),
+                    SpanKind::FootnoteReference => c.footnotes.push((s.start - b.start, s.end.min(b.end) - b.start)),
+                    _ => {}
+                }
+            }
+            c
+        };
         headings
             .iter()
             .zip(conv)
             .map(|(b, (s, e))| OutlineEntry {
                 level: b.heading_level.unwrap_or(1),
-                text: crate::outline::heading_text(&self.text[b.start..b.end], b.depth > 0),
+                text: crate::outline::heading_text(&self.text[b.start..b.end], b.depth > 0, &context(b)),
                 range: TextRange::new(s, e),
                 line: b.line,
             })

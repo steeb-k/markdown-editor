@@ -32,6 +32,9 @@ final class SidebarView: NSView {
     let outline = SidebarOutlineView()
     let backlinks = BacklinksPanel()
     let emptyState = EmptyLibraryView()
+    /// The title bar's row over the sidebar: a press there drags the window and a double-click zooms it, as anywhere
+    /// else on the row (the sidebar is in the content view, whose clicks AppKit does not take as the title bar's).
+    let band = TitlebarBandView()
     var style: SidebarStyle { didSet { apply() } }
     var showsBacklinks = false { didSet { needsLayout = true; backlinks.isHidden = !showsBacklinks } }
     var showsEmptyState = false { didSet { emptyState.isHidden = !showsEmptyState; scroll.isHidden = showsEmptyState; searchField.isHidden = showsEmptyState; needsLayout = true } }
@@ -66,7 +69,7 @@ final class SidebarView: NSView {
         scroll.borderType = .noBorder
         backlinks.isHidden = true
         emptyState.isHidden = true
-        for v in [scroll, searchField, backlinks, emptyState] as [NSView] { addSubview(v) }
+        for v in [scroll, searchField, backlinks, emptyState, band] as [NSView] { addSubview(v) }
         apply()
     }
 
@@ -96,6 +99,7 @@ final class SidebarView: NSView {
         scroll.frame = NSRect(x: 0, y: listTop, width: w, height: max(0, bounds.height - listTop - bottom))
         backlinks.frame = NSRect(x: 0, y: bounds.height - bottom, width: w, height: bottom)
         emptyState.frame = NSRect(x: 0, y: top, width: w, height: max(0, bounds.height - top))
+        band.frame = NSRect(x: 0, y: 0, width: w, height: top)
     }
 
     override func draw(_ dirtyRect: NSRect) {

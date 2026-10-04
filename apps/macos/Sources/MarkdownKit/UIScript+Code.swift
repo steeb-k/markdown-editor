@@ -5,6 +5,12 @@ import MarkdownCore
 /// The harness's steps for code highlighting and the language badge. A click goes through the text
 /// view's own hit test; the menu it opens is taken by `codeMenuPresenter` (a menu that tracks the mouse
 /// never returns inside a script), and the choice is the menu item's own action.
+/// What the badge's menu did, noted from the main queue's notifications.
+@MainActor private final class MenuTracking {
+    var opened: NSMenu?
+    var closed = false
+}
+
 extension UIScriptRunner {
     /// The menu the last badge click opened, and where.
     static var lastCodeMenu: (menu: NSMenu, at: NSPoint)?
@@ -92,18 +98,17 @@ extension UIScriptRunner {
         makeKey(w) { [self] in
             let p = tv.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
             let place = hitPlace(w, p)
-            var opened: NSMenu?
-            var closed = false
+            let tracked = MenuTracking()
             let nc = NotificationCenter.default
-            let begin = nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil) { n in
+            let begin = nc.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { n in
                 MainActor.assumeIsolated {
-                    if opened == nil, let m = n.object as? NSMenu, m.title == "Language" { opened = m }
+                    if tracked.opened == nil, let m = n.object as? NSMenu, m.title == "Language" { tracked.opened = m }
                 }
             }
-            let end = nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: nil) { n in
-                MainActor.assumeIsolated { if let m = n.object as? NSMenu, m === opened { closed = true } }
+            let end = nc.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { n in
+                MainActor.assumeIsolated { if let m = n.object as? NSMenu, m === tracked.opened { tracked.closed = true } }
             }
-            func post(_ type: NSEvent.EventType) {
+            @MainActor func post(_ type: NSEvent.EventType) {
                 if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                               windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
                                               pressure: type == .leftMouseUp ? 0 : 1) { NSApp.postEvent(e, atStart: false) }
@@ -111,8 +116,8 @@ extension UIScriptRunner {
             post(.leftMouseDown)
             post(.leftMouseUp)
             let keys = c["keys"] as? [String] ?? []
-            waitFor(3, { opened != nil }) { [self] isOpen in
-                guard isOpen, let menu = opened else {
+            waitFor(3, { tracked.opened != nil }) { [self] isOpen in
+                guard isOpen, let menu = tracked.opened else {
                     nc.removeObserver(begin); nc.removeObserver(end)
                     record(["codeBadge": needle, "real": true, "hitIn": place, "active": NSApp.isActive, "key": w.isKeyWindow,
                             "error": "no menu opened"], ok: false)
@@ -124,7 +129,7 @@ extension UIScriptRunner {
                 // Give the menu a moment on screen, then close it: by keys, or through its own API.
                 var highlights: [String] = []
                 // Keys one at a time, the highlighted item noted after each (the menu answers each in its own turn).
-                func press(_ rest: ArraySlice<String>, then next: @escaping () -> Void) {
+                @MainActor func press(_ rest: ArraySlice<String>, then next: @escaping () -> Void) {
                     guard let k = rest.first else { next(); return }
                     let (chars, code, mods): (String, UInt16, NSEvent.ModifierFlags) = switch k {
                     case "down": ("\u{F701}", 125, [.function, .numericPad])
@@ -150,7 +155,7 @@ extension UIScriptRunner {
                 later(0.3) { [self] in
                     if keys.isEmpty { menu.cancelTracking() }
                     press(keys[...]) { [self] in
-                    waitFor(3, { closed }) { [self] didClose in
+                    waitFor(3, { tracked.closed }) { [self] didClose in
                         nc.removeObserver(begin); nc.removeObserver(end)
                         if !didClose { menu.cancelTrackingWithoutAnimation() }
                         var entry: [String: Any] = ["codeBadge": needle, "real": true, "hitIn": place, "menuOpened": true, "menuClosed": didClose,

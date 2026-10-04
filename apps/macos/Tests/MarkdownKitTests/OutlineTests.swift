@@ -137,6 +137,32 @@ final class OutlineTests: XCTestCase {
             XCTAssertEqual(shown, want, "round \(round): the same levels as a fresh list")
         }
         XCTAssertGreaterThan(c.rebuilds, 100)
+        XCTAssertGreaterThan(c.subtreeReloads, 0, "some reloads read one subtree only (\(c.reloads) reloads)")
+    }
+
+    /// Found in the test pass: a `##` added before the `###`s of the `##` above it (they become its children) reloaded the
+    /// whole list, about 30 ms at 1,000 headings. Only the `#` the change is under is read again now; folds inside it and
+    /// elsewhere stay, and the rows are a fresh list's.
+    func testAHeadingThatTakesTheFollowingOnesReloadsOnlyItsSubtree() {
+        var e: [OutlineEntry] = []
+        for p in 0..<200 { e += [entry(1, "Part \(p)"), entry(2, "Section \(p)"), entry(3, "Sub \(p)a"), entry(3, "Sub \(p)b"), entry(4, "Deep \(p)")] }
+        let c = controller(e)
+        c.collapse(5 * 150 + 1) // "Section 150", away from the change
+        c.collapse(5 * 100 + 3) // "Sub 100b", inside it
+        let reloads = c.reloads, subtrees = c.subtreeReloads
+        var e2 = e
+        e2.insert(entry(2, "Taker"), at: 5 * 100 + 2) // between "Section 100" and "Sub 100a": both Subs move under it
+        let t0 = CFAbsoluteTimeGetCurrent()
+        c.update(e2)
+        let took = CFAbsoluteTimeGetCurrent() - t0
+        XCTAssertEqual(c.reloads, reloads + 1)
+        XCTAssertEqual(c.subtreeReloads, subtrees + 1, "only Part 100 is read again")
+        let rows = c.visibleIndices.map { c.entries[$0].text }
+        XCTAssertEqual(Array(rows[500..<506]), ["Part 100", "Section 100", "Taker", "Sub 100a", "Sub 100b", "Part 101"], "Sub 100b still folded")
+        XCTAssertFalse(rows.contains("Sub 150a"), "Section 150 still folded")
+        XCTAssertEqual(c.view.list.level(forRow: 503), 2)
+        XCTAssertEqual(rows.count, e2.count - 1 - 3, "one Deep under the fold inside, three under the one outside")
+        print("subtree reload of a 1,001-heading list: \(took * 1000) ms")
     }
 
     func testTheMarkFollowsAndHidesInsideAFoldAndYieldsToTheUsersOwnMoves() throws {
@@ -425,5 +451,35 @@ final class OutlineTests: XCTestCase {
         selected.toggleOutline(nil)
         selected.tabs.refresh()
         XCTAssertEqual(strip.trailingInset, 0)
+    }
+
+    /// Added in the test pass: a window closed with the column shown (in Split, after a jump and a fold) leaves no
+    /// outline object alive: the controller, its list, its rows' nodes and the split view that held the column.
+    func testClosingAWindowWithTheOutlineFreesEverythingOfIt() throws {
+        weak var weakController: EditorWindowController?
+        weak var weakOutline: OutlineController?
+        weak var weakList: NSOutlineView?
+        weak var weakNode: OutlineNode?
+        weak var weakHost: NSView?
+        try autoreleasepool {
+            let (doc, wc) = try open(Self.sample, layout: .split, outline: true)
+            XCTAssertTrue(waitEntries(wc, 4))
+            let o = try XCTUnwrap(wc.outline)
+            wc.jump(to: try XCTUnwrap(o.entries.last))
+            o.collapse(0)
+            pump(0.2)
+            weakController = wc; weakOutline = o; weakList = o.view.list; weakHost = wc.paneHost
+            weakNode = o.view.list.item(atRow: 0) as? OutlineNode
+            XCTAssertNotNil(weakNode)
+            doc.updateChangeCount(.changeCleared)
+            doc.close()
+        }
+        XCTAssertTrue(spin(timeout: 5) { weakController == nil && weakOutline == nil && weakNode == nil })
+        XCTAssertNil(weakController, "window controller")
+        XCTAssertNil(weakOutline, "outline controller")
+        XCTAssertNil(weakNode, "the rows' nodes")
+        // AppKit may keep a closed window's views a while (see the lifecycle test); its list must then not point back.
+        if let list = weakList { XCTAssertNil(list.dataSource); XCTAssertNil(list.delegate) }
+        _ = weakHost
     }
 }

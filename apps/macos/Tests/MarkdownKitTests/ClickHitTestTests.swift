@@ -199,6 +199,28 @@ final class ClickHitTestTests: XCTestCase {
         XCTAssertTrue(probe.ignoresMouseEvents)
         XCTAssertTrue(window.ignoresMouseEvents)
     }
+
+    /// Found in the M8d test pass: a person moving the pointer over a harness window still reached the root view's
+    /// tracking area, which brought the chrome back in the middle of `titlebar.json`'s fade checks. A window that
+    /// ignores the mouse ignores its moves too; any other window reports them.
+    func testPointerMovesOverAHarnessWindowDoNotBringTheChromeBack() throws {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let root = EditorRootView(frame: NSRect(x: 0, y: 0, width: 200, height: 120))
+        window.contentView = root
+        var moves = 0
+        root.onPointerMoved = { moves += 1 }
+        func move() throws {
+            let e = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: 50, y: 50), mouseButton: .left))
+            e.setIntegerValueField(.mouseEventDeltaX, value: 5)
+            root.mouseMoved(with: try XCTUnwrap(NSEvent(cgEvent: e)))
+        }
+        try move()
+        XCTAssertEqual(moves, 1)
+        window.ignoresMouseEvents = true
+        try move()
+        XCTAssertEqual(moves, 1, "a harness window's real pointer moves are not the script's")
+    }
 }
 
 /// Records the mouse events a view is given.

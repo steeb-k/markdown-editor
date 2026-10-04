@@ -231,6 +231,9 @@ li.task-list-item input[type=checkbox]:checked {
   p, li, blockquote {{ orphans: 3; widows: 3; }}
   pre, table, img, tr, blockquote, .footnotes li {{ break-inside: avoid; page-break-inside: avoid; }}
   pre {{ white-space: pre-wrap; word-break: break-word; overflow: visible; }}
+  /* Printed code wraps, so a long first line would run under the language's label and be hidden there: the label
+     floats at the top right instead, and the first line wraps short of it. */
+  pre[data-lang]::before {{ position: static; float: right; margin: -0.5em -0.6em 0.3em 0.8em; }}
   thead {{ display: table-header-group; }}
   img {{ max-width: 100%; }}
   a {{ color: inherit; text-decoration: underline; }}

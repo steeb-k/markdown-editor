@@ -2362,6 +2362,10 @@ final class UIScriptRunner {
                 for kind in [NSWindow.ButtonType.documentIconButton, .documentVersionsButton] {
                     if let b = w.standardWindowButton(kind), !b.isHiddenOrHasHiddenAncestor { strays.append("\(Swift.type(of: b)) beside the tabs") }
                 }
+                // ... and every label of it: the "—" before "Edited" is a field of its own (it stayed, over the outline).
+                if let row = w.standardWindowButton(.closeButton)?.superview {
+                    for case let f as NSTextField in row.subviews where !f.isHidden { strays.append("title label \(f.stringValue.debugDescription) beside the tabs") }
+                }
             }
             let accessories = w.titlebarAccessoryViewControllers.filter { !$0.isHidden }
             let others = accessories.filter { !($0.view is TabStripView) }.count

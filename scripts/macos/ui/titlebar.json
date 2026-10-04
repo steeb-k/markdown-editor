@@ -284,6 +284,12 @@
   "bitmap": true
  },
  {
+  "log": "(a pause: the chrome comes back 2.5 s after the last key, before the next typing, however fast the steps before ran)"
+ },
+ {
+  "wait": 2.0
+ },
+ {
   "type": "More typing. ",
   "interval": 0.03
  },
@@ -306,6 +312,12 @@
   }
  },
  {
+  "log": "(and the pause after the second typing too: two returns by now, whatever the double-clicks' pace)"
+ },
+ {
+  "wait": 2.6
+ },
+ {
   "pointer": "moved"
  },
  {
@@ -315,7 +327,7 @@
   "assert": {
    "chromeVisible": true,
    "titlebarClean": true,
-   "chromeReturnsByPause": 1
+   "chromeReturnsByPause": 2
   }
  },
  {
@@ -351,7 +363,7 @@
  {
   "assert": {
    "chromeVisible": true,
-   "chromeReturnsByPause": 2
+   "chromeReturnsByPause": 3
   }
  },
  {
@@ -368,7 +380,7 @@
  {
   "assert": {
    "chromeVisible": false,
-   "chromeReturnsByPause": 2
+   "chromeReturnsByPause": 3
   }
  },
  {
@@ -385,7 +397,7 @@
  {
   "assert": {
    "chromeVisible": true,
-   "chromeReturnsByPause": 3
+   "chromeReturnsByPause": 4
   }
  },
  {
@@ -420,7 +432,7 @@
  {
   "assert": {
    "chromeVisible": true,
-   "chromeReturnsByPause": 3
+   "chromeReturnsByPause": 4
   }
  },
  {
@@ -1238,6 +1250,1901 @@
  {
   "setting": {
    "chromeReturnsAfterPause": true
+  }
+ },
+ {
+  "log": "--- every point of the row lets a press move the window (what AppKit asks before it hands a drag to the window server, which then follows the real pointer: posted drags cannot move a window), in the three layouts, with the outline column, then in notes mode with the sidebar and the column"
+ },
+ {
+  "resize": [
+   900,
+   700
+  ]
+ },
+ {
+  "outline": {
+   "show": true
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "notes": {
+   "library": "scripts/macos/ui/fixtures/library"
+  }
+ },
+ {
+  "notes": {
+   "mode": true
+  }
+ },
+ {
+  "notes": {
+   "waitLoaded": 30
+  }
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "layout": "preview"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.08,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.10666666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.13333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.16,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.18666666666666668,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.21333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.24,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.26666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.29333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.32,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.3466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.37333333333333335,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.4533333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.48,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5066666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.56,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.5866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6133333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.64,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6666666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.6933333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.72,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7466666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.7733333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8266666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.8533333333333334,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.88,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9066666666666666,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9333333333333333,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.96,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9866666666666667,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.9944444444444445,
+   "probe": true,
+   "expectCanMoveWindow": true
+  }
+ },
+ {
+  "log": "--- the row over the notes sidebar, right of the window buttons (once the sidebar's own view: nothing happened), and over the outline column: real double-clicks zoom and unzoom"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "waitPreview": 30
+ },
+ {
+  "pointer": "moved"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.085,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.085,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.97,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "click": {
+   "at": "titlebar",
+   "x": 0.97,
+   "count": 2,
+   "expectWindowAction": true,
+   "expectHitIn": "titlebar",
+   "wait": 1.0
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "snapshot": "titlebar-notes-outline",
+  "bitmap": true
+ },
+ {
+  "notes": {
+   "mode": false
+  }
+ },
+ {
+  "outline": {
+   "show": false
   }
  }
 ]

@@ -185,6 +185,8 @@ final class OutlineController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
     /// Of the rebuilds, how many were reloads (the rest changed rows one by one).
     private(set) var reloads = 0
     private(set) var updates = 0
+    /// Of the reloads, how many read only a subtree again.
+    private(set) var subtreeReloads = 0
 
     init(style: SidebarStyle) {
         view = OutlineView(style: style)
@@ -257,13 +259,7 @@ final class OutlineController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             if (node.parent == nil) != (oldParent[j] == nil) || (node.parent != nil && parentOld != oldParent[j]) { simple = false; break }
         }
         guard simple else {
-            reloads += 1
-            // A kept heading that moved to another parent comes back from a reload folded, so everything is opened
-            // again, and what was folded before is folded.
-            let folded = old.filter { !wasChildless.contains(ObjectIdentifier($0)) && !list.isItemExpanded($0) }
-            list.reloadData()
-            expandAll()
-            for node in folded where !node.children.isEmpty { list.collapseItem(node) }
+            reload(old: old, built: built, oldParent: oldParent, wasChildless: wasChildless)
             return
         }
         let kept = Set(built.oldIndex.compactMap { $0 })
@@ -284,11 +280,7 @@ final class OutlineController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         // A heading replaced by another at the same place is not taken in by the list's own bookkeeping (the new row
         // closed, its children missing): that, like a move, is reloaded.
         if !removed.isEmpty && !inserted.isEmpty {
-            reloads += 1
-            let folded = old.filter { !wasChildless.contains(ObjectIdentifier($0)) && !list.isItemExpanded($0) }
-            list.reloadData()
-            expandAll()
-            for node in folded where !node.children.isEmpty { list.collapseItem(node) }
+            reload(old: old, built: built, oldParent: oldParent, wasChildless: wasChildless)
             return
         }
         list.beginUpdates()
@@ -298,6 +290,75 @@ final class OutlineController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         // What is new and has headings under it is open; so is a heading that had none and now has.
         for node in tops where !node.children.isEmpty { open(node); expandBelow(node) }
         for (parent, _) in inserted { if let parent, !wasExpandable.contains(ObjectIdentifier(parent)), !list.isItemExpanded(parent) { open(parent) } }
+    }
+
+    /// The rows change in a way the list's row-by-row calls do not cover (a kept heading changes parent, or one takes
+    /// the place of another). Only the smallest subtree that holds every change is read again: the heading that is
+    /// the common ancestor of every parent that gains or loses a heading, when it is itself kept in place; the whole
+    /// list when that is the top level. (A `##` added before the `###`s of the `##` above it, in a long document, is a
+    /// change under one `#`: reloading the whole tree of 1,000 headings cost about 30 ms, NSOutlineView's own time.)
+    /// A kept heading comes back from a reload folded, so the subtree is opened again, and what was folded is folded.
+    private func reload(old: [OutlineNode], built: (roots: [OutlineNode], all: [OutlineNode], added: [OutlineNode], oldIndex: [Int?]),
+                        oldParent: [Int?], wasChildless: Set<ObjectIdentifier>) {
+        reloads += 1
+        let list = view.list
+        let folded = old.filter { !wasChildless.contains(ObjectIdentifier($0)) && !list.isItemExpanded($0) }
+        let added = Set(built.added.map(ObjectIdentifier.init))
+        var keptOld = [Bool](repeating: false, count: old.count)
+        for j in built.oldIndex.compactMap({ $0 }) { keptOld[j] = true }
+        // The nearest kept ancestor (in the old tree) of old heading `j`, as the node it is now; nil: the top level.
+        func keptAncestor(ofOld j: Int) -> OutlineNode?? {
+            var p = oldParent[j]
+            while let q = p, !keptOld[q] { p = oldParent[q] }
+            return .some(p.map { old[$0] })
+        }
+        var touched: [OutlineNode?] = []
+        var moved = Set<ObjectIdentifier>()
+        for (i, node) in nodes.enumerated() {
+            if let j = built.oldIndex[i] {
+                let was = keptAncestor(ofOld: j)!
+                let parentKeptOld = oldParent[j].map { keptOld[$0] } ?? true
+                if !parentKeptOld || was !== node.parent {
+                    moved.insert(ObjectIdentifier(node))
+                    touched.append(was)
+                    touched.append(node.parent)
+                }
+            } else if !added.contains(ObjectIdentifier(node.parent ?? node)) || node.parent == nil {
+                touched.append(node.parent)
+            }
+        }
+        for j in 0..<old.count where !keptOld[j] { touched.append(keptAncestor(ofOld: j)!) }
+        // The common ancestor of everything touched, moved up past any heading that itself moved.
+        func chain(_ n: OutlineNode?) -> [ObjectIdentifier] {
+            var out: [ObjectIdentifier] = []
+            var c = n
+            while let x = c { out.append(ObjectIdentifier(x)); c = x.parent }
+            return out.reversed()
+        }
+        var common: [ObjectIdentifier]?
+        for t in touched {
+            let c = chain(t)
+            if let prefix = common { common = Array(zip(prefix, c).prefix { $0 == $1 }.map(\.0)) } else { common = c }
+            if common?.isEmpty == true { break }
+        }
+        var top: OutlineNode? = common?.last.flatMap { id in nodes.first { ObjectIdentifier($0) == id } }
+        while let t = top, moved.contains(ObjectIdentifier(t)) || added.contains(ObjectIdentifier(t)) { top = t.parent }
+        if let top, list.row(forItem: top) >= 0 {
+            subtreeReloads += 1
+            list.reloadItem(top, reloadChildren: true)
+            list.expandItem(top)
+            func openBelow(_ n: OutlineNode) {
+                for c in n.children where !c.children.isEmpty {
+                    list.expandItem(c)
+                    openBelow(c)
+                }
+            }
+            openBelow(top)
+        } else {
+            list.reloadData()
+            expandAll()
+        }
+        for node in folded where !node.children.isEmpty { list.collapseItem(node) }
     }
 
     /// Opens the headings under `node` (a block that was just inserted comes in folded).

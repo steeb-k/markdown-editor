@@ -116,3 +116,27 @@ fn a_thousand_headings() {
     eprintln!("outline of 1000 headings: {took:?}");
     assert!(took.as_millis() < if cfg!(debug_assertions) { 600 } else { 60 }, "{took:?}");
 }
+
+#[test]
+fn what_only_the_whole_document_decides_reference_links_footnotes_and_wikilinks() {
+    // Found in the test pass: the heading's source parsed alone showed reference links with their brackets and a
+    // footnote reference as `[^1]`, and wikilinks as written; the preview and Live mode show the label.
+    let t = "# See [foo] and [bar][] and ![img][foo] and [none]\n\n## Note[^1]\n\n### [[Note]], [[Note|Label]], [[#Head]], [[N#H|L]] and `[[code]]`\n\n#### [a [[wiki]] in a link](u)\n\n> Setext with\n> [foo] on its second line[^1]\n> ===\n\n[foo]: http://x\n[bar]: http://y\n[^1]: note\n";
+    assert_eq!(
+        texts(t),
+        vec![
+            "See foo and bar and img and [none]",
+            "Note",
+            "Note, Label, Head, L and [[code]]",
+            "a [[wiki]] in a link",
+            "Setext with foo on its second line",
+        ]
+    );
+    // The ids are still made from what the renderer's events say (a wikilink's brackets included): the outline's text
+    // agrees with them wherever no wikilink is involved.
+    let d = Document::new(t, OffsetEncoding::Utf8);
+    let html = d.render_html(&RenderOptions::default());
+    for e in d.outline().iter().filter(|e| !e.text.contains("Label") && !e.text.contains("wiki")) {
+        assert!(html.contains(&format!("id=\"{}\"", slug(&e.text))), "{:?} in {html}", e.text);
+    }
+}

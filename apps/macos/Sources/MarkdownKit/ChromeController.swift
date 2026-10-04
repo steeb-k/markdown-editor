@@ -153,6 +153,9 @@ final class EditorRootView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        // A window that ignores the mouse is a UI script's: the pointer moving over it is a person's, at work
+        // elsewhere, and the tracking area still reports it (it brought the chrome back mid-script).
+        if window?.ignoresMouseEvents == true { return }
         if abs(event.deltaX) + abs(event.deltaY) >= 1 { onPointerMoved?() }
     }
 }

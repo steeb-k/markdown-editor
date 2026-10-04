@@ -122,7 +122,7 @@ extension UIScriptRunner {
         if hit === wc.textView || hit.isDescendant(of: wc.textView) { return "text" }
         if hit.isDescendant(of: wc.toolbar) { return "toolbar" }
         if hit.isDescendant(of: wc.previewController.webView) { return "preview" }
-        if let bar = wc.sidebar?.view, hit.isDescendant(of: bar) { return "sidebar" }
+        if let bar = wc.sidebar?.view, hit.isDescendant(of: bar) { return hit === bar.band ? "titlebar" : "sidebar" }
         if let column = wc.outline?.view, hit.isDescendant(of: column) { return hit === column.band ? "titlebar" : "outline" }
         if hit === wc.splitView { return "divider" }
         if !hit.isDescendant(of: content) || hit === wc.titlebarBand { return "titlebar" }
@@ -195,9 +195,14 @@ extension UIScriptRunner {
             frames["insets"] = "\(wc.scrollView.contentInsets.top) \(wc.scrollView.contentInsets.bottom)"
         }
         if c["probe"] as? Bool == true {
-            // Only where the click would land (a click on the formatting bar would format the text).
-            record(["probe": detail, "hit": hit, "hitIn": place, "at": NSStringFromPoint(p)],
-                   ok: (c["expectHitIn"] as? String).map { $0 == place } ?? true)
+            // Only where the click would land (a click on the formatting bar would format the text). `canMoveWindow`: the
+            // view there lets a press move the window, the condition AppKit puts on a title-bar drag (which the window
+            // server then performs with the real pointer, so posted drag events cannot show it).
+            // (AppKit's own buttons in the row, the document's icon and "Edited", are exempt: they are the title's.)
+            let canMove = w.contentView?.superview?.hitTest(p)?.mouseDownCanMoveWindow ?? false
+            let appKits = hit.hasPrefix("NSTheme") && hit.hasSuffix("Button")
+            record(["probe": detail, "hit": hit, "hitIn": place, "at": NSStringFromPoint(p), "canMoveWindow": canMove],
+                   ok: (c["expectHitIn"] as? String).map { $0 == place } ?? true && (c["expectCanMoveWindow"] as? Bool).map { $0 == canMove || appKits } ?? true)
             done()
             return
         }

@@ -635,6 +635,26 @@ final class TabStripController: NSObject {
         return view.subviews.contains { isNativeTabBar($0, depth: depth + 1) }
     }
 
+    /// Labels AppKit leaves in the title bar's row while the title is hidden: with an edited document that autosaves, the
+    /// "—" between the title and "Edited" is a text field of its own that `titleVisibility` does not hide (found in the M8d
+    /// test pass at the row's right end, over the outline column). Hidden with the title, shown again with it.
+    private func hideTitleRemnants(_ shown: Bool) {
+        guard let bar = window?.standardWindowButton(.closeButton)?.superview else { return }
+        for case let field as NSTextField in bar.subviews {
+            if shown, !field.isHidden {
+                field.isHidden = true
+                hiddenTitleFields.append(Weak(field))
+            }
+        }
+        if !shown {
+            for w in hiddenTitleFields { w.value?.isHidden = false }
+            hiddenTitleFields.removeAll()
+        }
+        hiddenTitleFields.removeAll { $0.value == nil }
+    }
+
+    private var hiddenTitleFields: [Weak<NSTextField>] = []
+
     func refresh() {
         guard let window else { return }
         guard refreshDepth == 0 else { reentries += 1; return }
@@ -654,6 +674,9 @@ final class TabStripController: NSObject {
         for kind in [NSWindow.ButtonType.documentIconButton, .documentVersionsButton] {
             if let b = window.standardWindowButton(kind), b.isHidden != shown { b.isHidden = shown }
         }
+        hideTitleRemnants(shown)
+        // AppKit lays the title's pieces out again after an edit is marked (after this refresh), so once more then.
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.hideTitleRemnants(self?.isShown ?? false) } }
         // The strip fills the row between the window buttons and the trailing edge.
         let width = max(0, window.frame.width - Self.leadingClearance - Self.trailingClearance)
         if abs(strip.frame.width - width) >= 0.5 {
@@ -716,4 +739,10 @@ final class TabStripController: NSObject {
 
     /// Fades with the chrome: invisible tabs must not take clicks.
     func setFaded(_ faded: Bool) { strip.isFaded = faded }
+}
+
+/// A weak reference to keep in an array.
+struct Weak<T: AnyObject> {
+    weak var value: T?
+    init(_ value: T) { self.value = value }
 }

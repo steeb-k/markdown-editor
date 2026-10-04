@@ -65,7 +65,7 @@ extension UIScriptRunner {
         makeKey(w) { [self] in
             let x = wc.root.frame.maxX + 0.5
             let start = host.convert(NSPoint(x: x, y: host.bounds.midY), to: nil)
-            func ev(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
+            @MainActor func ev(_ type: NSEvent.EventType, _ p: NSPoint) -> NSEvent? {
                 NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                    windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
             }

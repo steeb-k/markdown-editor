@@ -1549,6 +1549,10 @@ fn highlighted_blocks_carry_their_language_for_the_preview_label() {
     // The standalone page (the export and the PDF) has it; a fragment (Copy as HTML) stays plain.
     let page = html(rust, &RenderOptions { standalone: true, ..Default::default() });
     assert!(page.contains("data-lang=\"Rust\"") && page.contains("pre[data-lang]::before { content: attr(data-lang)"));
+    // Printed, code wraps: the label floats so a long first line wraps short of it instead of running under it (found in
+    // the M8d test pass: the end of the line was hidden behind the label in the PDF).
+    let print = &page[page.find("@media print").expect("print rules")..];
+    assert!(print.contains("pre[data-lang]::before { position: static; float: right;"), "{print}");
     assert!(!html(rust, &RenderOptions::default()).contains("data-lang"));
     // The sanitizer works on what the document writes, not on what the renderer adds: the label survives it.
     let clean = html(rust, &RenderOptions { sanitize: true, source_lines: true, ..Default::default() });
