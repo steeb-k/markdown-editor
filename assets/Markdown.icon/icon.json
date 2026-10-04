@@ -4,7 +4,7 @@
       "layers" : [
         {
           "glass" : true,
-          "image-name" : "glyph.svg",
+          "image-name" : "glyph.png",
           "name" : "glyph"
         }
       ],
@@ -21,7 +21,7 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "background.svg",
+          "image-name" : "background.png",
           "name" : "background"
         }
       ]

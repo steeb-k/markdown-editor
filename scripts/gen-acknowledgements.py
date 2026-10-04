@@ -34,10 +34,10 @@ OWN = {"markdown-ffi", "markdown-core"}
 # Other things that ship and carry a notice, listed under "Fonts" after the writing fonts:
 # (heading, what it is and where it is used, the license text kept in this repository).
 EXTRAS = [
-    ("Fira Mono (in the app icon)",
-     "The \"#m\" of the app icon is drawn from Fira Mono Bold (https://github.com/mozilla/Fira), converted to\n"
-     "outlines; the outlines ship inside the icon. Fira Mono is used under the SIL Open Font License, Version 1.1:",
-     "scripts/licenses/Fira-OFL.txt"),
+    ("IBM Plex Mono (in the app icon)",
+     "The \"#m\" of the app icon is set in IBM Plex Mono (https://github.com/IBM/plex), rendered to an image;\n"
+     "no font file ships. IBM Plex is used under the SIL Open Font License, Version 1.1:",
+     "scripts/licenses/Plex-OFL.txt"),
 ]
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice|unlicense|copyright)([-_.].*)?$", re.I)
 

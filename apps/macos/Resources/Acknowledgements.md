@@ -116,14 +116,13 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
-### Fira Mono (in the app icon)
+### IBM Plex Mono (in the app icon)
 
-The "#m" of the app icon is drawn from Fira Mono Bold (https://github.com/mozilla/Fira), converted to
-outlines; the outlines ship inside the icon. Fira Mono is used under the SIL Open Font License, Version 1.1:
+The "#m" of the app icon is set in IBM Plex Mono (https://github.com/IBM/plex), rendered to an image;
+no font file ships. IBM Plex is used under the SIL Open Font License, Version 1.1:
 
 ```text
-Digitized data copyright (c) 2012-2015, The Mozilla Foundation and Telefonica S.A.
-with Reserved Font Name < Fira >,
+Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

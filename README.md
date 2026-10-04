@@ -195,11 +195,10 @@ The app icon is drawn outside this repository; `assets/` holds what it ships:
   icon for macOS 11 to 15. `bundle.sh` copies it into the app as `Contents/Resources/Markdown.icns`
   (`CFBundleIconFile`).
 - `assets/macOS-26-Icon-Composer-layers/` holds the two layers of the Liquid Glass icon for macOS 26: a full-bleed
-  `background.svg` and a flat white `glyph.svg` (Fira Mono Bold outlines, SIL OFL, credited in Acknowledgements).
+  `background.png` and `glyph.png` (the "#m" set in IBM Plex Mono, SIL OFL, credited in Acknowledgements).
 - `assets/Markdown.icon` is the Icon Composer package made from those two layers: `icon.json` (the glyph is
-  glass, with a neutral shadow and translucency; the background is a plain layer under it) and the two SVGs in
-  `Assets/`. Its `background.svg` is the layer's file without two filter definitions the drawing never uses,
-  which the system's SVG renderer cannot read (it logged an error for each).
+  glass, with a neutral shadow and translucency; the background is a plain layer under it) and copies of the
+  two PNG layers in `Assets/`.
 
 `bundle.sh` compiles the package whenever it is there, the equivalent of:
 
