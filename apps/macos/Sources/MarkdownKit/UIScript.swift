@@ -69,16 +69,41 @@ final class UIScriptRunner {
         return nil
     }
 
-    /// Defaults for `Settings.shared` while a script runs: a private, emptied suite.
+    /// Defaults for `Settings.shared` while a script runs: a private suite, emptied when the script starts and kept
+    /// when the app is launched again by a `relaunch` step (`--ui-resume`). `--ui-defaults <name>` names the suite.
     nonisolated static func scriptDefaults() -> UserDefaults? {
         guard isRequested else { return nil }
-        let name = "io.github.steeb-k.Markdown.uiscript"
+        let args = ProcessInfo.processInfo.arguments
+        let name = args.firstIndex(of: "--ui-defaults").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "io.github.steeb-k.Markdown.uiscript"
         let d = UserDefaults(suiteName: name)
-        d?.removePersistentDomain(forName: name)
+        if !isResuming { d?.removePersistentDomain(forName: name) }
         return d
     }
 
-    private static var running: UIScriptRunner?
+    /// This launch continues a script that quit and was started again (`relaunch`): the file holds where it was.
+    nonisolated static var resumePath: String? {
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "--ui-resume"), i + 1 < args.count { return args[i + 1] }
+        return nil
+    }
+    nonisolated static var isResuming: Bool { resumePath != nil }
+
+    /// Where the session record is kept while a script runs, when the script uses one (`--ui-record <path>`, and a
+    /// `relaunch` or `session` step): never the user's, and not written at all by a script that does not ask.
+    nonisolated static var recordURL: URL? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "--ui-record"), i + 1 < args.count, scriptHas(["relaunch", "session"]) else { return nil }
+        return URL(fileURLWithPath: args[i + 1])
+    }
+
+    /// Whether the script has a step with one of these verbs.
+    nonisolated static func scriptHas(_ verbs: Set<String>) -> Bool {
+        guard let path = scriptPath, let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let steps = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return false }
+        return steps.contains { !Set($0.keys).isDisjoint(with: verbs) || (($0["assert"] as? [String: Any]).map { !Set($0.keys).isDisjoint(with: verbs) } ?? false) }
+    }
+
+    static var running: UIScriptRunner?
     static let started = Date()
     /// The first `memory` step's footprint, in MB.
     private var memoryBaseline: Double?
@@ -145,22 +170,25 @@ final class UIScriptRunner {
         }
         LinkOpener.opened = { url in UIScriptRunner.opened = url; return true }
         let runner = UIScriptRunner(script: URL(fileURLWithPath: path))
-        // The history of the script's documents goes in a folder of its own beside the output (never the user's).
+        // The history of the script's documents goes in a folder of its own beside the output (never the user's);
+        // a script started again by `relaunch` goes on with the one it had.
         let history = runner.outDir.appendingPathComponent("history", isDirectory: true)
-        try? FileManager.default.removeItem(at: history)
+        if !isResuming { try? FileManager.default.removeItem(at: history) }
         HistoryService.current = HistoryService(directory: history)
         running = runner
-        later(0.3) { runner.run() }
+        runner.resume()
+        QuitConfirmation.run = { alert in runner.answerQuit(alert) }
+        later(0.3) { runner.waitForRestoration { runner.run() } }
     }
 
     // MARK: state
 
     private let scriptURL: URL
     let outDir: URL
-    private var steps: [[String: Any]] = []
-    private var index = 0
-    private var log: [[String: Any]] = []
-    private var failures = 0
+    var steps: [[String: Any]] = []
+    var index = 0
+    var log: [[String: Any]] = []
+    var failures = 0
     var document: MarkdownDocument?
     private var weakProbes: [(String, () -> AnyObject?)] = []
     /// The last Trash move a notes step made: whether the file is in the Trash, and whether the original is still there.
@@ -169,6 +197,18 @@ final class UIScriptRunner {
     var rememberedFrames: [String: NSRect] = [:]
     /// What the last `history` Copy put on its pasteboard.
     var copied: String?
+    /// The state the script has noted for after a `relaunch` (`session` `snapshot`): records, as JSON.
+    var sessionMemory: [String: String] = [:]
+    /// The time the script spent before the app was started again.
+    var priorElapsed: TimeInterval = 0
+    /// How the next `quit` question is answered, and what it was asked so far.
+    var quitAnswer = "quit"
+    var quitSuppress = false
+    var quitDialogs: [[String: Any]] = []
+    /// A `quit` step that expects the question (or not) to be asked: told when the app ends without it having been.
+    var expectQuitDialog: Bool?
+    var relaunching = false
+    var quitDialogsBefore = 0
 
     private init(script: URL) {
         scriptURL = script
@@ -265,7 +305,7 @@ final class UIScriptRunner {
         e["step"] = index
         e["ok"] = ok
         // Seconds since the script started, to the millisecond.
-        e["t"] = (Date().timeIntervalSince(Self.started) * 1000).rounded() / 1000
+        e["t"] = ((Date().timeIntervalSince(Self.started) + priorElapsed) * 1000).rounded() / 1000
         if !ok { failures += 1 }
         log.append(e)
         let line = (try? JSONSerialization.data(withJSONObject: e, options: [.sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "\(e)"
@@ -276,7 +316,7 @@ final class UIScriptRunner {
         record(["assert": name, "detail": detail], ok: ok)
     }
 
-    private func finish() {
+    func finish() {
         let summary: [String: Any] = ["steps": steps.count, "failures": failures, "log": log]
         if let data = try? JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: outDir.appendingPathComponent("log.json"))
@@ -302,6 +342,12 @@ final class UIScriptRunner {
             columnStep(c, then: done)
         } else if let a = step["autosave"] as? [String: Any] {
             autosaveStep(a, then: done)
+        } else if step["relaunch"] != nil {
+            relaunchStep(step["relaunch"] as? [String: Any] ?? [:], then: done)
+        } else if let q = step["quit"] as? [String: Any] {
+            quitStep(q, then: done)
+        } else if let s = step["session"] as? [String: Any] {
+            sessionStep(s, then: done)
         } else if let p = step["palette"] {
             paletteStep(p, then: done)
         } else if let path = str("open") {
@@ -1048,6 +1094,8 @@ final class UIScriptRunner {
         if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
         if let v = s["authorshipDisplay"] as? Bool { st.authorshipDisplay = v }
         if let v = s["authorName"] as? String { st.authorNameSetting = v }
+        if let v = s["reopenAtLaunch"] as? Bool { st.reopenAtLaunch = v }
+        if let v = s["askBeforeQuitting"] as? Bool { st.askBeforeQuitting = v }
     }
 
     // MARK: menus and the title bar
@@ -2192,6 +2240,7 @@ final class UIScriptRunner {
 
     private func assertions(_ a: [String: Any]) {
         let text = session?.text ?? ""
+        if let s = a["session"] as? [String: Any] { sessionAssertions(s) }
         if let v = (a["textEquals"] as? String).map(expandVars) { check("textEquals", text == v, text) }
         if let v = (a["textContains"] as? String).map(expandVars) { check("textContains \(v)", text.contains(v), text) }
         if let v = (a["textLacks"] as? String).map(expandVars) { check("textLacks \(v)", !text.contains(v), text) }

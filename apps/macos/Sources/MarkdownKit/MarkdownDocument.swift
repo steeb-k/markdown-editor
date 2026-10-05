@@ -11,6 +11,9 @@ public final class MarkdownDocument: NSDocument {
     weak var lastPrintOperation: NSPrintOperation?
     /// A document the app made for itself (Help): never opened in notes mode, never drafted or snapshotted.
     var isBundled = false
+    /// The app is quitting and this untitled document's text is kept in the session record: it is not drafted into the
+    /// library and nobody is asked about it (see `QuitConfirmation.prepareToQuit`).
+    var keepsTextOnQuit = false
     /// The workspace the window this document is about to get adopts (a note opened from a window's sidebar), in
     /// place of starting a workspace of its own.
     var inheritedWorkspace: Workspace?

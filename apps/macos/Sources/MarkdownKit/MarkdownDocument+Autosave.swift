@@ -197,6 +197,10 @@ extension MarkdownDocument {
     /// an untitled document with no library asks.
     func settleForLeaving(completion: @escaping (Bool) -> Void) {
         cancelAutosave()
+        if keepsTextOnQuit, fileURL == nil, !isBundled {
+            completion(true)
+            return
+        }
         if isBundled {
             isDocumentEdited ? askStandard(completion) : completion(true)
             return

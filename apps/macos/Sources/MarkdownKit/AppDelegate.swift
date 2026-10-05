@@ -27,15 +27,62 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         #else
         HistoryService.current = HistoryService(directory: DocumentFileAccess.historyDirectory)
         #endif
+        configureSession()
+    }
+
+    /// The record of the windows to put back at this launch, read before anything is opened (nil: launch as usual).
+    private var pendingRestore: SessionRecord?
+
+    /// The app's own record of its windows: written as they change, read now. A UI script writes and reads one only when
+    /// it asks (`--ui-record`, see `UIScriptRunner`), and never the user's.
+    private func configureSession() {
+        #if DEBUG || UI_SCRIPT
+        if UIScriptRunner.isRequested {
+            guard let url = UIScriptRunner.recordURL else { return }
+            DocumentFileAccess.sessionRecordOverride = url
+            SessionRecorder.current = SessionRecorder(url: url)
+            if UIScriptRunner.isResuming { pendingRestore = SessionRestorer.record(for: .shared, at: url) }
+            return
+        }
+        #endif
+        SessionRecorder.current = SessionRecorder()
+        pendingRestore = SessionRestorer.record(for: .shared)
+    }
+
+    private func restoreSession() {
+        guard let record = pendingRestore else { return }
+        pendingRestore = nil
+        let restorer = SessionRestorer(record: record, settings: .shared)
+        SessionRestorer.current = restorer
+        restorer.start {
+            // Nothing could be brought back (every file gone): the app opens as it would have.
+            #if DEBUG || UI_SCRIPT
+            if UIScriptRunner.isRequested { return }
+            #endif
+            if NSDocumentController.shared.documents.isEmpty { NSDocumentController.shared.newDocument(nil) }
+        }
+    }
+
+    /// Quitting with a document window open asks first (when the preference says so) and the record of the windows is
+    /// written once more. `MarkdownApplication.terminate` has done both already for ⌘Q and the Dock; what reaches here
+    /// without (logout, shutdown) does them now.
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard QuitConfirmation.confirmed || QuitConfirmation.prepareToQuit() else { return .terminateCancel }
+        return .terminateNow
     }
 
     /// The snapshots asked for so far reach the disk before the process ends.
     public func applicationWillTerminate(_ notification: Notification) {
         HistoryService.current?.flush()
+        #if DEBUG || UI_SCRIPT
+        UIScriptRunner.willTerminate()
+        #endif
     }
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
-        // NSDocumentController opens the untitled document (or the files we were launched with).
+        // NSDocumentController opens the untitled document (or the files we were launched with); the windows of the
+        // record come back beside them.
+        restoreSession()
         #if DEBUG || UI_SCRIPT
         // A UI script takes activation (and the person's keyboard) only if it has steps that need it: real mouse events.
         if !UIScriptRunner.isRequested || UIScriptRunner.scriptNeedsActivation { NSApp.activate(ignoringOtherApps: true) }
@@ -49,7 +96,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         #if DEBUG || UI_SCRIPT
         if UIScriptRunner.isRequested { return false }
         #endif
-        return true
+        // The windows of the record are the launch's windows.
+        return pendingRestore == nil
     }
     /// A click on the Dock icon with no document window shows one (an untitled document), even
     /// when only the Settings window is open.

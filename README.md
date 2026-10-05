@@ -177,6 +177,18 @@ wikilink, Quick Open, Today's Note, a template or a link in the preview replaces
 and snapshotted first; the new document takes the old one's place and size, its workspace (so the sidebar is as it was),
 its layout and mode, and its column. Command-click (⌘-Return in Quick Open, ⌘⌥-click on a wikilink) opens a new window instead.
 
+## Reopening and quitting
+
+The app keeps its own record of its windows (`~/Library/Application Support/Markdown/session.json`, written a moment
+after anything in it changes and once more on quit) and puts them back at every launch, whatever the system's "Close
+windows when quitting" says: each window's document (a bookmark, so a moved file is found), frame and screen, full
+screen, layout, Source or Live, focus mode, Notes Mode with its folder, selection, filters, sort, open folders and
+sidebar width and scroll, the side column (shown, pane, width), the caret and the scroll position, the order of the
+windows and which one was key. A file that has gone is skipped (noted in the log, no dialog). An untitled document comes
+back untitled with its text, and quitting never asks to save it. Settings > "Reopen documents at launch" (on) turns it
+off. Quitting (⌘Q, the Dock, logout) with a window open asks "Quit Markdown?" with Quit and Cancel and "Do not ask
+again"; Settings > "Ask before quitting" (on) is the same setting. With no window open the app quits at once.
+
 ## Autosave
 
 A titled document is written 2 seconds after the last keystroke, and when it leaves its window (closing, being

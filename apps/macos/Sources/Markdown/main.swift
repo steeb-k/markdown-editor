@@ -1,7 +1,7 @@
 import AppKit
 import MarkdownKit
 
-let app = NSApplication.shared
+let app = MarkdownApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)

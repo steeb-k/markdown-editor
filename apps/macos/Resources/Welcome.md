@@ -71,7 +71,7 @@ File > Export > PDF writes the preview as a paginated PDF; File > Print prints i
 
 ## Look and feel
 
-Settings (in the app menu) chooses the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom, the window buttons and the title fade away while you type and return when you move the pointer, open a menu, or stop typing for a couple of seconds.
+Settings (in the app menu) chooses whether the windows reopen at launch and whether quitting asks first, the theme (Light, Dark, Sepia, or System, which follows the Mac), the writing font, its size and the width of the line. The formatting bar along the bottom, the window buttons and the title fade away while you type and return when you move the pointer, open a menu, or stop typing for a couple of seconds.
 
 ## Keyboard shortcuts
 

@@ -69,6 +69,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     /// The rename popover, while it shows.
     var renamer: TitleRenamer?
     var observers: [NSObjectProtocol] = []
+    /// The window's frame while it is not full screen (what the session record keeps, and full screen returns to), and
+    /// whether it is on its way into or out of full screen.
+    var windowedFrame: NSRect?
+    var inFullScreenTransition = false
 
     /// A comfortable size for a new window: 860 by 740 points on an ordinary screen, a little larger
     /// on a big one, never more than nine tenths of the visible screen on a small one.
@@ -92,6 +96,9 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
+        // The app's own record brings the windows back (see `SessionRestorer`), not AppKit's, which would bring a second
+        // copy of each: while the preference is on.
+        window.isRestorable = !session.settings.reopenAtLaunch
         window.minSize = NSSize(width: 360, height: 280)
 
         textView = session.makeTextView()
@@ -210,7 +217,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         previewController.observeEditor(scroll)
         outlineScrollCoalescer = DisplayCoalescer(view: scroll) { [weak self] in self?.outlineFollowScroll() }
         observers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.outlineScrolled() }
+            MainActor.assumeIsolated {
+                self?.outlineScrolled()
+                self?.recordChanged()
+            }
         })
         installTitlebar(in: window)
         root.onPointerMoved = { [weak self] in self?.chrome.send(.pointerMoved) }
@@ -229,8 +239,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         session.onLayoutChange = { [weak self] in
             self?.applyLayout()
             self?.outlineLayoutChanged()
+            self?.recordChanged()
         }
-        session.onColumnChange = { [weak self] in self?.applyColumn() }
+        session.onViewModeChange = { [weak self] in self?.recordChanged() }
+        session.onColumnChange = { [weak self] in
+            self?.applyColumn()
+            self?.recordChanged()
+        }
         session.onOutline = { [weak self] entries in self?.outlineArrived(entries) }
         previewController.onPageLine = { [weak self] line in self?.outlinePageScrolled(to: line) }
         observers.append(NotificationCenter.default.addObserver(
@@ -253,7 +268,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         window.minSize = NSSize(width: max(window.minSize.width, (toolbar.fittingSize.width + 40).rounded(), 360),
                                 height: window.minSize.height)
         baseMinWidth = window.minSize.width
-        session.onFocusToolsChange = { [weak self] in self?.focusToolsChanged() }
+        session.onFocusToolsChange = { [weak self] in
+            self?.focusToolsChanged()
+            self?.recordChanged()
+        }
         session.onAuthorshipDecisionNeeded = { [weak self] in
             DispatchQueue.main.async { self?.presentAuthorshipSheetIfNeeded() }
         }
@@ -265,7 +283,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         centring.layoutAllows = { [weak self] in self?.session.layout != .split }
         textView.centring = centring
         // The caret does not move the outline's mark; the scroll does (`outlineScrolled`).
-        session.onCaretActivity = { [weak self] in self?.centring.request() }
+        session.onCaretActivity = { [weak self] in
+            self?.centring.request()
+            self?.recordChanged()
+        }
         session.onLayoutSettled = { [weak self] in self?.centring.layoutChanged() }
         centring.update()
     }
@@ -559,9 +580,22 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     static let toolbarBottomMargin: CGFloat = 16
 
-    public func windowDidResize(_ notification: Notification) { geometryChanged() }
-    public func windowDidEnterFullScreen(_ notification: Notification) { geometryChanged() }
-    public func windowDidExitFullScreen(_ notification: Notification) { geometryChanged() }
+    public func windowDidResize(_ notification: Notification) {
+        noteWindowedFrame()
+        geometryChanged()
+        recordChanged()
+    }
+    public func windowDidEnterFullScreen(_ notification: Notification) {
+        inFullScreenTransition = false
+        geometryChanged()
+        recordChanged()
+    }
+    public func windowDidExitFullScreen(_ notification: Notification) {
+        inFullScreenTransition = false
+        noteWindowedFrame()
+        geometryChanged()
+        recordChanged()
+    }
 
     /// The window's size changed: the insets follow, and the centred line is placed in the new
     /// middle once the panes have their new frames (they are laid out a pass after the window).
@@ -635,9 +669,11 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         history?.service = nil
         previewController.tearDown()
         leaveWorkspace(closing: true)
+        recordChanged()
     }
 
     public func windowDidBecomeKey(_ notification: Notification) {
+        recordChanged()
         session.refreshAppearance()
         documentBecameFront()
         // Pictures another app changed while this window was in the background.

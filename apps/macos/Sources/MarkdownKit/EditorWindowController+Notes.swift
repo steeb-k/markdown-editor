@@ -57,6 +57,7 @@ extension EditorWindowController {
     }
 
     func workspaceChanged(_ change: Workspace.Change) {
+        recordChanged()
         if change.contains(.mode) { applyNotesMode() }
         if change.contains(.layout) { applySidebarWidth() }
         sidebar?.workspaceChanged(change)

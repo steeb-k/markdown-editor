@@ -164,6 +164,51 @@ public enum DocumentFileAccess {
             .appendingPathComponent("Library/Application Support/Markdown/history", isDirectory: true)
     }
 
+    // MARK: the session record
+
+    /// Where the app's record of its open windows is (`session.json` next to `history`). A UI script and the tests
+    /// point it somewhere of their own; nothing but the real app ever uses the user's.
+    nonisolated(unsafe) public static var sessionRecordOverride: URL?
+
+    public static var sessionRecordURL: URL {
+        sessionRecordOverride ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Markdown/session.json")
+    }
+
+    /// A file as the record remembers it: a bookmark (so a file that was moved or renamed is still found), beside
+    /// the path it had.
+    public struct FileRef: Codable, Equatable {
+        public var path: String
+        public var bookmark: Data?
+        public init(path: String, bookmark: Data?) {
+            self.path = path
+            self.bookmark = bookmark
+        }
+    }
+
+    public static func makeFileRef(_ file: URL) -> FileRef {
+        let data = (try? file.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil))
+            ?? (try? file.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
+        return FileRef(path: file.path, bookmark: data)
+    }
+
+    /// The file a reference stands for, or nil when it is not there any more. Never mounts a volume or asks anything.
+    public static func resolve(_ ref: FileRef) -> URL? {
+        var url = URL(fileURLWithPath: ref.path)
+        if let data = ref.bookmark {
+            var stale = false
+            if let resolved = (try? URL(resolvingBookmarkData: data, options: resolveOptions.union(.withSecurityScope), relativeTo: nil, bookmarkDataIsStale: &stale))
+                ?? (try? URL(resolvingBookmarkData: data, options: resolveOptions, relativeTo: nil, bookmarkDataIsStale: &stale)) {
+                url = resolved
+            }
+        }
+        // A bookmark follows a file into the Trash: a file that was thrown away is gone.
+        if url.path.contains("/.Trash/") { return nil }
+        _ = url.startAccessingSecurityScopedResource()
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && !directory.boolValue ? url : nil
+    }
+
     // MARK: folders the user grants
 
     /// A folder the user chose, as it is remembered: a security-scoped bookmark (which an

@@ -31,6 +31,8 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Toggle("Reopen documents at launch", isOn: Binding(get: { s.reopenAtLaunch }, set: { s.reopenAtLaunch = $0 }))
+            Toggle("Ask before quitting", isOn: Binding(get: { s.askBeforeQuitting }, set: { s.askBeforeQuitting = $0 }))
             Picker("Theme", selection: Binding(get: { s.theme }, set: { s.theme = $0 })) {
                 ForEach(ThemeChoice.allCases, id: \.self) { Text($0.title).tag($0) }
             }

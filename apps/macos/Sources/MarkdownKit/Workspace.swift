@@ -94,6 +94,25 @@ public final class Workspace {
         return w
     }
 
+    /// The state a window was recorded in (see `SessionRecord`): the selection, the filters, the sort, the folders that were
+    /// open, the width and the scroll position of the sidebar. A folder collapsed when the record was made stays collapsed
+    /// (the roots that start opened are not opened again).
+    public func restore(_ n: SessionRecord.Notes) {
+        selection = n.selection ?? []
+        selectedTags = n.tags ?? []
+        searchText = n.search ?? ""
+        if let s = n.sort.flatMap(NoteSort.init(rawValue:)) { sort = s }
+        if let e = n.expanded {
+            expanded = Set(e)
+            seenRoots.formUnion(library.roots.map(\.id))
+        }
+        collapsedTags = n.tagsCollapsed ?? false
+        backlinksShown = n.backlinks ?? false
+        scrollOffset = CGFloat(n.scroll ?? 0)
+        if let w = n.sidebarWidth { sidebarWidth = min(max(CGFloat(w), 160), 480) }
+        if notesMode { requestSnapshot() }
+    }
+
     // MARK: observing
 
     public func observe(_ owner: AnyObject, _ handler: @escaping (Change) -> Void) {

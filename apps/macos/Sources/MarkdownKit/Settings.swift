@@ -98,6 +98,8 @@ public final class Settings: NSObject {
         static let templatesFolder = "templatesFolder"
         static let noteSort = "noteSort"
         static let sidebarWidth = "sidebarWidth"
+        static let reopenAtLaunch = "reopenDocumentsAtLaunch"
+        static let askBeforeQuitting = "askBeforeQuitting"
         /// The side column's own keys; the outline's and the history's (M8d, M8e) are read once if these are not set.
         static let sideColumnByDefault = "sideColumnByDefault"
         static let sideColumnPane = "sideColumnPane"
@@ -135,6 +137,8 @@ public final class Settings: NSObject {
             Key.templatesFolder: "Templates",
             Key.noteSort: NoteSort.name.rawValue,
             Key.sidebarWidth: 240.0,
+            Key.reopenAtLaunch: true,
+            Key.askBeforeQuitting: true,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -334,6 +338,20 @@ public final class Settings: NSObject {
     public var sidebarWidth: Double {
         get { min(max(defaults.double(forKey: Key.sidebarWidth), 160), 480) }
         set { defaults.set(min(max(newValue, 160), 480), forKey: Key.sidebarWidth) }
+    }
+
+    // MARK: launching and quitting
+
+    /// Whether the windows that were open when the app quit come back at launch (see `SessionRecord`).
+    public var reopenAtLaunch: Bool {
+        get { defaults.bool(forKey: Key.reopenAtLaunch) }
+        set { defaults.set(newValue, forKey: Key.reopenAtLaunch); changed() }
+    }
+
+    /// Whether quitting with a document window open asks first ("Do not ask again" in that question turns it off).
+    public var askBeforeQuitting: Bool {
+        get { defaults.bool(forKey: Key.askBeforeQuitting) }
+        set { defaults.set(newValue, forKey: Key.askBeforeQuitting); changed() }
     }
 
     /// The classes of words that are coloured, in every window.
