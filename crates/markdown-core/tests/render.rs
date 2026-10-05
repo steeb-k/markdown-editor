@@ -1235,8 +1235,8 @@ fn braces_balance(css: &str) -> bool {
 fn css_follows_the_theme_and_typography() {
     for t in builtin_themes() {
         let typo = Typography {
-            font_family: "\"Quattro (bundled) S\", sans-serif".into(),
-            mono_family: "\"Mono (bundled) S\", monospace".into(),
+            font_family: "\"Bundled Quattro\", sans-serif".into(),
+            mono_family: "\"Bundled Mono\", monospace".into(),
             font_size_px: 19.0,
             line_height: 1.6,
             measure_ch: 66.0,
@@ -1256,13 +1256,13 @@ fn css_follows_the_theme_and_typography() {
         ] {
             assert!(css.contains(&format!("{role}: {};", color.to_hex())), "{}: {role}", t.id);
         }
-        assert!(css.contains("font-family: \"Quattro (bundled) S\", sans-serif; font-size: 19px; line-height: 1.6;"), "{css}");
+        assert!(css.contains("font-family: \"Bundled Quattro\", sans-serif; font-size: 19px; line-height: 1.6;"), "{css}");
         assert!(css.contains("max-width: 66ch"));
         assert!(css.contains(&format!("color-scheme: {};", if t.is_dark { "dark" } else { "light" })));
         // A proportional body: code a little smaller. A monospaced body (same stack): the same size.
         assert!(css.contains("font-size: 0.92em"));
         let mono = preview_css(&t, &Typography { font_family: typo.mono_family.clone(), ..typo.clone() });
-        assert!(mono.contains("code, pre { font-family: \"Mono (bundled) S\", monospace; font-size: 1em; }"), "{mono}");
+        assert!(mono.contains("code, pre { font-family: \"Bundled Mono\", monospace; font-size: 1em; }"), "{mono}");
         assert!(css.contains("img { max-width: 100%;"));
     }
 }

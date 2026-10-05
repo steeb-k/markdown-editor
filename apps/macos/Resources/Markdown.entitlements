@@ -10,7 +10,7 @@
     their own entitlements. The app process never JITs, so no com.apple.security.cs.allow-jit and no
     allow-unsigned-executable-memory.
   - NaturalLanguage (parts-of-speech tagging) and the spell checker: system frameworks, no entitlement.
-  - Files: the app is not sandboxed (Developer ID distribution, see PLAN.md section 6), so reading and
+  - Files: the app is not sandboxed (Developer ID distribution), so reading and
     writing the user's documents and the pictures beside them needs nothing. The sandbox milestone
     (M9) will add com.apple.security.app-sandbox, user-selected read-write and network-client here.
   - Network: remote pictures over https use URLSession; an unsandboxed app needs no network entitlement.

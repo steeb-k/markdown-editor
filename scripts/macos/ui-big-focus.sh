@@ -3,7 +3,7 @@
 # focus mode and syntax highlighting off and on, and with everything on ("all": focus, syntax
 # and about 3,300 authorship runs shown in colour), in Source and Live mode. Every configuration
 # runs in its own process on a freshly opened document: typing slows down in a long session
-# whatever is switched on (the polish-list item in PLAN.md), which would confound a comparison.
+# whatever is switched on (a polish item), which would confound a comparison.
 #
 #   scripts/macos/ui-big-focus.sh            # release build with the harness, then 10 runs
 #   SKIP_BUILD=1 scripts/macos/ui-big-focus.sh

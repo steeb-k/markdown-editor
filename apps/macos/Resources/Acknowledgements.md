@@ -10,7 +10,7 @@ build. Do not edit it by hand.
 
 ### the bundled Mono, Duo and Quattro faces
 
-The writing fonts bundled with the app are Mono S, Duo S and Quattro S
+The writing fonts bundled with the app are the Mono S, Duo S and Quattro S faces
 , used under the SIL Open Font License, Version 1.1:
 
 ```text

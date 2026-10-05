@@ -1,6 +1,6 @@
 # markdown
 
-A native macOS Markdown editor on a shared Rust core. See [PLAN.md](PLAN.md).
+A native macOS Markdown editor on a shared Rust core, built for writing: styled source, a Live mode that hides the markup, a preview, focus mode, a notes library with wikilinks and tags, and a history of every pause.
 
 Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-apple-darwin` targets. No other tools needed (UniFFI's bindgen is a workspace binary).
 
@@ -21,7 +21,7 @@ cargo test --workspace
 # SWEEP_STRIDE=1 cargo test --profile fuzz -p markdown-core --test command_props every_command  # every command on every selection
 # INSTA_UPDATE=always cargo test -p markdown-core --test fixtures       # accept changed snapshots (review the diff!)
 # PROPTEST_CASES=1000000 cargo test --profile fuzz -p markdown-core --test authorship   # authorship arithmetic and the file format
-# cargo test -p markdown-core --test authorship -- --ignored spec_readme    # the format's own spec README (fetched, not vendored) still verifies
+# cargo test -p markdown-core --test authorship -- --ignored spec_readme    # the format's own README (fetched, not vendored) still verifies
 # cargo test --release -p markdown-core --test perf -- --ignored --nocapture         # 1 MB timing, HTML rendering included
 # RENDER_FUZZ_CASES=50000 cargo test --profile fuzz -p markdown-core --test render   # render fuzzing, sanitizer soup checked by a browser-faithful tokenizer
 # RENDER_DIFF_CASES=1000000 cargo test --profile fuzz -p markdown-core --test render_diff   # the renderer against pulldown-cmark's own writer, additions normalised away

@@ -117,7 +117,7 @@ if [ -d "$ICON_PKG" ]; then
   plutil -lint "$APP/Contents/Info.plist" >/dev/null
   rm -rf "$ICON_TMP"
 fi
-# Bundled writing fonts (the reference editor, SIL OFL) and their license; the app falls back to system
+# Bundled writing fonts (SIL OFL) and their license; the app falls back to system
 # fonts when they are missing. Info.plist's ATSApplicationFontsPath points at this folder.
 if [ -d "$APP_PKG/Resources/Fonts" ]; then
   mkdir -p "$APP/Contents/Resources/Fonts"

@@ -14,7 +14,7 @@ What is listed comes from the build, not from memory:
 * The syntax definitions `two-face` embeds: its own acknowledgement data, by way of the
   `syntax_licenses` example of markdown-core.
 * The bundled writing fonts: the OFL text shipped beside them (apps/macos/Resources/Fonts/OFL-LICENSE.md).
-* `EXTRAS`: anything else that ships with a notice (the Fira Mono outlines in the app icon), each
+* `EXTRAS`: anything else that ships with a notice (the typeface of the app icon), each
   with its license text in scripts/licenses.
 
 Needs `cargo` (rustup's) and the crates already fetched (`cargo fetch`). The output is deterministic.
@@ -167,7 +167,7 @@ def main():
 
     w("## Fonts\n")
     w("### the bundled Mono, Duo and Quattro faces\n")
-    w("The writing fonts bundled with the app are Mono S, Duo S and Quattro S\n"
+    w("The writing fonts bundled with the app are the Mono S, Duo S and Quattro S faces\n"
       ", used under the SIL Open Font License, Version 1.1:\n")
     w(fence(read(os.path.join(ROOT, "apps/macos/Resources/Fonts/OFL-LICENSE.md")).strip()) + "\n")
     for title, intro, path in EXTRAS:

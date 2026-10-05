@@ -317,7 +317,7 @@ Markdown *inside* an HTML block renders when there is a blank line around it.
 
 ## Authorship
 
-Use Edit ▸ Paste As ▸ AI (⇧⌘V) or Reference (⌃⌘V) to paste borrowed text, or select some and use Mark As (⌃⌘1/2/3). Show Authorship (⌥⌘A) colours it; the marks are saved in the file in the reference editor's annotation format. `fixtures/authorship/harbour-lights.md` in the repository has six authors already marked.
+Use Edit ▸ Paste As ▸ AI (⇧⌘V) or Reference (⌃⌘V) to paste borrowed text, or select some and use Mark As (⌃⌘1/2/3). Show Authorship (⌥⌘A) colours it; the marks are saved in the file in the open Markdown Annotations format. `fixtures/authorship/harbour-lights.md` in the repository has six authors already marked.
 
 ## Export
 

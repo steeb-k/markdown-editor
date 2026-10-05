@@ -6,4 +6,3 @@ build/
 # generated FFI artifacts
 apps/macos/Frameworks/
 apps/macos/Sources/MarkdownCore/
-.claude/
