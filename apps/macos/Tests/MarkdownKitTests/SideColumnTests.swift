@@ -178,7 +178,7 @@ final class SideColumnTests: XCTestCase {
 
     func testViewSideColumnToggleAndShowHistoryAreOneColumnWithTwoKeys() throws {
         let (doc, wc) = try open()
-        let side = try menuItem("Side Column")
+        let side = try menuItem("Show Outline")
         let history = try menuItem("Show History")
         XCTAssertEqual(side.action, #selector(EditorWindowController.toggleSideColumn(_:)))
         XCTAssertEqual(side.keyEquivalent, "o")
@@ -196,11 +196,11 @@ final class SideColumnTests: XCTestCase {
         XCTAssertEqual(side.state, .on)
         XCTAssertEqual(history.state, .off)
         XCTAssertEqual(doc.session.columnPane, .outline)
-        // ⌃⌘H with the column on the outline: the same column, on History.
+        // ⌃⌘H with the column on the outline: the same column, on History; each item's check is its own pane's.
         let width = wc.columnView?.frame.width ?? 0
         wc.showHistory(nil)
         XCTAssertTrue(wc.validateMenuItem(side) && wc.validateMenuItem(history))
-        XCTAssertEqual(side.state, .on)
+        XCTAssertEqual(side.state, .off)
         XCTAssertEqual(history.state, .on)
         XCTAssertEqual(doc.session.columnPane, .history)
         XCTAssertEqual(wc.columnView?.frame.width ?? 0, width, accuracy: 0.5)
@@ -210,13 +210,17 @@ final class SideColumnTests: XCTestCase {
         XCTAssertNil(wc.sideColumn)
         XCTAssertTrue(wc.validateMenuItem(history))
         XCTAssertEqual(history.state, .off)
-        // Hidden, ⌃⌘H shows the column on History; ⌃⌘O then hides it, and brings it back on History.
+        // Hidden, ⌃⌘H shows the column on History; ⌃⌘O then switches it to the outline (the owner's third round:
+        // it used to hide the column, which left no key back to the outline), and ⌃⌘O once more hides it.
         wc.showHistory(nil)
         XCTAssertTrue(doc.session.historyShown)
         wc.toggleSideColumn(nil)
+        XCTAssertTrue(doc.session.outlineShown, "⌃⌘O with History showing switches to the outline")
+        XCTAssertEqual(wc.columnView?.frame.width ?? 0, width, accuracy: 0.5)
+        wc.toggleSideColumn(nil)
         XCTAssertFalse(doc.session.columnShown)
         wc.toggleSideColumn(nil)
-        XCTAssertTrue(doc.session.historyShown, "the column comes back on the pane it last had")
+        XCTAssertTrue(doc.session.outlineShown, "hidden, ⌃⌘O shows the outline")
     }
 
     /// Found in the M8f test pass: ⌃⌘H (and every menu path) wrote the pane into the settings, so one press changed what
@@ -229,7 +233,7 @@ final class SideColumnTests: XCTestCase {
         XCTAssertTrue(doc.session.historyShown)
         XCTAssertEqual(settings.sideColumnPane, .outline, "⌃⌘H leaves the setting alone")
         wc.showHistory(nil)
-        wc.toggleSideColumn(nil)
+        wc.showHistory(nil)
         XCTAssertTrue(doc.session.historyShown, "this window remembers its own pane")
         doc.session.setOutlineShown(true)
         settings.sideColumnPane = .history
@@ -319,7 +323,7 @@ final class SideColumnTests: XCTestCase {
     func testShowHistoryIsOffForADocumentWithNoFileOfItsOwn() throws {
         let (_, bundled) = try open(bundled: true)
         XCTAssertFalse(bundled.validateMenuItem(try menuItem("Show History")), "a help page has no history")
-        XCTAssertTrue(bundled.validateMenuItem(try menuItem("Side Column")), "the column's outline is for any document")
+        XCTAssertTrue(bundled.validateMenuItem(try menuItem("Show Outline")), "the column's outline is for any document")
     }
 
     // MARK: the title over the pane, whichever pane

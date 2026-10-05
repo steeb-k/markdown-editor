@@ -4,7 +4,7 @@ import MarkdownCore
 /// The side column's side of a session: whether it is shown here, which pane, and the headings, asked of the core's
 /// analysis queue a moment after the last answer to an edit, so typing never waits for them.
 extension EditorSession {
-    /// View > Side Column: the column shown or hidden, with the pane it last showed in this window.
+    /// The column shown or hidden, with the pane it last showed in this window.
     public func setColumnShown(_ on: Bool) {
         guard on != columnShown else { return }
         let before = outlineShown
@@ -24,8 +24,13 @@ extension EditorSession {
         columnChanged(outlineWasShown: before)
     }
 
-    /// View > Show History: the column with History selected; when it is already showing it, hides the column
-    /// (the same key shows and hides, as View > Side Column's does).
+    /// View > Show Outline: the column with Outline selected; when it is already showing it, hides the column
+    /// (the same key shows and hides). With History showing, it switches to the outline rather than hiding.
+    public func toggleOutline() {
+        if outlineShown { setColumnShown(false) } else { selectColumnPane(.outline) }
+    }
+
+    /// View > Show History: the mirror of `toggleOutline`.
     public func toggleHistory() {
         if historyShown { setColumnShown(false) } else { selectColumnPane(.history) }
     }

@@ -1,6 +1,6 @@
 [
  {
-  "log": "--- The outline in the side column: View > Side Column, in every layout, clicks jump the editor and the preview, the mark follows the scroll position (never the caret) and the page, keys, folding, the divider, notes mode, 1000 headings"
+  "log": "--- The outline in the side column: View > Show Outline, in every layout, clicks jump the editor and the preview, the mark follows the scroll position (never the caret) and the page, keys, folding, the divider, notes mode, 1000 headings"
  },
  {
   "setting": {
@@ -48,7 +48,7 @@
     "plain": true
    },
    "menu": {
-    "View > Side Column": {
+    "View > Show Outline": {
      "enabled": true,
      "state": "off"
     }
@@ -117,7 +117,7 @@
     "marked": "Field notes"
    },
    "menu": {
-    "View > Side Column": {
+    "View > Show Outline": {
      "enabled": true,
      "state": "on"
     }
@@ -1469,7 +1469,7 @@
     "plain": true
    },
    "menu": {
-    "View > Side Column": {
+    "View > Show Outline": {
      "state": "off"
     }
    }

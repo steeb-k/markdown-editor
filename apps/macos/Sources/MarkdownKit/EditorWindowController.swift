@@ -450,7 +450,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showEditorLayout(_:)): item.state = session.layout == .editor ? .on : .off; return true
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
-        case #selector(toggleSideColumn(_:)): item.state = session.columnShown ? .on : .off; return true
+        case #selector(toggleSideColumn(_:)): item.state = session.outlineShown ? .on : .off; return true
         case #selector(showHistory(_:)):
             item.state = session.historyShown ? .on : .off
             // The history is of a document with a file of its own; a Help page has none.

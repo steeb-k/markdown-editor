@@ -7,7 +7,7 @@ import MarkdownCore
 /// (⌃⌘O) shows and hides it, View > Show History (⌃⌘H) shows it with History selected, or hides it when History is
 /// what it already shows.
 extension EditorWindowController {
-    @objc func toggleSideColumn(_ sender: Any?) { session.setColumnShown(!session.columnShown) }
+    @objc func toggleSideColumn(_ sender: Any?) { session.toggleOutline() }
 
     @objc func showHistory(_ sender: Any?) { session.toggleHistory() }
 

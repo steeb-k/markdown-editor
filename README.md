@@ -103,7 +103,7 @@ instead of `build/Markdown.app`, so a copy someone is using is left alone.
 
 ## Side Column
 
-View > Side Column (⌃⌘O) shows and hides one column on the right, in every layout (Preview too), beside the notes sidebar when
+View > Show Outline (⌃⌘O) and View > Show History (⌃⌘H) share one column on the right: each shows its pane, switches to it when the other is showing, and hides the column when its own pane is what shows. It is there in every layout (Preview too), beside the notes sidebar when
 that is on (neither makes the window larger). It has a segmented header at its top, the system's small segmented control
 (Outline | History), and one content area that holds the outline's view or the history's: the pane not showing is not
 alive (it is made when selected and freed when another takes its place), and switching never changes the width. One width

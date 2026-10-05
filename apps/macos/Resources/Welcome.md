@@ -10,7 +10,7 @@ Markdown is plain text with a few marks that mean something: `#` makes a heading
 
 Beside the editor you can have a preview: **Editor and Preview** puts the two side by side and keeps them scrolled together; **Preview** shows the finished page alone. Pictures, tables, footnotes and highlighted code blocks look as they will when you print or export.
 
-View > Side Column puts one column on the right, in every layout, with two panes you switch between at its top: **Outline** lists the document's headings (click one to go there, and the editor and the preview both scroll to it; use the arrow keys and Return; fold a level with its triangle) and marks the one you are reading, following the scroll rather than the caret, and **History** (see below). One width, one toggle; View > Show History shows the column on History. Which windows start with it, and on which pane, are settings.
+View > Show Outline (⌃⌘O) or Show History (⌃⌘H) puts one column on the right, in every layout, with two panes you switch between at its top: **Outline** lists the document's headings (click one to go there, and the editor and the preview both scroll to it; use the arrow keys and Return; fold a level with its triangle) and marks the one you are reading, following the scroll rather than the caret, and **History** (see below). One width, one toggle; View > Show History shows the column on History. Which windows start with it, and on which pane, are settings.
 
 ## Writing
 

@@ -225,7 +225,7 @@ enum MainMenu {
             _ = item(m, "Show Authorship", #selector(EditorTextView.toggleAuthorshipDisplay(_:)), "a", [.command, .option])
             m.addItem(.separator())
             _ = item(m, "Hide Formatting Toolbar", #selector(AppDelegate.toggleFormattingToolbar(_:)), "t", [.command, .control])
-            _ = item(m, "Side Column", #selector(EditorWindowController.toggleSideColumn(_:)), "o", [.command, .control])
+            _ = item(m, "Show Outline", #selector(EditorWindowController.toggleSideColumn(_:)), "o", [.command, .control])
             _ = item(m, "Show History", #selector(EditorWindowController.showHistory(_:)), "h", [.command, .control])
             m.addItem(.separator())
             _ = item(m, "Notes Mode", #selector(EditorWindowController.toggleNotesMode(_:)), "l", [.command, .control])

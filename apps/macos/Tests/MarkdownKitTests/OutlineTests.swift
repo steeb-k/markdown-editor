@@ -267,7 +267,7 @@ final class OutlineTests: XCTestCase {
         defer { doc.close() }
         XCTAssertNil(wc.outline)
         XCTAssertTrue(wc.window?.contentView === wc.root, "off: the window is exactly the editor's own view")
-        let item = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu?.items.first { $0.title == "Side Column" })
+        let item = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu?.items.first { $0.title == "Show Outline" })
         XCTAssertEqual(item.action, #selector(EditorWindowController.toggleSideColumn(_:)))
         XCTAssertEqual(item.keyEquivalent, "o")
         XCTAssertEqual(item.keyEquivalentModifierMask, [.command, .control])

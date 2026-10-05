@@ -94,16 +94,18 @@ extension UIScriptRunner {
     /// for the pane. `on` false hides the column when it shows `pane`.
     func showColumnPane(_ pane: SideColumnPane, _ on: Bool, _ wc: EditorWindowController) {
         let shows = pane == .outline ? wc.session.outlineShown : wc.session.historyShown
+        // Each pane has its own key, which hides the column only when that pane is what it shows (and switches
+        // to it otherwise), so a pane is hidden with its own key, never the other's.
+        let key = pane == .outline ? #selector(EditorWindowController.toggleSideColumn(_:)) : #selector(EditorWindowController.showHistory(_:))
         if !on {
-            if shows { _ = NSApp.sendAction(#selector(EditorWindowController.toggleSideColumn(_:)), to: wc, from: nil) }
+            if shows { _ = NSApp.sendAction(key, to: wc, from: nil) }
             return
         }
         if shows { return }
-        if pane == .history, !wc.session.columnShown {
-            _ = NSApp.sendAction(#selector(EditorWindowController.showHistory(_:)), to: wc, from: nil)
+        if !wc.session.columnShown {
+            _ = NSApp.sendAction(key, to: wc, from: nil)
             return
         }
-        if !wc.session.columnShown { _ = NSApp.sendAction(#selector(EditorWindowController.toggleSideColumn(_:)), to: wc, from: nil) }
         if wc.session.columnPane != pane { chooseSegment(pane, wc) }
     }
 

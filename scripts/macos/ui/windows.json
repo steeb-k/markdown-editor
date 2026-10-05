@@ -47,7 +47,7 @@
   {"notes": {"click": "Projects/Alpha.md"}},
   {"assert": {"windows": {"count": 1, "titles": ["Alpha.md"], "frameKept": "start"}, "outline": {"shown": true}}},
   {"wait": 0.5},
-  {"assert": {"menu": {"View > Live": {"state": "on"}, "View > Editor and Preview": {"state": "on"}, "View > Side Column": {"state": "on"}}}},
+  {"assert": {"menu": {"View > Live": {"state": "on"}, "View > Editor and Preview": {"state": "on"}, "View > Show Outline": {"state": "on"}}}},
   {"snapshot": "04-replaced-keeps-layout", "bitmap": true},
   {"outline": {"show": false}},
   {"layout": "editor"},

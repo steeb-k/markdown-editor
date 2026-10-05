@@ -132,7 +132,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertNil(table["Window > Show Tab Bar"], "no tabs: no switch for them")
         XCTAssertNil(table["Window > Show Next Tab"])
         XCTAssertEqual(table["View > Show History"], "⌃⌘H", "⌥⌘H is Hide Others")
-        XCTAssertEqual(table["View > Side Column"], "⌃⌘O")
+        XCTAssertEqual(table["View > Show Outline"], "⌃⌘O")
         XCTAssertNil(table["View > Outline"], "one column, one toggle: the outline and the history are its two panes")
         XCTAssertNil(table["View > History"])
         XCTAssertNil(table["View > Keep Focused Line Centred"], "no key of its own")
