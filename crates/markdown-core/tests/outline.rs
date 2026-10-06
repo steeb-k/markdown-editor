@@ -49,6 +49,56 @@ fn the_text_agrees_with_the_ids_the_renderer_makes() {
 }
 
 #[test]
+fn a_wikilink_in_a_heading_gets_the_same_id_in_the_preview_as_the_outline() {
+    let t = "# See [[Other|the other]]\n\n# [[Other]]\n\n# [[Other#Sec|]]\n\n# [[Other#Sec]]\n\n# In [a [[Other|link]]](u) and `[[Other|code]]`\n\n# Bare http://a.b/[[x|y]] url\n";
+    let d = Document::new(t, OffsetEncoding::Utf8);
+    let html = d.render_html(&RenderOptions::default());
+    let entries = d.outline();
+    assert_eq!(entries.len(), 6);
+    assert_eq!(entries[0].text, "See the other");
+    assert_eq!(entries[1].text, "Other");
+    for e in &entries {
+        assert!(
+            html.contains(&format!("id=\"{}\"", slug(&e.text)))
+                || html.contains(&format!("id=\"{}-", slug(&e.text))),
+            "{:?} in {html}",
+            e.text
+        );
+    }
+    // The ids themselves, not just that something matches.
+    assert!(html.contains("id=\"see-the-other\""), "{html}");
+    assert!(html.contains("<h1 id=\"other\">"), "{html}");
+    // Inside a link or a code span the brackets stay literal.
+    assert!(
+        entries[4].text.contains("[[Other|code]]") && !entries[4].text.contains('`'),
+        "{:?}",
+        entries[4].text
+    );
+    assert!(
+        html.contains(&format!("id=\"{}\"", slug(&entries[4].text))),
+        "{html}"
+    );
+}
+
+#[test]
+fn a_setext_heading_continuing_after_a_reference_definition_reads_as_the_renderer_does() {
+    let t = "[r]: /u\n\t# Title\n===\n";
+    assert_eq!(texts(t), vec!["# Title"]);
+    let html = Document::new(t, OffsetEncoding::Utf8).render_html(&RenderOptions::default());
+    assert!(
+        html.contains("<h1 id=\"-title\">") && html.contains("># Title</h1>"),
+        "{html}"
+    );
+    // Without the definition it is an indented code block and a paragraph: no heading.
+    assert!(texts("\t# Title\n===\n").is_empty());
+    // A plain `# Title` over `===` is an ATX heading and a paragraph.
+    assert_eq!(texts("# Title\n===\n"), vec!["Title"]);
+    // Other block markers the continuation hides in the same way.
+    assert_eq!(texts("[r]: /u\n\t- item\n---\n"), vec!["- item"]);
+    assert_eq!(texts("[r]: /u\n\t> q\n---\n"), vec!["> q"]);
+}
+
+#[test]
 fn headings_in_lists_and_quotes_are_headings() {
     let t = "- # In a list\n\n  text\n\n> ## In a quote\n\n> Setext\n> in a quote\n> ---\n\n1. 1. ### Nested\n";
     assert_eq!(

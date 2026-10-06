@@ -307,6 +307,145 @@ fn wikilinks_resolve_by_title_or_stem_nearest_folder_first() {
     assert_eq!(v("main", "Inbox.md").iter().filter(|x| x.is_none()).count(), 1);
 }
 
+/// A library of one root `main` with these notes, titled by their file stem.
+fn lib_of(notes: &[(&str, &str)]) -> Library {
+    let mut lib = Library::new(ENC);
+    lib.add_root("main", "/notes");
+    for (i, (path, text)) in notes.iter().enumerate() {
+        lib.upsert(&r("main", path), text, i as i64).unwrap();
+    }
+    lib
+}
+
+#[test]
+fn wikilinks_resolve_across_unicode_normalisation() {
+    let nfc = "Caf\u{e9}";
+    let nfd = "Cafe\u{301}";
+    // A file name in one form, a link in the other, both ways round; the note keeps the path it was given.
+    let lib = lib_of(&[
+        (&format!("{nfd}.md"), "# Cafe\n"),
+        (&format!("{nfc}.md"), "x"),
+        ("From.md", &format!("[[{nfc}]] and [[{nfd}]]\n")),
+    ]);
+    // (The two spellings are one name, so the library holds two notes called the same; one wins, both ways round.)
+    let target = lib.resolve_wikilink(&r("main", "From.md"), nfc).unwrap();
+    assert_eq!(
+        lib.resolve_wikilink(&r("main", "From.md"), nfd),
+        Some(target.clone())
+    );
+
+    let a = lib_of(&[
+        (&format!("{nfd}.md"), "text"),
+        ("From.md", &format!("see [[{nfc}]]\n")),
+    ]);
+    assert_eq!(
+        a.resolve_wikilink(&r("main", "From.md"), nfc),
+        Some(r("main", &format!("{nfd}.md")))
+    );
+    assert_eq!(
+        link_view(&a, "main", "From.md"),
+        [Some(format!("main:{nfd}.md"))]
+    );
+    let b = lib_of(&[
+        (&format!("{nfc}.md"), "text"),
+        ("From.md", &format!("see [[{nfd}]]\n")),
+    ]);
+    assert_eq!(
+        b.resolve_wikilink(&r("main", "From.md"), nfd),
+        Some(r("main", &format!("{nfc}.md")))
+    );
+    assert_eq!(
+        link_view(&b, "main", "From.md"),
+        [Some(format!("main:{nfc}.md"))]
+    );
+    // The backlinks agree, and the text shown is the link as written.
+    for (lib, path) in [(&a, format!("{nfd}.md")), (&b, format!("{nfc}.md"))] {
+        let back = lib.backlinks(&r("main", &path));
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].from, r("main", "From.md"));
+        assert!(back[0].context.contains("see [["));
+    }
+    // A title in one form, a link in the other, and a case difference on top.
+    let t = lib_of(&[
+        ("n.md", &format!("# {nfd}\n")),
+        ("From.md", &format!("[[{}]]", nfc.to_uppercase())),
+    ]);
+    assert_eq!(
+        link_view(&t, "main", "From.md"),
+        [Some("main:n.md".to_owned())]
+    );
+    // Editing a note in place, to the other form, relinks what names it.
+    let mut e = lib_of(&[("n.md", "# Plain\n"), ("From.md", &format!("[[{nfc}]]"))]);
+    assert_eq!(link_view(&e, "main", "From.md"), [None]);
+    e.upsert(&r("main", "n.md"), &format!("# {nfd}\n"), 5)
+        .unwrap();
+    assert_eq!(
+        link_view(&e, "main", "From.md"),
+        [Some("main:n.md".to_owned())]
+    );
+}
+
+#[test]
+fn a_folder_and_note_link_resolves_across_unicode_normalisation() {
+    let (nfc, nfd) = ("Ren\u{e9}e", "Rene\u{301}e");
+    let lib = lib_of(&[
+        (&format!("{nfd}/Plan.md"), "x"),
+        ("Other/Plan.md", "y"),
+        ("From.md", &format!("[[{nfc}/Plan]]")),
+    ]);
+    assert_eq!(
+        link_view(&lib, "main", "From.md"),
+        [Some(format!("main:{nfd}/Plan.md"))]
+    );
+    let lib = lib_of(&[
+        (&format!("{nfc}/Plan.md"), "x"),
+        ("Other/Plan.md", "y"),
+        ("From.md", &format!("[[{nfd}/Plan]]")),
+    ]);
+    assert_eq!(
+        link_view(&lib, "main", "From.md"),
+        [Some(format!("main:{nfc}/Plan.md"))]
+    );
+    // Moving the note to a folder in the other form keeps the link: the referrers are found by the same keys.
+    let mut lib = lib_of(&[
+        ("Plan.md", "x"),
+        ("a/Plan.md", "z"),
+        ("From.md", &format!("[[{nfd}/Plan]]")),
+    ]);
+    assert_eq!(link_view(&lib, "main", "From.md"), [None]);
+    lib.upsert(&r("main", &format!("{nfc}/Plan.md")), "w", 9)
+        .unwrap();
+    assert_eq!(
+        link_view(&lib, "main", "From.md"),
+        [Some(format!("main:{nfc}/Plan.md"))]
+    );
+}
+
+#[test]
+fn tags_and_search_terms_are_one_across_unicode_normalisation() {
+    let lib = lib_of(&[
+        ("a.md", "#caf\u{e9} one\n"),
+        ("b.md", "#cafe\u{301} two\n"),
+        ("c.md", "---\ntags: [Cafe\u{301}]\n---\nz\n"),
+    ]);
+    let tags = lib.tags();
+    assert_eq!(tags.len(), 1, "{tags:?}");
+    assert_eq!(tags[0].count, 3);
+    assert_eq!(tags[0].tag, "caf\u{e9}");
+    let filter = Filter {
+        tags: vec!["cafe\u{301}".to_owned()],
+        ..Filter::default()
+    };
+    assert_eq!(lib.notes(&filter, Sort::NameAscending).len(), 3);
+    // Words are found in the other form, and highlighted in the text as it is.
+    let lib = lib_of(&[
+        ("a.md", "a caf\u{e9} au lait\n"),
+        ("b.md", "a cafe\u{301} noir\n"),
+    ]);
+    assert_eq!(lib.search("cafe\u{301}", 10).len(), 2);
+    assert_eq!(lib.search("CAF\u{c9}", 10).len(), 2);
+}
+
 #[test]
 fn a_note_that_links_to_itself_resolves_to_itself_and_is_not_its_own_backlink() {
     let lib = fixture_library();

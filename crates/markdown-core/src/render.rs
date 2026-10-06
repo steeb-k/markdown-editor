@@ -389,7 +389,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
         let mut next: HashMap<String, usize> = HashMap::new();
         for i in 0..self.events.len() {
             if matches!(self.events[i].0, Event::Start(Tag::Heading { .. })) {
-                let text = self.plain_text(i + 1, self.end_of[i] as usize);
+                let text = self.heading_text(i + 1, self.end_of[i] as usize);
                 let mut base = slug(&text);
                 if base.is_empty() {
                     base = "section".to_owned();
@@ -408,6 +408,37 @@ impl<'a, 'o> Renderer<'a, 'o> {
                 self.heading_ids.insert(i, id);
             }
         }
+    }
+
+    /// The text of a heading's events `from..to` as the outline reads it: [`Self::plain_text`], but a wikilink in a
+    /// run of one-to-one text is what the preview shows for it (its label), not the `[[...]]` as written, so the id
+    /// is made from the words a reader sees. Inside a link, and where the text is not the source's, it stays literal.
+    fn heading_text(&self, from: usize, to: usize) -> String {
+        let one_to_one = |k: usize| matches!(&self.events[k], (Event::Text(t), r) if self.src.get(r.clone()) == Some(&**t));
+        let mut s = String::new();
+        let mut link_depth = 0;
+        let mut i = from;
+        while i < to {
+            match &self.events[i].0 {
+                Event::Start(Tag::Link { .. }) => link_depth += 1,
+                Event::End(TagEnd::Link) => link_depth -= 1,
+                Event::Text(t) if link_depth > 0 || !one_to_one(i) => s.push_str(t),
+                Event::Text(_) => {
+                    let mut j = i + 1;
+                    while j < to && one_to_one(j) && self.events[j].1.start == self.events[j - 1].1.end {
+                        j += 1;
+                    }
+                    wiki::push_shown(&mut s, self.src, self.events[i].1.start, self.events[j - 1].1.end);
+                    i = j;
+                    continue;
+                }
+                Event::Code(t) => s.push_str(t),
+                Event::SoftBreak | Event::HardBreak => s.push(' '),
+                _ => {}
+            }
+            i += 1;
+        }
+        s
     }
 
     /// The text of events `from..to`: what a reader would read, no markup.
@@ -888,11 +919,7 @@ impl<'a, 'o> Renderer<'a, 'o> {
         self.write("<a href=\"");
         self.href(&href);
         self.write("\">");
-        let shown = match w.label {
-            Some(l) => &src[l.0..l.1],
-            None => &src[w.target.0..w.target.1],
-        };
-        let shown = if shown.is_empty() { w.heading.map_or("", |h| &src[h.0..h.1]) } else { shown };
+        let shown = wiki::wikilink_shown(src, w);
         self.text(shown);
         self.write("</a>");
     }

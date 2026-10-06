@@ -316,9 +316,9 @@ fn without_extension(path: &str) -> &str {
     path
 }
 
-/// What resolution compares: trimmed, no note extension, case-folded.
+/// What resolution compares: trimmed, no note extension, normalised and case-folded (`text::key`).
 fn link_key(target: &str) -> String {
-    without_extension(target.trim()).trim_start_matches("./").to_lowercase()
+    text::key(without_extension(target.trim()).trim_start_matches("./"))
 }
 
 /// The names a link is registered under: its key, and the last path component of it.
@@ -548,8 +548,8 @@ impl Library {
         let mut tags: Vec<String> = front_tags.iter().chain(&inline_tags).cloned().collect();
         tags.sort();
         tags.dedup();
-        let mut names = vec![stem.to_lowercase()];
-        let title_key = h1.as_deref().unwrap_or(&stem).to_lowercase();
+        let mut names = vec![text::key(&stem)];
+        let title_key = text::key(h1.as_deref().unwrap_or(&stem));
         if !names.contains(&title_key) {
             names.push(title_key);
         }
@@ -685,7 +685,7 @@ impl Library {
             // keep pointing at a note that is gone.
             for &s in self.names.get(&key[slash + 1..]).into_iter().flatten() {
                 let Some(n) = self.notes[s as usize].as_ref() else { continue };
-                let path = without_extension(&n.r.path).to_lowercase();
+                let path = text::key(without_extension(&n.r.path));
                 if (path == key || path.ends_with(&format!("/{key}"))) && !candidates.contains(&s) {
                     candidates.push(s);
                 }
@@ -697,7 +697,9 @@ impl Library {
             let same_root = n.r.root == from.root;
             let folder: Vec<&str> = folder_of(&n.r.path).split('/').filter(|c| !c.is_empty()).collect();
             let shared = if same_root { from_folder.iter().zip(&folder).take_while(|(a, b)| a == b).count() } else { 0 };
-            (!same_root, Reverse(shared), folder.len(), n.stem.to_lowercase() != key, self.root_rank(&n.r.root), n.r.path.clone())
+            // The last ties go by the normalised path first, so which of two equal candidates wins does not depend
+            // on the form their paths are spelled in.
+            (!same_root, Reverse(shared), folder.len(), text::key(&n.stem) != key, self.root_rank(&n.r.root), text::key(&n.r.path), n.r.path.clone())
         })
     }
 
@@ -961,7 +963,7 @@ impl Library {
     pub fn rename_edits(&self, old: &NoteRef, new: &NoteRef) -> Vec<Edit> {
         let Some(&slot) = self.by_ref.get(old) else { return Vec::new() };
         let note = self.slot(slot);
-        let stem = note.stem.to_lowercase();
+        let stem = text::key(&note.stem);
         let new_stem = stem_of(&new.path);
         let same_folder = folder_of(&old.path) == folder_of(&new.path);
         let mut from: Vec<u32> = self.incoming.get(&slot).map(|s| s.iter().copied().collect()).unwrap_or_default();

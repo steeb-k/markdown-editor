@@ -14,6 +14,8 @@ sha2 = "0.11"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.6"
 unicode-segmentation = "1.13.3"
+# NFC for the keys that links, tags and words are compared by: é precomposed and é decomposed are one name.
+unicode-normalization = "0.1"
 unicode-width = "0.2.2"
 # Fenced-code highlighting for the preview. Pure-Rust regex backend (fancy-regex): no onig, no C,
 # so it builds for both macOS architectures and for Linux. Only the parser and the bundled syntaxes;

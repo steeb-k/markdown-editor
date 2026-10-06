@@ -493,6 +493,66 @@ proptest! {
     }
 }
 
+// ----- the library, in either Unicode form ---------------------------------------------------------------
+
+const FORM_PATHS: [&str; 6] = [
+    "Caf\u{e9}.md",
+    "x/Ren\u{e9}e.md",
+    "Plain.md",
+    "\u{c5}ngstr\u{f6}m/Note.md",
+    "y/z/T\u{e9}st.md",
+    "Note.md",
+];
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(cases(300) / 3 + 1))]
+
+    /// Run every path and every text through NFD and the library answers the same: the same links resolve to the
+    /// same notes (in the other form), the same backlinks, tags and search hits.
+    #[test]
+    fn the_library_does_not_care_which_unicode_form_a_name_is_in(
+        notes in prop::collection::vec((0usize..6, prop::collection::vec(prop::sample::select(vec![
+            "[[Caf\u{e9}]] ", "[[Cafe\u{301}]] ", "[[x/Ren\u{e9}e]] ", "[[Rene\u{301}e]] ", "[[\u{c5}ngstr\u{f6}m/Note]] ", "[[T\u{e9}st#h]] ", "[[plain]] ",
+            "#caf\u{e9} ", "#cafe\u{301} ", "# T\u{e9}st\n", "# Cafe\u{301}\n", "word ", "\n", "[[note]] ",
+        ]), 0..8).prop_map(|v| v.concat())), 1..10),
+    ) {
+        use unicode_normalization::UnicodeNormalization;
+        let nfd = |s: &str| s.nfd().collect::<String>();
+        let mut a = Library::new(OffsetEncoding::Utf8);
+        let mut b = Library::new(OffsetEncoding::Utf8);
+        a.add_root("r", "/r");
+        b.add_root("r", "/r");
+        let mut model: BTreeMap<NoteRef, String> = BTreeMap::new();
+        for (i, (p, text)) in notes.iter().enumerate() {
+            let n = NoteRef::new("r", FORM_PATHS[*p]);
+            a.upsert(&n, text, i as i64).unwrap();
+            b.upsert(&NoteRef::new("r", &nfd(&n.path)), &nfd(text), i as i64).unwrap();
+            model.insert(n, text.clone());
+        }
+        prop_assert_eq!(a.tags(), b.tags());
+        for n in model.keys() {
+            let nb = NoteRef::new("r", &nfd(&n.path));
+            let links = |l: &Library, n: &NoteRef| l.note(n).unwrap().links.into_iter().map(|k| k.resolved.map(|r| nfd(&r.path))).collect::<Vec<_>>();
+            prop_assert_eq!(links(&a, n), links(&b, &nb), "links of {:?}", n);
+            let back = |l: &Library, n: &NoteRef| {
+                let mut v = l.backlinks(n).into_iter().map(|k| nfd(&k.from.path)).collect::<Vec<_>>();
+                v.sort();
+                v
+            };
+            prop_assert_eq!(back(&a, n), back(&b, &nb), "backlinks of {:?}", n);
+        }
+        for q in ["caf\u{e9}", "cafe\u{301}", "t\u{e9}st", "word"] {
+            // (Equal scores are ordered by path, and the two forms sort differently: compare the sets.)
+            let hits = |l: &Library| {
+                let mut v = l.search(q, 50).into_iter().map(|m| nfd(&m.note.path)).collect::<Vec<_>>();
+                v.sort();
+                v
+            };
+            prop_assert_eq!(hits(&a), hits(&b), "search {}", q);
+        }
+    }
+}
+
 // ----- the history against a model, and damaged indexes ----------------------------------------------------
 
 static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

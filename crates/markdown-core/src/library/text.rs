@@ -1,6 +1,7 @@
 //! Text helpers of the library index: tokenizing for search, front matter tags, headings and
 //! the context around a link.
 
+use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 
 // Combining marks stay with the letter before them (`e` + U+0301), in words as in tags.
@@ -19,6 +20,18 @@ fn is_word_char(c: char) -> bool {
     (c.is_alphanumeric() && !is_ideographic(c)) || is_combining(c)
 }
 
+/// What the library compares names, paths, tags and words by: Unicode-normalised (NFC), then case-folded. File
+/// systems, git checkouts and zips disagree about the form of an accented name (`\u{e9}` or `e\u{301}`), and a link
+/// typed in one must find the note named in the other. Only comparison keys go through this, never text shown or paths
+/// returned.
+pub(crate) fn key(s: &str) -> String {
+    if s.is_ascii() {
+        s.to_ascii_lowercase()
+    } else {
+        s.nfc().collect::<String>().to_lowercase()
+    }
+}
+
 /// Calls `f(start, end, lower)` for every word of `text`: runs of letters and digits, and each
 /// ideographic character, case-folded (`lower`). Byte offsets.
 pub(crate) fn for_each_word(text: &str, mut f: impl FnMut(usize, usize, &str)) {
@@ -26,7 +39,12 @@ pub(crate) fn for_each_word(text: &str, mut f: impl FnMut(usize, usize, &str)) {
     let mut start = 0;
     let mut in_word = false;
     let mut flush = |end: usize, buf: &mut String, start: usize| {
-        f(start, end, buf);
+        // Offsets stay those of the text; only the term is normalised, so `e\u{301}` and `\u{e9}` are one word.
+        if buf.is_ascii() {
+            f(start, end, buf);
+        } else {
+            f(start, end, &buf.nfc().collect::<String>());
+        }
         buf.clear();
     };
     for (i, c) in text.char_indices() {
@@ -83,7 +101,7 @@ pub(crate) fn words_of(text: &str) -> Vec<String> {
 
 /// A tag as the index keeps it: no leading `#`, case-folded.
 pub(crate) fn normalize_tag(tag: &str) -> String {
-    tag.trim().trim_start_matches('#').trim().to_lowercase()
+    key(tag.trim().trim_start_matches('#').trim())
 }
 
 /// The tags of a YAML front matter block (delimiters included): `tags:` or `tag:` as a flow list

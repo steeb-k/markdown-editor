@@ -42,7 +42,22 @@ pub(crate) fn heading_text(source: &str, contained: bool, context: &HeadingConte
     } else {
         source
     };
-    let original = |at: usize| at + shifts.iter().rev().find(|s| s.0 <= at).map_or(0, |s| s.1);
+    // An ATX heading is one line, so a source of several lines is a setext heading. Its own source range starts after
+    // the first line's indentation, but the line was a continuation of its paragraph (after a reference definition,
+    // `\t# Title` is text, and so is `\t- item`), which read alone it no longer is: `# Title` would open an ATX
+    // heading. A throwaway paragraph line before it, and the first line indented four spaces (which a paragraph
+    // continuation strips, and which only adds to indentation it already had), parse it as the continuation it was.
+    // The throwaway's events are skipped, and its length is taken off the offsets again.
+    let prefixed;
+    let mut lead = 0;
+    let text = if source.trim_end_matches(['\n', '\r']).contains(['\n', '\r']) {
+        prefixed = format!("x\n    {text}");
+        lead = prefixed.len() - text.len();
+        prefixed.as_str()
+    } else {
+        text
+    };
+    let original = |at: usize| (at - lead.min(at)) + shifts.iter().rev().find(|s| s.0 + lead <= at).map_or(0, |s| s.1);
     // pulldown-cmark panics on some inputs (see `analyze`): a heading that does that is shown as written.
     let parsed = std::panic::catch_unwind(|| {
         let mut resolve = |l: BrokenLink<'_>| {
@@ -61,6 +76,7 @@ pub(crate) fn heading_text(source: &str, contained: bool, context: &HeadingConte
         let mut i = 0;
         while i < events.len() {
             match &events[i] {
+                (_, r) if r.end <= lead => {}
                 (Event::Start(Tag::Heading { .. }), _) => inside = true,
                 (Event::End(TagEnd::Heading(_)), _) => break,
                 (Event::Start(Tag::Link { .. }), _) => link_depth += 1,
@@ -73,16 +89,7 @@ pub(crate) fn heading_text(source: &str, contained: bool, context: &HeadingConte
                     while j < events.len() && one_to_one(j) && events[j].1.start == events[j - 1].1.end && !in_footnote(&events[j].1) {
                         j += 1;
                     }
-                    let (s, e) = (r.start, events[j - 1].1.end);
-                    let mut pos = s;
-                    for found in wiki::find_in(text, s, e, &[], false) {
-                        if let wiki::Found::Wikilink(w) = found {
-                            out.push_str(&text[pos..w.start]);
-                            out.push_str(wikilink_shown(text, &w));
-                            pos = w.end;
-                        }
-                    }
-                    out.push_str(&text[pos..e]);
+                    wiki::push_shown(&mut out, text, r.start, events[j - 1].1.end);
                     i = j;
                     continue;
                 }
@@ -98,13 +105,4 @@ pub(crate) fn heading_text(source: &str, contained: bool, context: &HeadingConte
         Ok(text) => text.trim().to_owned(),
         Err(_) => source.trim_matches(|c: char| c == '#' || c.is_whitespace()).to_owned(),
     }
-}
-
-/// What the preview shows for a wikilink: the label, else the target, else the heading.
-fn wikilink_shown<'a>(text: &'a str, w: &wiki::Wikilink) -> &'a str {
-    let shown = match w.label {
-        Some(l) => &text[l.0..l.1],
-        None => &text[w.target.0..w.target.1],
-    };
-    if shown.is_empty() { w.heading.map_or("", |h| &text[h.0..h.1]) } else { shown }
 }

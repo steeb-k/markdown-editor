@@ -159,6 +159,36 @@ pub fn find_in(text: &str, from: usize, to: usize, exclude: &[(usize, usize)], t
     out
 }
 
+/// What the preview shows for a wikilink: the label, else the target, else the heading.
+pub(crate) fn wikilink_shown<'a>(text: &'a str, w: &Wikilink) -> &'a str {
+    let shown = match w.label {
+        Some(l) => &text[l.0..l.1],
+        None => &text[w.target.0..w.target.1],
+    };
+    if shown.is_empty() {
+        w.heading.map_or("", |h| &text[h.0..h.1])
+    } else {
+        shown
+    }
+}
+
+/// Appends `text[from..to]`, a run of plain text as it is in the source, with each wikilink replaced by what the
+/// preview shows for it. Bare URLs are left whole, as the renderer does, so a `[[` inside one is no link. The outline
+/// and the renderer's heading ids both read a heading this way, which is what keeps the two equal.
+pub(crate) fn push_shown(out: &mut String, text: &str, from: usize, to: usize) {
+    let urls = crate::autolink::find_in(text, from, to);
+    let exclude: Vec<(usize, usize)> = urls.iter().map(|l| (l.start, l.end)).collect();
+    let mut pos = from;
+    for found in find_in(text, from, to, &exclude, false) {
+        if let Found::Wikilink(w) = found {
+            out.push_str(&text[pos..w.start]);
+            out.push_str(wikilink_shown(text, &w));
+            pos = w.end;
+        }
+    }
+    out.push_str(&text[pos..to]);
+}
+
 /// Is the byte at `i` escaped by an odd run of backslashes before it?
 fn escaped(b: &[u8], i: usize) -> bool {
     b[..i].iter().rev().take_while(|&&c| c == b'\\').count() % 2 == 1
