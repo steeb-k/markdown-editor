@@ -739,6 +739,101 @@ final class FocusCentringTests: XCTestCase {
         XCTAssertEqual(o.line, o.middle, accuracy: 2, "typing replaced the selection and centring resumed")
     }
 
+    /// The mouse button down in the text (AppKit's tracking loop inside `mouseDown`, before anything is selected): nothing
+    /// is centred, slid or checked, the focus range is not changed, whatever the selection and the layout do; the release
+    /// catches up once, as a click (the clicked line stays where it is).
+    func testTheMouseButtonDownHoldsFocusModeUntilTheRelease() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.reduceMotion = { true }
+        let tv = wc.textView
+        doc.session.setFocusEnabled(true)
+        tv.setSelectedRange(NSRange(location: location(of: 50), length: 0))
+        pump(0.2)
+        let clip = wc.scrollView.contentView
+        let origin = clip.bounds.minY
+        let lit = doc.session.overlay.layers.focus
+        let operations = doc.session.overlay.operations
+        let jumps = c.jumps, slides = c.slides
+        // Pressed: the caret goes to the clicked line (the event is not the mouse's here: held regardless), then a drag's
+        // selection grows from it; the layout changes; AppKit asks for the caret to be shown.
+        tv.isTrackingMouse = true
+        c.currentEventIsMouse = { false }
+        tv.setSelectedRange(NSRange(location: location(of: 53), length: 0))
+        tv.scrollRangeToVisible(tv.selectedRange())
+        c.layoutChanged()
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "pressed: the view stays")
+        XCTAssertEqual(doc.session.overlay.layers.focus, lit, "pressed: the focus range stays")
+        XCTAssertEqual(doc.session.overlay.operations, operations, "pressed: no dimming changes")
+        XCTAssertEqual(c.jumps, jumps)
+        XCTAssertEqual(c.slides, slides)
+        XCTAssertTrue(c.isSettled)
+        // Released on a caret: as a click, the line stays where it was clicked and the focus range follows the caret.
+        c.currentEventIsMouse = { true }
+        tv.mouseTrackingEnded()
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "released: the clicked line stays where it is")
+        XCTAssertNotEqual(doc.session.overlay.layers.focus, lit, "released: the focus range follows the caret")
+        XCTAssertTrue(c.caretPlacedByMouse)
+        // Pressed again and dragged into a selection, released: still held (the selection holds it).
+        let lit2 = doc.session.overlay.layers.focus
+        tv.isTrackingMouse = true
+        tv.setSelectedRange(NSRange(location: location(of: 53), length: location(of: 58) - location(of: 53)))
+        tv.mouseTrackingEnded()
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01)
+        XCTAssertEqual(doc.session.overlay.layers.focus, lit2, "a drag's selection holds the focus range after the release")
+        // A key collapses it: one normal update, and the caret's line is centred again.
+        c.currentEventIsMouse = { false }
+        tv.doCommand(by: #selector(NSResponder.moveRight(_:)))
+        pump(0.3)
+        let o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        XCTAssertNotEqual(doc.session.overlay.layers.focus, lit2)
+    }
+
+    /// Focus mode's room above and below the text is content inset, which AppKit's autoscroll counted as outside what is
+    /// visible: with the room there was nothing visible left, and a drag's first event scrolled the text to its end. A
+    /// point over the text does not scroll; one under the title bar or the formatting bar, or outside the view, scrolls
+    /// by how far it is out, as without focus mode.
+    func testADragOverTheTextDoesNotAutoscroll() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        wc.centring.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 50), length: 0))
+        doc.session.setFocusEnabled(true)
+        pump(0.2)
+        let scroll = wc.editorScrollView
+        XCTAssertGreaterThan(scroll.focusInset, 0, "the room is there")
+        let clip = scroll.contentView
+        let w = try XCTUnwrap(wc.window)
+        func drag(atClipY y: CGFloat) -> NSEvent {
+            let p = clip.convert(NSPoint(x: clip.bounds.midX, y: y), to: nil)
+            return NSEvent.mouseEvent(with: .leftMouseDragged, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                      windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        let origin = clip.bounds.minY
+        let top = clip.bounds.minY + scroll.baseInsetTop, bottom = clip.bounds.maxY - scroll.baseInsetBottom
+        for y in stride(from: top + 1, to: bottom - 1, by: 20) {
+            XCTAssertFalse(tv.autoscroll(with: drag(atClipY: y)), "over the text at \(y - clip.bounds.minY)")
+            XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01)
+        }
+        // Under the formatting bar, 10 points into it: the text scrolls down by those 10 points.
+        XCTAssertTrue(tv.autoscroll(with: drag(atClipY: bottom + 10)))
+        XCTAssertEqual(clip.bounds.minY, origin + 10, accuracy: 0.5)
+        // Above the visible text, 30 points: back up by 30.
+        let top2 = clip.bounds.minY + scroll.baseInsetTop
+        XCTAssertTrue(tv.autoscroll(with: drag(atClipY: top2 - 30)))
+        XCTAssertEqual(clip.bounds.minY, origin - 20, accuracy: 0.5)
+        // Without the room (focus off), AppKit's own autoscroll.
+        doc.session.setFocusEnabled(false)
+        pump(0.5)
+        XCTAssertEqual(scroll.focusInset, 0)
+    }
+
     func testTurningFocusOnWithASelectionSlidesToItsStartOnceThenHolds() throws {
         let (doc, wc) = try open()
         defer { doc.close() }

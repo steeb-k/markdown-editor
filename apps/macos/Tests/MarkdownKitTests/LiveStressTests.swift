@@ -113,7 +113,7 @@ class LiveStressTests: XCTestCase {
         return false
     }
 
-    /// With focus mode on: the focus range is the core's answer for the selection, and every
+    /// With focus mode on: the focus range is the core's answer for the caret, and every
     /// character's temporary colour is what the layers (focus dimming over parts of speech) say.
     static func overlayProblems(_ e: Editor) -> [String] {
         guard e.session.focusEnabled else { return [] }
@@ -123,7 +123,9 @@ class LiveStressTests: XCTestCase {
         let want = e.session.coordinator.sync { doc in
             doc.focusRange(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), scope: scope).map(\.nsRange)
         }
-        if e.session.overlay.layers.focus != want { out.append("focus range \(String(describing: e.session.overlay.layers.focus)) is not the core's \(want)") }
+        // (A selection holds the focus range where it was when the selection began: the owner's decision of 5 October.
+        // The composition below is checked all the same.)
+        if !e.session.focusHeld, e.session.overlay.layers.focus != want { out.append("focus range \(String(describing: e.session.overlay.layers.focus)) is not the core's \(want)") }
         let o = e.session.overlay
         o.apply()
         let window = o.appliedWindow

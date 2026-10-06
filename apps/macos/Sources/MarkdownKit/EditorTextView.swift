@@ -37,6 +37,40 @@ public final class EditorTextView: NSTextView {
     /// Focus mode's centring; while it is on, what asks the view to scroll something into view
     /// asks it to centre that instead (one slide, not a jump and a slide).
     weak var centring: FocusCentring?
+    /// The left button is down in the text: AppKit's own tracking loop (a click, a drag selection) is running inside
+    /// `mouseDown`. Focus mode holds still meanwhile (see `EditorSession.focusHeld`) and catches up on release.
+    public internal(set) var isTrackingMouse = false
+
+    /// The button was released: focus mode catches up once, as for any caret move by the mouse (the line stays where it
+    /// was clicked, and the focus range follows the caret, unless a selection holds it).
+    func mouseTrackingEnded() {
+        isTrackingMouse = false
+        centring?.request()
+        if let session, session.focusEnabled { session.refreshState() }
+    }
+
+    /// A drag that reaches the edge of what the reader sees scrolls the text. AppKit measures that against the clip
+    /// view's visible rectangle less the content insets; focus mode's room for centring is inset too, half the visible
+    /// height above and half below, which leaves no visible rectangle at all: every point of a drag counted as outside
+    /// it, and the first drag event scrolled the text to the end. With the room there, the edge is the edge of what is
+    /// visible (under the title bar, above the formatting bar), as without focus mode.
+    public override func autoscroll(with event: NSEvent) -> Bool {
+        guard let scroll = enclosingScrollView as? EditorScrollView, scroll.focusInset > 0 else { return super.autoscroll(with: event) }
+        let clip = scroll.contentView
+        let p = clip.convert(event.locationInWindow, from: nil)
+        let top = clip.bounds.minY + scroll.baseInsetTop
+        let bottom = clip.bounds.maxY - scroll.baseInsetBottom
+        // (The clip view is flipped with the text view: y grows downward.)
+        let dy = p.y < top ? p.y - top : p.y > bottom ? p.y - bottom : 0
+        guard dy != 0 else { return false }
+        let range = FocusCentringMath.scrollRange(documentHeight: frame.height, clipHeight: clip.bounds.height,
+                                                  topInset: scroll.contentInsets.top, bottomInset: scroll.contentInsets.bottom)
+        let y = min(max(clip.bounds.minY + dy, range.lowerBound), range.upperBound)
+        guard abs(y - clip.bounds.minY) >= 0.5 else { return false }
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: y))
+        scroll.reflectScrolledClipView(clip)
+        return true
+    }
 
     ///
     /// Only for the selection, though (the caret, a found match, a revealed element). AppKit itself

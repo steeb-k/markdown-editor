@@ -17,7 +17,12 @@ extension EditorTextView {
         if event.modifierFlags.contains(.command), openLink(at: p, newWindow: event.modifierFlags.contains(.option)) { return }
         if handleBadgeClick(at: p) { return }
         if handleCheckboxClick(at: p) { return }
+        // AppKit's tracking runs inside: focus mode holds still until the release (`isTrackingMouse`), then catches up once.
+        let nested = isTrackingMouse
+        isTrackingMouse = true
         super.mouseDown(with: event)
+        guard !nested else { return }
+        mouseTrackingEnded()
     }
 
     /// A click on a task checkbox toggles it as one undo step and leaves the caret where it was.

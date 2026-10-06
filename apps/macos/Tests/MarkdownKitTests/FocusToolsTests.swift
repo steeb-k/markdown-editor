@@ -115,14 +115,82 @@ final class FocusToolsTests: XCTestCase {
         }
     }
 
-    func testSelectionsLightUpEveryUnitTheyTouch() {
-        let e = Editor(text: Self.sample)
-        e.session.setFocusEnabled(true)
+    /// Focus mode turned on with a selection present (no focus range yet to hold) lights up every unit it touches.
+    func testFocusTurnedOnWithASelectionLightsUpEveryUnitItTouches() {
         let ns = Self.sample as NSString
         let a = ns.range(of: "sentence one").location, b = ns.range(of: "soft break").location
-        assertDimmingEqualsTheCore(e, selection: NSRange(location: a, length: b - a), scope: .sentence, "selection across sentences")
         let c = ns.range(of: "list item").location, d = ns.range(of: "nested").location
-        assertDimmingEqualsTheCore(e, selection: NSRange(location: c, length: d - c), scope: .sentence, "selection across items")
+        for (selection, context) in [(NSRange(location: a, length: b - a), "selection across sentences"),
+                                     (NSRange(location: c, length: d - c), "selection across items")] {
+            let e = Editor(text: Self.sample)
+            e.tv.setSelectedRange(selection)
+            e.session.setFocusEnabled(true)
+            assertDimmingEqualsTheCore(e, selection: selection, scope: .sentence, context)
+        }
+    }
+
+    /// The owner's decision of 5 October: while text is selected, however it was selected, focus mode holds still. The
+    /// focus range is neither asked for nor changed and no dimming is applied or removed; the selection collapsing to a caret
+    /// brings one normal update. Also while the mouse button is down in the text, before anything is selected.
+    func testASelectionHoldsTheFocusRangeAndTheDimmingHoweverItIsMade() {
+        for mode in [ViewMode.source, .live] {
+            let settings = isolatedSettings()
+            settings.focusScope = .paragraph
+            let e = Editor(text: Self.sample, settings: settings)
+            e.session.setViewMode(mode)
+            e.session.setFocusEnabled(true)
+            let ns = Self.sample as NSString
+            e.select(ns.range(of: "Does a third").location + 3)
+            e.settle()
+            let lit = e.session.overlay.layers.focus
+            XCTAssertEqual(lit, ranges(e, e.tv.selectedRange(), .paragraph), "\(mode)")
+            let dim = dimmed(e)
+            let operations = e.session.overlay.operations
+            func held(_ how: String, file: StaticString = #filePath, line: UInt = #line) {
+                e.settle()
+                XCTAssertGreaterThan(e.tv.selectedRange().length, 0, "\(mode) \(how): a selection", file: file, line: line)
+                XCTAssertEqual(e.session.overlay.layers.focus, lit, "\(mode) \(how): the focus range holds", file: file, line: line)
+                XCTAssertEqual(e.session.overlay.operations, operations, "\(mode) \(how): no dimming applied or removed", file: file, line: line)
+                XCTAssertEqual(dimmed(e), dim, "\(mode) \(how): the same characters dimmed", file: file, line: line)
+            }
+            // Shift-arrows, down past the paragraph's end into the list.
+            for _ in 0..<5 { e.tv.doCommand(by: #selector(NSResponder.moveDownAndModifySelection(_:))) }
+            held("shift-down x5")
+            // A double-click's word and a triple-click's paragraph elsewhere (as AppKit sets them).
+            let word = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "quote that").location + 2, length: 0), granularity: .selectByWord)
+            e.tv.setSelectedRange(word)
+            held("double-click")
+            let para = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "A task with").location, length: 0), granularity: .selectByParagraph)
+            e.tv.setSelectedRange(para)
+            held("triple-click")
+            e.tv.selectAll(nil)
+            held("select all")
+            // A Find match: the selection set and scrolled to.
+            let match = ns.range(of: "code. block")
+            e.tv.setSelectedRange(match)
+            e.tv.scrollRangeToVisible(match)
+            held("find match")
+            // Back to a caret: one normal update, to the caret's paragraph.
+            let caret = ns.range(of: "nested item").location
+            e.select(caret)
+            e.settle()
+            XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: caret, length: 0), .paragraph), "\(mode): a caret resumes")
+            XCTAssertNotEqual(e.session.overlay.layers.focus, lit)
+
+            // The mouse button down in the text: a click's caret is held until the release, which catches up once.
+            let lit2 = e.session.overlay.layers.focus
+            let operations2 = e.session.overlay.operations
+            e.tv.isTrackingMouse = true
+            let clicked = ns.range(of: "Does a third").location
+            e.select(clicked)
+            e.settle()
+            XCTAssertEqual(e.session.overlay.layers.focus, lit2, "\(mode): held while the button is down")
+            XCTAssertEqual(e.session.overlay.operations, operations2)
+            e.tv.mouseTrackingEnded()
+            e.settle()
+            XCTAssertFalse(e.tv.isTrackingMouse)
+            XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: clicked, length: 0), .paragraph), "\(mode): the release updates")
+        }
     }
 
     func testCaretOnABlankLineDimsEverything() {

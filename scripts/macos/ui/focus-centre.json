@@ -1652,5 +1652,1616 @@
   "assert": {
    "focusInsets": false
   }
+ },
+ {
+  "log": "--- the tour again, unedited, for the drags and the selections"
+ },
+ {
+  "close": true
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/tour.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   900,
+   760
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "log": "--- slow drags at a person's pace (M8i): tour. The press holds focus mode still: the view does not move, the dimming does not change, and the selection is exactly what the same drag selects without focus mode"
+ },
+ {
+  "log": "--- slow drag tour source plain"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": false,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source plain focused"
+ },
+ {
+  "remember": "sd-tour-source-focused-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "name": "tour-source-focused"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source plain dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-top-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "name": "tour-source-dimmed-top-half"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source plain dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-bottom-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "name": "tour-source-dimmed-bottom-half"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source plain backward"
+ },
+ {
+  "remember": "sd-tour-source-backward-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "name": "tour-source-backward"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag tour source centred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": true
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour source centred focused"
+ },
+ {
+  "remember": "sd-tour-source-focused-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "sameAs": "tour-source-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-focused-centred",
+   "textUnmoved": "sd-tour-source-focused-centred",
+   "focusUnchanged": "sd-tour-source-focused-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour source centred dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-top-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "sameAs": "tour-source-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-dimmed-top-half-centred",
+   "textUnmoved": "sd-tour-source-dimmed-top-half-centred",
+   "focusUnchanged": "sd-tour-source-dimmed-top-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour source centred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-bottom-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "sameAs": "tour-source-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-dimmed-bottom-half-centred",
+   "textUnmoved": "sd-tour-source-dimmed-bottom-half-centred",
+   "focusUnchanged": "sd-tour-source-dimmed-bottom-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour source centred backward"
+ },
+ {
+  "remember": "sd-tour-source-backward-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "sameAs": "tour-source-backward",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-backward-centred",
+   "textUnmoved": "sd-tour-source-backward-centred",
+   "focusUnchanged": "sd-tour-source-backward-centred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag tour source uncentred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source uncentred focused"
+ },
+ {
+  "remember": "sd-tour-source-focused-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "sameAs": "tour-source-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-focused-uncentred",
+   "textUnmoved": "sd-tour-source-focused-uncentred",
+   "focusUnchanged": "sd-tour-source-focused-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source uncentred dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-top-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "sameAs": "tour-source-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-dimmed-top-half-uncentred",
+   "textUnmoved": "sd-tour-source-dimmed-top-half-uncentred",
+   "focusUnchanged": "sd-tour-source-dimmed-top-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source uncentred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-source-dimmed-bottom-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "sameAs": "tour-source-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-dimmed-bottom-half-uncentred",
+   "textUnmoved": "sd-tour-source-dimmed-bottom-half-uncentred",
+   "focusUnchanged": "sd-tour-source-dimmed-bottom-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour source uncentred backward"
+ },
+ {
+  "remember": "sd-tour-source-backward-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "sameAs": "tour-source-backward",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-source-backward-uncentred",
+   "textUnmoved": "sd-tour-source-backward-uncentred",
+   "focusUnchanged": "sd-tour-source-backward-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag tour live plain"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": false,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live plain focused"
+ },
+ {
+  "remember": "sd-tour-live-focused-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "name": "tour-live-focused"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live plain dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-top-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "name": "tour-live-dimmed-top-half"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live plain dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-bottom-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "name": "tour-live-dimmed-bottom-half"
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live plain backward"
+ },
+ {
+  "remember": "sd-tour-live-backward-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "name": "tour-live-backward"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag tour live centred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": true
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour live centred focused"
+ },
+ {
+  "remember": "sd-tour-live-focused-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "sameAs": "tour-live-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-focused-centred",
+   "textUnmoved": "sd-tour-live-focused-centred",
+   "focusUnchanged": "sd-tour-live-focused-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour live centred dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-top-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "sameAs": "tour-live-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-dimmed-top-half-centred",
+   "textUnmoved": "sd-tour-live-dimmed-top-half-centred",
+   "focusUnchanged": "sd-tour-live-dimmed-top-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour live centred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-bottom-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "sameAs": "tour-live-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-dimmed-bottom-half-centred",
+   "textUnmoved": "sd-tour-live-dimmed-bottom-half-centred",
+   "focusUnchanged": "sd-tour-live-dimmed-bottom-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag tour live centred backward"
+ },
+ {
+  "remember": "sd-tour-live-backward-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "sameAs": "tour-live-backward",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-backward-centred",
+   "textUnmoved": "sd-tour-live-backward-centred",
+   "focusUnchanged": "sd-tour-live-backward-centred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag tour live uncentred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live uncentred focused"
+ },
+ {
+  "remember": "sd-tour-live-focused-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "Second, also",
+   "fromOffset": 8,
+   "via": [
+    {
+     "needle": "First, numbered",
+     "offset": 3
+    }
+   ],
+   "to": "Tenth",
+   "toOffset": 5,
+   "sameAs": "tour-live-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-focused-uncentred",
+   "textUnmoved": "sd-tour-live-focused-uncentred",
+   "focusUnchanged": "sd-tour-live-focused-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live uncentred dimmed-top-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-top-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A short item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 6
+    }
+   ],
+   "to": "First, numbered",
+   "toOffset": 4,
+   "sameAs": "tour-live-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-dimmed-top-half-uncentred",
+   "textUnmoved": "sd-tour-live-dimmed-top-half-uncentred",
+   "focusUnchanged": "sd-tour-live-dimmed-top-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live uncentred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-tour-live-dimmed-bottom-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A block quote",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "continuation",
+     "offset": 3
+    }
+   ],
+   "to": "A second paragraph",
+   "toOffset": 5,
+   "sameAs": "tour-live-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-dimmed-bottom-half-uncentred",
+   "textUnmoved": "sd-tour-live-dimmed-bottom-half-uncentred",
+   "focusUnchanged": "sd-tour-live-dimmed-bottom-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag tour live uncentred backward"
+ },
+ {
+  "remember": "sd-tour-live-backward-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "Tenth",
+   "fromOffset": 3,
+   "via": [
+    {
+     "needle": "A finished",
+     "offset": 4
+    }
+   ],
+   "to": "much longer",
+   "toOffset": 2,
+   "sameAs": "tour-live-backward",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-tour-live-backward-uncentred",
+   "textUnmoved": "sd-tour-live-backward-uncentred",
+   "focusUnchanged": "sd-tour-live-backward-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- a selection holds focus mode still, however it is made (the owner's decision of 5 October): tour"
+ },
+ {
+  "log": "--- hold-tour-source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "focusCentred": 2,
+   "focusing": true
+  }
+ },
+ {
+  "remember": "hold-tour-source"
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-source",
+   "focusUnchanged": "hold-tour-source",
+   "sliding": false,
+   "originUnchanged": "hold-tour-source"
+  }
+ },
+ {
+  "snapshot": "hold-tour-source-1-shift-down",
+  "bitmap": true
+ },
+ {
+  "log": "a double-click on a word of the focused paragraph: its first click collapses the selection there (the same range), the second selects the word"
+ },
+ {
+  "click": {
+   "at": "text",
+   "needle": "also numbered",
+   "offset": 2,
+   "count": 2,
+   "wait": 0.5
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-source",
+   "focusUnchanged": "hold-tour-source",
+   "sliding": false,
+   "originUnchanged": "hold-tour-source"
+  }
+ },
+ {
+  "action": "selectAll:",
+  "edits": false
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-source",
+   "focusUnchanged": "hold-tour-source",
+   "sliding": false,
+   "originUnchanged": "hold-tour-source"
+  }
+ },
+ {
+  "snapshot": "hold-tour-source-2-select-all",
+  "bitmap": true
+ },
+ {
+  "log": "back to a caret by a click in the focused paragraph: one normal update, which finds the same range"
+ },
+ {
+  "click": {
+   "at": "text",
+   "needle": "also numbered",
+   "offset": 0,
+   "wait": 0.6
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": true,
+   "textUnmoved": "hold-tour-source",
+   "focusUnchanged": "hold-tour-source",
+   "sliding": false,
+   "originUnchanged": "hold-tour-source"
+  }
+ },
+ {
+  "log": "and the caret moved away by a key: the focus range and the centring follow again"
+ },
+ {
+  "selectText": "A block quote",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 124,
+   "mods": []
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "focusChanged": "hold-tour-source",
+   "originChanged": "hold-tour-source",
+   "focusCentred": 2
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- hold-tour-live"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "focusCentred": 2,
+   "focusing": true
+  }
+ },
+ {
+  "remember": "hold-tour-live"
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-live",
+   "focusUnchanged": "hold-tour-live",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "hold-tour-live-1-shift-down",
+  "bitmap": true
+ },
+ {
+  "log": "a double-click on a word of the focused paragraph: its first click collapses the selection there (the same range), the second selects the word"
+ },
+ {
+  "click": {
+   "at": "text",
+   "needle": "also numbered",
+   "offset": 2,
+   "count": 2,
+   "wait": 0.5
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-live",
+   "focusUnchanged": "hold-tour-live",
+   "sliding": false
+  }
+ },
+ {
+  "action": "selectAll:",
+  "edits": false
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "textUnmoved": "hold-tour-live",
+   "focusUnchanged": "hold-tour-live",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "hold-tour-live-2-select-all",
+  "bitmap": true
+ },
+ {
+  "log": "back to a caret by a click in the focused paragraph: one normal update, which finds the same range"
+ },
+ {
+  "click": {
+   "at": "text",
+   "needle": "also numbered",
+   "offset": 0,
+   "wait": 0.6
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": true,
+   "textUnmoved": "hold-tour-live",
+   "focusUnchanged": "hold-tour-live",
+   "sliding": false
+  }
+ },
+ {
+  "log": "and the caret moved away by a key: the focus range and the centring follow again"
+ },
+ {
+  "selectText": "A block quote",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 124,
+   "mods": []
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "assert": {
+   "focusChanged": "hold-tour-live",
+   "originChanged": "hold-tour-live",
+   "focusCentred": 2
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
  }
 ]

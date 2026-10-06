@@ -241,7 +241,7 @@ final class UIScriptRunner {
 
     /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
     /// forward) and full screen. A script without any never takes activation from the person at the machine.
-    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "contextMenu", "dividerDrag", "liveResize",
+    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "slowDrag", "contextMenu", "dividerDrag", "liveResize",
                                                       "doubleClickTitlebar", "fullscreen", "codeBadge"]
 
     /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
@@ -673,6 +673,8 @@ final class UIScriptRunner {
             clickStep(c, then: done)
         } else if let d = step["drag"] as? [String: Any] {
             dragStep(d, then: done)
+        } else if let d = step["slowDrag"] as? [String: Any] {
+            slowDragStep(d, then: done)
         } else if let d = step["contextMenu"] as? [String: Any] {
             contextMenuStep(d, then: done)
         } else if let f = num("dividerDrag") {
@@ -1328,10 +1330,79 @@ final class UIScriptRunner {
 
     var remembered: [String: [String: CGFloat]] = [:]
 
+    /// The selection highlight as the text view draws it (`cacheDisplay`, what the window shows): on every line fragment
+    /// the selection covers (in view), the band AppKit draws over plain text — from where the selection starts on its first
+    /// line, edge to edge on the lines it runs through, up to where it ends on its last — is the highlight colour along the
+    /// top of the line (above the glyphs), at least 90% of it. Returns the lines that are not, with their share.
+    func selectionDrawnCheck(_ tv: EditorTextView) -> (Bool, String) {
+        guard let lm = tv.layoutManager, let tc = tv.textContainer else { return (false, "no text view") }
+        let sel = tv.selectedRange()
+        guard sel.length > 0 else { return (false, "no selection") }
+        let visible = tv.visibleRect
+        guard let rep = tv.bitmapImageRepForCachingDisplay(in: visible) else { return (false, "no bitmap") }
+        tv.cacheDisplay(in: visible, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / visible.width
+        let want = ((tv.selectedTextAttributes[.backgroundColor] as? NSColor) ?? .selectedTextBackgroundColor)
+            .usingColorSpace(.sRGB) ?? .white
+        func isHighlight(_ c: NSColor?) -> Bool {
+            guard let c = c?.usingColorSpace(.sRGB) else { return false }
+            // The highlight is light; text over it is not sampled (the top of the line), so the colour must be close.
+            return abs(c.redComponent - want.redComponent) < 0.05 && abs(c.greenComponent - want.greenComponent) < 0.05
+                && abs(c.blueComponent - want.blueComponent) < 0.05
+        }
+        let origin = tv.textContainerOrigin
+        let glyphs = lm.glyphRange(forCharacterRange: sel, actualCharacterRange: nil)
+        var lines = 0
+        var bad: [String] = []
+        lm.enumerateLineFragments(forGlyphRange: glyphs) { line, _, _, frag, _ in
+            let chars = lm.characterRange(forGlyphRange: frag, actualGlyphRange: nil)
+            let viewLine = line.offsetBy(dx: origin.x, dy: origin.y)
+            guard visible.intersects(viewLine) else { return }
+            let fromStart = sel.location < chars.location
+            let toEnd = NSMaxRange(sel) >= NSMaxRange(chars)
+            let sub = NSIntersectionRange(frag, glyphs)
+            let box = lm.boundingRect(forGlyphRange: sub, in: tc)
+            let lo = fromStart ? line.minX : box.minX
+            let hi = toEnd ? line.maxX : box.maxX
+            guard hi - lo > 4 else { return }
+            lines += 1
+            let y = viewLine.minY + 1.5
+            var hits = 0, total = 0
+            var x = lo + 2
+            while x < hi - 2 {
+                let px = Int(((x + origin.x) - visible.minX) * scale), py = Int((y - visible.minY) * scale)
+                if px >= 0, py >= 0, px < rep.pixelsWide, py < rep.pixelsHigh {
+                    total += 1
+                    if isHighlight(rep.colorAt(x: px, y: py)) { hits += 1 }
+                }
+                x += 3
+            }
+            if total == 0 || Double(hits) / Double(total) < 0.9 {
+                let text = (tv.string as NSString).substring(with: chars).prefix(30)
+                bad.append("\"\(text)\" \(hits)/\(total)")
+            }
+        }
+        return (bad.isEmpty && lines > 0, "\(lines) lines; not highlighted: \(bad)")
+    }
+
+    /// The middle of the line holding `location`, in the window (where a reader sees that text, scrolled or not).
+    func lineYInWindow(_ location: Int) -> CGFloat? {
+        guard let tv = textView, let c = controller, location <= tv.string.utf16.count,
+              let mid = c.centring.lineMidY(at: location) else { return nil }
+        return tv.convert(NSPoint(x: 0, y: mid), to: nil).y
+    }
+    /// The focus range (what is not dimmed) and the count of dimming operations applied, by `remember` name.
+    var rememberedFocus: [String: (keep: [NSRange]?, operations: Int)] = [:]
+
     private func remember(_ name: String) {
         var v: [String: CGFloat] = [:]
         if let r = caretRectInWindow() { v["caretY"] = r.midY }
         if let c = controller { v["origin"] = c.scrollView.contentView.bounds.minY }
+        if let s = session { rememberedFocus[name] = (s.overlay.layers.focus, s.overlay.operations) }
+        if let tv = textView, let y = lineYInWindow(tv.selectedRange().location) {
+            v["anchor"] = CGFloat(tv.selectedRange().location)
+            v["anchorY"] = y
+        }
         if let w = controller?.columnView?.frame.width { v["columnWidth"] = w }
         if let w = window { v["titlebar"] = w.frame.height - w.contentLayoutRect.height; rememberedFrames[name] = w.frame }
         remembered[name] = v
@@ -2432,6 +2503,29 @@ final class UIScriptRunner {
             let ns = text as NSString
             let got = (s.overlay.layers.focus ?? []).map { ns.substring(with: RangeMath.clamp($0, toLength: ns.length)) }
             check("focusLit \(v)", got == v, "\(got)")
+        }
+        if let name = a["focusUnchanged"] as? String, let s = session {
+            // The dimming is where it was: the same focus range, and no temporary attribute changed since.
+            let ns = text as NSString
+            let lit = { (r: [NSRange]?) in (r ?? []).map { ns.substring(with: RangeMath.clamp($0, toLength: ns.length)).prefix(24) } }
+            if let was = rememberedFocus[name] {
+                let ops = s.overlay.operations - was.operations
+                check("focus unchanged since \(name)", s.overlay.layers.focus == was.keep && ops == 0,
+                      "was \(lit(was.keep)) now \(lit(s.overlay.layers.focus)), \(ops) dimming operations")
+            } else { check("focus unchanged since \(name)", false, "nothing remembered") }
+        }
+        if let name = a["textUnmoved"] as? String {
+            // The line that held the caret (or the selection's start) when `name` was remembered is where it was in the window.
+            if let at = remembered[name]?["anchor"], let was = remembered[name]?["anchorY"], let now = lineYInWindow(Int(at)) {
+                check("text unmoved since \(name)", abs(now - was) < 1, "line at \(Int(at)) was \(was) now \(now)")
+            } else { check("text unmoved since \(name)", false, "nothing remembered") }
+        }
+        if a["selectionDrawn"] as? Bool == true, let tv = textView {
+            let (ok, detail) = selectionDrawnCheck(tv)
+            check("selection drawn on every line it covers", ok, detail)
+        }
+        if let name = a["focusChanged"] as? String, let s = session {
+            check("focus changed since \(name)", rememberedFocus[name].map { $0.keep != s.overlay.layers.focus } ?? false)
         }
         if let v = a["focusing"] as? Bool, let s = session { check("focusing \(v)", s.overlay.isFocusing == v) }
         if let v = a["syntaxing"] as? Bool, let s = session { check("syntaxing \(v)", s.pos.isEnabled == v) }

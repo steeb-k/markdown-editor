@@ -487,5 +487,1065 @@
   "assert": {
    "coreMatchesText": true
   }
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "log": "--- slow drags at a person's pace (M8i): focus. The press holds focus mode still: the view does not move, the dimming does not change, and the selection is exactly what the same drag selects without focus mode"
+ },
+ {
+  "log": "--- slow drag focus source plain"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": false,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source plain focused"
+ },
+ {
+  "remember": "sd-focus-source-focused-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "name": "focus-source-focused"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source plain dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-top-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "name": "focus-source-dimmed-top-half"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source plain dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-bottom-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "name": "focus-source-dimmed-bottom-half"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag focus source centred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": true
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus source centred focused"
+ },
+ {
+  "remember": "sd-focus-source-focused-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "sameAs": "focus-source-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-focused-centred",
+   "textUnmoved": "sd-focus-source-focused-centred",
+   "focusUnchanged": "sd-focus-source-focused-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus source centred dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-top-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "sameAs": "focus-source-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-dimmed-top-half-centred",
+   "textUnmoved": "sd-focus-source-dimmed-top-half-centred",
+   "focusUnchanged": "sd-focus-source-dimmed-top-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus source centred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-bottom-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "sameAs": "focus-source-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-dimmed-bottom-half-centred",
+   "textUnmoved": "sd-focus-source-dimmed-bottom-half-centred",
+   "focusUnchanged": "sd-focus-source-dimmed-bottom-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag focus source uncentred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source uncentred focused"
+ },
+ {
+  "remember": "sd-focus-source-focused-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "sameAs": "focus-source-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-focused-uncentred",
+   "textUnmoved": "sd-focus-source-focused-uncentred",
+   "focusUnchanged": "sd-focus-source-focused-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source uncentred dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-top-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "sameAs": "focus-source-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-dimmed-top-half-uncentred",
+   "textUnmoved": "sd-focus-source-dimmed-top-half-uncentred",
+   "focusUnchanged": "sd-focus-source-dimmed-top-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus source uncentred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-source-dimmed-bottom-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "sameAs": "focus-source-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-source-dimmed-bottom-half-uncentred",
+   "textUnmoved": "sd-focus-source-dimmed-bottom-half-uncentred",
+   "focusUnchanged": "sd-focus-source-dimmed-bottom-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag focus live plain"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": false,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live plain focused"
+ },
+ {
+  "remember": "sd-focus-live-focused-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "name": "focus-live-focused"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live plain dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-top-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "name": "focus-live-dimmed-top-half"
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live plain dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-bottom-half-plain"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "name": "focus-live-dimmed-bottom-half"
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag focus live centred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": true
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus live centred focused"
+ },
+ {
+  "remember": "sd-focus-live-focused-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "sameAs": "focus-live-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-focused-centred",
+   "textUnmoved": "sd-focus-live-focused-centred",
+   "focusUnchanged": "sd-focus-live-focused-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus live centred dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-top-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "sameAs": "focus-live-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-dimmed-top-half-centred",
+   "textUnmoved": "sd-focus-live-dimmed-top-half-centred",
+   "focusUnchanged": "sd-focus-live-dimmed-top-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "log": "slowDrag focus live centred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-bottom-half-centred"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "sameAs": "focus-live-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-dimmed-bottom-half-centred",
+   "textUnmoved": "sd-focus-live-dimmed-bottom-half-centred",
+   "focusUnchanged": "sd-focus-live-dimmed-bottom-half-centred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "log": "--- slow drag focus live uncentred"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "setting": {
+   "centreFocusedLine": false
+  }
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live uncentred focused"
+ },
+ {
+  "remember": "sd-focus-live-focused-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A bullet item",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 3
+    }
+   ],
+   "to": "Two sentences",
+   "toOffset": 4,
+   "sameAs": "focus-live-focused",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-focused-uncentred",
+   "textUnmoved": "sd-focus-live-focused-uncentred",
+   "focusUnchanged": "sd-focus-live-focused-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live uncentred dimmed-top-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-top-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A second sentence follows",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "Dr. Smith",
+     "offset": 1
+    }
+   ],
+   "to": "A finished task",
+   "toOffset": 4,
+   "sameAs": "focus-live-dimmed-top-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-dimmed-top-half-uncentred",
+   "textUnmoved": "sd-focus-live-dimmed-top-half-uncentred",
+   "focusUnchanged": "sd-focus-live-dimmed-top-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "selectText": "Two sentences live here",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "command": "centerSelectionInVisibleArea:"
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "slowDrag focus live uncentred dimmed-bottom-half"
+ },
+ {
+  "remember": "sd-focus-live-dimmed-bottom-half-uncentred"
+ },
+ {
+  "slowDrag": {
+   "from": "A quote that carries",
+   "fromOffset": 2,
+   "via": [
+    {
+     "needle": "struck phrase",
+     "offset": 2
+    }
+   ],
+   "to": "A nested bullet",
+   "toOffset": 3,
+   "sameAs": "focus-live-dimmed-bottom-half",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sd-focus-live-dimmed-bottom-half-uncentred",
+   "textUnmoved": "sd-focus-live-dimmed-bottom-half-uncentred",
+   "focusUnchanged": "sd-focus-live-dimmed-bottom-half-uncentred",
+   "sliding": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "log": "--- a drag across list lines draws the selection on every line it covers, in focus mode as without (M8i): the highlight was drawn in pieces where the focus range cut it, a margin to the left and the top inset above the selected text, and at 40% over dimmed lines (Source; Live is to be removed)"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "Dr. Smith",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "focus": {
+   "on": false,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "slowDrag": {
+   "from": "Dr. Smith",
+   "fromOffset": 4,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 10
+    }
+   ],
+   "to": "A quote that",
+   "toOffset": 3,
+   "name": "across-source"
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "selectedText": "Smith agreed; however, nobody listened!\n\n- A bullet item that has **bold** words and a `code chip` in it. Two sentences live here.\n- [ ] An open task that should recede with its box\n- [x] A finished task beside it\n  - A nested bullet under the finished one\n\n> A q",
+   "selectionDrawn": true
+  }
+ },
+ {
+  "snapshot": "across-source-plain",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "Dr. Smith",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "focus": {
+   "on": true,
+   "scope": "paragraph"
+  }
+ },
+ {
+  "wait": 0.8
+ },
+ {
+  "slowDrag": {
+   "from": "Dr. Smith",
+   "fromOffset": 4,
+   "via": [
+    {
+     "needle": "An open task",
+     "offset": 10
+    }
+   ],
+   "to": "A quote that",
+   "toOffset": 3,
+   "sameAs": "across-source",
+   "expectFocusStill": true
+  }
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "assert": {
+   "selectedText": "Smith agreed; however, nobody listened!\n\n- A bullet item that has **bold** words and a `code chip` in it. Two sentences live here.\n- [ ] An open task that should recede with its box\n- [x] A finished task beside it\n  - A nested bullet under the finished one\n\n> A q",
+   "selectionDrawn": true
+  }
+ },
+ {
+  "snapshot": "across-source-focus",
+  "bitmap": true
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.5
  }
 ]

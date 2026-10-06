@@ -2,6 +2,9 @@
 import AppKit
 import WebKit
 
+/// What `slowDrag` steps kept by `name`, for a later one's `sameAs`.
+@MainActor private var slowDragKept: [String: NSRange] = [:]
+
 /// Real mouse events: clicks and drags posted to the application's event queue, so that they go
 /// through `NSApplication.sendEvent` and `NSWindow.sendEvent` (hit-testing, first-responder changes,
 /// the text view's own tracking loop) exactly as the window server's would. The other steps call
@@ -324,6 +327,146 @@ extension UIScriptRunner {
                     "responder": responderName(w)], ok: ok)
             done()
         }
+    }
+
+    /// `{"slowDrag": {"from": "needle", "fromOffset": 0, "via": [{"needle": "x", "offset": 2}, {"at": "window", "x": 0.5, "y": 0.4}],
+    /// "to": "needle", "toOffset": 0, "steps": 8, "interval": 0.04, "pause": 0.4, "name": "plain-1", "sameAs": "plain-1",
+    /// "expectStill": true, "expectExact": true}}`: a drag at a person's pace. The `leftMouseDown` is posted, and a timer on the
+    /// main run loop in its common modes (which include `.eventTracking`, the mode the text view's own tracking loop inside
+    /// `mouseDown` pulls events in) posts one `leftMouseDragged` every `interval` along the path, `steps` per leg, holds still
+    /// for `pause` after the first leg (no events, as a still pointer sends none), then the `leftMouseUp` at the last point.
+    /// Every point is fixed in the window before the press, as a hand on the trackpad is. At every tick it samples the
+    /// selection, the clip view's origin, the focus range, the selection queries asked, the dimming operations applied and
+    /// the run loop's mode. `expectStill` (default true): the clip view's origin never moves from before the press to after
+    /// the release; `expectExact` (default true): the selection is exactly from the press's character to the release's;
+    /// `name` keeps the selection, `sameAs` compares with one kept (the same drag without focus mode).
+    func slowDragStep(_ d: [String: Any], then done: @escaping () -> Void) {
+        guard let wc = clickController, let w = wc.window,
+              let from = d["from"] as? String, let to = d["to"] as? String,
+              let (a, la, _) = clickTarget(["needle": from, "offset": d["fromOffset"] as? Int ?? 0]),
+              let (b, lb, _) = clickTarget(["needle": to, "offset": d["toOffset"] as? Int ?? 0]) else {
+            record(["slowDrag": d, "error": "no target"], ok: false)
+            done()
+            return
+        }
+        var via: [NSPoint] = []
+        for v in d["via"] as? [[String: Any]] ?? [] {
+            guard let (p, _, _) = clickTarget(v) else {
+                record(["slowDrag": d, "error": "no via target \(v)"], ok: false)
+                done()
+                return
+            }
+            via.append(p)
+        }
+        // Every point on text a reader can see (not under the title bar or the formatting bar, not scrolled away).
+        let clip = wc.scrollView.contentView
+        let r = clip.convert(clip.bounds, to: nil)
+        let visible = NSRect(x: r.minX, y: r.minY + wc.editorScrollView.baseInsetBottom, width: r.width,
+                             height: r.height - wc.editorScrollView.baseInsetTop - wc.editorScrollView.baseInsetBottom)
+        if let p = ([a] + via + [b]).first(where: { !visible.contains($0) }) {
+            record(["slowDrag": d, "error": "a point is not on visible text", "point": NSStringFromPoint(p), "visible": NSStringFromRect(visible)], ok: false)
+            done()
+            return
+        }
+        makeKey(w) { [self] in slowDragNow(d, wc, w, [a] + via + [b], la, lb, "\(from) -> \(to)", then: done) }
+    }
+
+    private func slowDragNow(_ d: [String: Any], _ wc: EditorWindowController, _ w: NSWindow, _ path: [NSPoint],
+                             _ la: Int?, _ lb: Int?, _ detail: String, then done: @escaping () -> Void) {
+        let steps = max(1, d["steps"] as? Int ?? 8)
+        let interval = (d["interval"] as? NSNumber)?.doubleValue ?? 0.04
+        let pause = (d["pause"] as? NSNumber)?.doubleValue ?? 0.4
+        // The pointer's positions, one per tick; nil is a tick with the pointer still (no event).
+        var plan: [NSPoint?] = []
+        for leg in 1..<path.count {
+            let p0 = path[leg - 1], p1 = path[leg]
+            for i in 1...steps {
+                let t = CGFloat(i) / CGFloat(steps)
+                plan.append(NSPoint(x: (p0.x + (p1.x - p0.x) * t).rounded(), y: (p0.y + (p1.y - p0.y) * t).rounded()))
+                // The pause: after the first leg, or half way along the only one.
+                if leg == 1, i == (path.count == 2 ? steps / 2 : steps) {
+                    plan.append(contentsOf: Array(repeating: nil, count: Int((pause / interval).rounded())))
+                }
+            }
+        }
+        let tv = wc.textView, session = wc.session, clip = wc.scrollView.contentView, centring = wc.centring
+        let origin0 = clip.bounds.minY
+        let queries0 = session.stateQueries, ops0 = session.overlay.operations, moves0 = centring.slides + centring.jumps
+        func focusText() -> String { session.overlay.layers.focus.map { $0.map { "\($0.location)+\($0.length)" }.joined(separator: ",") } ?? "-" }
+        let focus0 = focusText()
+        var samples: [[String: Any]] = []
+        var modes = Set<String>()
+        func sample(_ phase: String, _ p: NSPoint?) {
+            let s = tv.selectedRange()
+            var e: [String: Any] = ["phase": phase, "sel": [s.location, s.length], "originY": Double(clip.bounds.minY),
+                                    "focus": focusText(), "queries": session.stateQueries - queries0,
+                                    "dimOps": session.overlay.operations - ops0, "centring": centring.slides + centring.jumps - moves0]
+            if let p { e["at"] = [Double(p.x), Double(p.y)] }
+            if centring.isSliding { e["sliding"] = true }
+            if let m = RunLoop.current.currentMode { modes.insert(m.rawValue); e["mode"] = m.rawValue }
+            samples.append(e)
+        }
+        sample("before", path[0])
+        if let e = mouse(.leftMouseDown, path[0], in: w, count: 1, mods: []) { NSApp.postEvent(e, atStart: false) }
+        var next = 0
+        var last = path[0]
+        let feeder = Timer(timeInterval: interval, repeats: true) { [self] t in
+            MainActor.assumeIsolated {
+                if next < plan.count {
+                    sample(next == 0 ? "down" : "drag", last)
+                    if let p = plan[next] {
+                        last = p
+                        if let e = mouse(.leftMouseDragged, p, in: w, count: 1, mods: []) { NSApp.postEvent(e, atStart: false) }
+                    }
+                    next += 1
+                } else {
+                    sample("drag", last)
+                    if let e = mouse(.leftMouseUp, last, in: w, count: 1, mods: []) { NSApp.postEvent(e, atStart: false) }
+                    t.invalidate()
+                    later(0.6) { [self] in
+                        finishSlowDrag(d, w, tv, detail, la, lb, origin0, focus0, focusText(), samples, modes, then: done)
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(feeder, forMode: .common)
+        RunLoop.main.add(feeder, forMode: .eventTracking)
+    }
+
+    private func finishSlowDrag(_ d: [String: Any], _ w: NSWindow, _ tv: EditorTextView, _ detail: String, _ la: Int?, _ lb: Int?,
+                                _ origin0: CGFloat, _ focus0: String, _ focusAfter: String, _ samplesSoFar: [[String: Any]],
+                                _ modes: Set<String>, then done: @escaping () -> Void) {
+        let sel = tv.selectedRange()
+        let got = (tv.string as NSString).substring(with: sel)
+        let originNow = Double(tv.enclosingScrollView?.contentView.bounds.minY ?? 0)
+        var ok = responderName(w) == "text"
+        var entry: [String: Any] = ["slowDrag": detail, "selection": [sel.location, sel.length], "selectedText": got,
+                                    "origin": [Double(origin0), originNow], "modes": Array(modes).sorted(), "focus": [focus0, focusAfter]]
+        var samples = samplesSoFar
+        samples.append(["phase": "after", "sel": [sel.location, sel.length], "originY": originNow])
+        // Where the origin first moved, and by how much at most.
+        if let i = samples.firstIndex(where: { abs(($0["originY"] as? Double ?? 0) - Double(origin0)) >= 0.5 }) {
+            entry["firstMove"] = ["sample": i, "phase": samples[i]["phase"] ?? "", "by": (samples[i]["originY"] as? Double ?? 0) - Double(origin0)]
+        }
+        entry["maxMove"] = samples.map { abs(($0["originY"] as? Double ?? 0) - Double(origin0)) }.max() ?? 0
+        entry["samples"] = samples
+        if d["expectStill"] as? Bool ?? true { ok = ok && (entry["maxMove"] as? Double ?? 0) < 0.5 }
+        if d["expectExact"] as? Bool ?? true, let la, let lb {
+            entry["expected"] = [min(la, lb), abs(lb - la)]
+            ok = ok && sel.location == min(la, lb) && NSMaxRange(sel) == max(la, lb)
+        }
+        if let name = d["name"] as? String { slowDragKept[name] = sel }
+        if let name = d["sameAs"] as? String {
+            let want = slowDragKept[name]
+            entry["sameAs"] = want.map { [$0.location, $0.length] } ?? "none"
+            ok = ok && want == sel
+        }
+        // The focus range (the dimming) where it was before the press: a selection holds focus mode still.
+        if d["expectFocusStill"] as? Bool == true {
+            ok = ok && samples.allSatisfy { ($0["focus"] as? String).map { $0 == focus0 } ?? true } && focusAfter == focus0
+        }
+        record(entry, ok: ok)
+        done()
     }
 
     /// `{"contextMenu": {"needle": "word", "offset": 1, "select": [loc, len], "has": ["Paste As", "Mark As"], "lacks": [...],

@@ -135,7 +135,8 @@ final class OverlayRandomTests: XCTestCase {
             }
         }
         XCTAssertEqual(o.layers.authorship, OverlayCompositor.merged(wantAuthorship), "authorship layer, \(context)")
-        if e.session.focusEnabled {
+        if e.session.focusEnabled, !e.session.focusHeld {
+            // (A selection holds the focus range where it was: the owner's decision of 5 October.)
             let sel = e.tv.selectedRange()
             let scope: FocusScope = e.session.settings.focusScope == .sentence ? .sentence : .paragraph
             let core = e.session.coordinator.sync { doc in
@@ -146,7 +147,7 @@ final class OverlayRandomTests: XCTestCase {
             let w = e.session.liveQueryWindow()
             func clip(_ rs: [NSRange]) -> [NSRange] { rs.map { NSIntersectionRange($0, w) }.filter { $0.length > 0 } }
             XCTAssertEqual(clip(o.layers.focus ?? []), clip(core), "focus layer, \(context)")
-        } else {
+        } else if !e.session.focusEnabled {
             XCTAssertNil(o.layers.focus, context)
         }
         if !e.session.syntaxEnabled { XCTAssertEqual(o.layers.pos, [], context) }
@@ -281,8 +282,10 @@ final class FocusTypingTests: XCTestCase {
     }
 }
 
-/// A selection made away from what is on screen (Find Next, undo) is asked about with the
-/// window of what was on screen; once it is scrolled into view it is asked about again.
+/// A selection made away from what is on screen (Find Next, undo) holds focus mode still (the owner's decision of
+/// 5 October): the dimming stays where it was, also once the selection is scrolled into view. The caret it collapses to
+/// is asked about with the window of what is on screen. Focus mode turned on with such a selection is asked about with
+/// the window of what was on screen: the selection lights itself only.
 final class FocusScrollTests: XCTestCase {
     func testASelectionScrolledIntoViewGetsItsUnits() {
         for mode in [ViewMode.source, .live] {
@@ -291,20 +294,37 @@ final class FocusScrollTests: XCTestCase {
             var visible = NSRange(location: 0, length: 3_000)
             e.session.visibleRange = { RangeMath.clamp(visible, toLength: e.session.storage.length) }
             e.session.setViewMode(mode)
-            e.session.setFocusEnabled(true)
             let ns = text as NSString
             let far = ns.range(of: "second one", options: [], range: NSRange(location: 90_000, length: 5_000))
             e.select(far.location, far.length)
+            e.session.setFocusEnabled(true)
             e.settle()
             XCTAssertEqual(e.session.overlay.layers.focus, [far], "\(mode): asked about off screen, the selection lights itself only")
             visible = NSRange(location: far.location - 1_000, length: 3_000)
             e.session.viewportChanged()
             XCTAssertTrue(spin { e.session.selectionStateSettled })
             e.settle()
+            XCTAssertEqual(e.session.overlay.layers.focus, [far], "\(mode): scrolled into view, the selection still holds it")
+            // Found again from a caret at the top: held where the caret's sentence was.
+            visible = NSRange(location: 0, length: 3_000)
+            e.select(5)
+            e.session.viewportChanged()
+            e.settle()
+            let top = e.session.overlay.layers.focus
+            e.select(far.location, far.length)
+            e.settle()
+            visible = NSRange(location: far.location - 1_000, length: 3_000)
+            e.session.viewportChanged()
+            XCTAssertTrue(spin { e.session.selectionStateSettled })
+            e.settle()
+            XCTAssertEqual(e.session.overlay.layers.focus, top, "\(mode): a Find match holds the dimming where it was")
+            // Collapsed to a caret in it, on screen: the sentence it is in.
+            e.select(far.location + 2)
+            e.settle()
             let core = e.session.coordinator.sync { doc in
-                doc.focusRange(selection: Utf16Range(start: UInt32(far.location), end: UInt32(NSMaxRange(far))), scope: .sentence).map(\.nsRange)
+                doc.focusRange(selection: Utf16Range(start: UInt32(far.location + 2), end: UInt32(far.location + 2)), scope: .sentence).map(\.nsRange)
             }
-            XCTAssertEqual(e.session.overlay.layers.focus, core, "\(mode): on screen, the sentence it is in")
+            XCTAssertEqual(e.session.overlay.layers.focus, core, "\(mode): on screen, the sentence the caret is in")
         }
     }
 }

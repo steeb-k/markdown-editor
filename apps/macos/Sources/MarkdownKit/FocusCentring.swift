@@ -363,7 +363,14 @@ final class FocusCentring {
     /// moved the view back to it whenever the selection grew upward, or a drag's autoscroll (a timer's event, not the
     /// mouse's) extended it, far from the text being selected. Turning focus on with a selection present still slides
     /// once, to its start line (`activate` centres directly), then holds.
-    private var selectionHeld: Bool { (textView?.selectedRange().length ?? 0) > 0 }
+    ///
+    /// The mouse button down in the text holds it too, before anything is selected (`EditorTextView.isTrackingMouse`): a
+    /// press or a drag is AppKit's tracking loop, and the text must not move under the pointer. The release requests
+    /// once, as a click (the line stays where it was clicked).
+    private var selectionHeld: Bool {
+        guard let tv = textView else { return false }
+        return tv.isTrackingMouse || tv.selectedRange().length > 0
+    }
 
     private func caretRange() -> NSRange { textView?.selectedRange() ?? NSRange(location: 0, length: 0) }
 

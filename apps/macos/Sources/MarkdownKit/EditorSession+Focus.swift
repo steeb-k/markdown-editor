@@ -31,6 +31,17 @@ extension EditorSession {
         onFocusToolsChange?()
     }
 
+    /// Focus mode holds still (the owner's decision of 5 October): while text is selected, however it was selected (a
+    /// drag, ⇧-arrows, a double or triple click, Select All, a Find match), and while the mouse button is down in the
+    /// text (a click or a drag that has not selected anything yet), the focus range is not asked for or changed, so the
+    /// dimming stays where it was when the selection began. The centring holds too (`FocusCentring.selectionHeld`). One normal
+    /// update follows when the selection collapses to a caret, or the button is released. Focus mode turned on with a
+    /// selection present (no focus range yet) is not held: it dims around the selection once.
+    var focusHeld: Bool {
+        guard focusEnabled, overlay.isFocusing, let tv = textView else { return false }
+        return tv.isTrackingMouse || tv.selectedRange().length > 0
+    }
+
     /// Syntax (parts of speech) highlighting on or off for this window.
     public func setSyntaxEnabled(_ on: Bool) {
         guard on != syntaxEnabled else { return }
@@ -41,7 +52,7 @@ extension EditorSession {
 
     /// The core's focus range for the selection arrived.
     func applyFocus(_ ranges: [Utf16Range]?) {
-        guard focusEnabled else { return }
+        guard focusEnabled, !focusHeld else { return }
         let new = (ranges ?? []).map(\.nsRange)
         let changed = new != overlay.layers.focus
         overlay.setFocus(new)

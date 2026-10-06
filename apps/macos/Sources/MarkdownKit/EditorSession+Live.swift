@@ -145,7 +145,7 @@ extension EditorSession {
         defer { timeInStateQueries += CFAbsoluteTimeGetCurrent() - t0 }
         let composing = isComposing()
         let live = viewMode == .live && !composing
-        let scope: FocusScope? = focusEnabled && !composing ? focusScopeForCore : nil
+        let scope: FocusScope? = focusEnabled && !composing && !focusHeld ? focusScopeForCore : nil
         // Whatever was scheduled is answered by this call, even when there is nothing to ask.
         livePending = false
         guard live || scope != nil || selectionChange else { return }
