@@ -212,7 +212,6 @@ extension UIScriptRunner {
         }
         func has(_ what: String, _ ok: Bool, _ detail: String) { check("\(name): \(what)", ok, detail) }
         if let v = w["layout"] as? String { has("layout \(v)", state.layout == v, state.layout ?? "") }
-        if let v = w["viewMode"] as? String { has("mode \(v)", state.viewMode == v, state.viewMode ?? "") }
         if let v = w["focus"] as? Bool { has("focus \(v)", state.focus == v, "\(String(describing: state.focus))") }
         if let v = w["notes"] as? Bool { has("notes mode \(v)", (state.notes != nil) == v && wc.inNotesMode == v && (wc.sidebar != nil) == v, "\(String(describing: state.notes)) sidebar \(wc.sidebar != nil)") }
         if let v = w["selection"] as? [String] { has("sidebar selection \(v)", state.notes?.selection == v, "\(state.notes?.selection ?? [])") }
@@ -255,7 +254,6 @@ extension UIScriptRunner {
             differ("untitled text", a.untitledText == b.untitledText, a.untitledText?.prefix(20), b.untitledText?.prefix(20))
             differ("frame", nearAll(a.frame, b.frame, 1.5), a.frame, b.frame)
             differ("layout", a.layout == b.layout, a.layout, b.layout)
-            differ("view mode", a.viewMode == b.viewMode, a.viewMode, b.viewMode)
             differ("focus", a.focus == b.focus, a.focus, b.focus)
             differ("syntax", a.syntax == b.syntax, a.syntax, b.syntax)
             differ("authorship", a.authorship == b.authorship, a.authorship, b.authorship)

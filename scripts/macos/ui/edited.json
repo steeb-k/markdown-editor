@@ -1,6 +1,6 @@
 [
  {
-  "log": "--- A titled document shows \"Edited\" only for the two seconds before the autosave (AppKit's own title kept it, so the title is the app's now): examples/Showcase.md, in plain mode and in notes mode with the library prompt showing, in every layout and in Source and Live"
+  "log": "--- A titled document shows \"Edited\" only for the two seconds before the autosave (AppKit's own title kept it, so the title is the app's now): examples/Showcase.md, in plain mode and in notes mode with the library prompt showing and in every layout"
  },
  {
   "setting": {
@@ -45,9 +45,6 @@
  },
  {
   "layout": "editor"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -101,66 +98,7 @@
   "bitmap": true
  },
  {
-  "layout": "editor"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "PlainEditorLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "PlainEditorLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-plain-editor-live",
-  "bitmap": true
- },
- {
   "layout": "split"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -213,66 +151,7 @@
   "bitmap": true
  },
  {
-  "layout": "split"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "PlainSplitLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "PlainSplitLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-plain-split-live",
-  "bitmap": true
- },
- {
   "layout": "preview"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -331,68 +210,6 @@
   "bitmap": true
  },
  {
-  "layout": "preview"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "layout": "editor"
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "PlainPreviewLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "layout": "preview"
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "PlainPreviewLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-plain-preview-live",
-  "bitmap": true
- },
- {
   "log": "--- the same window in notes mode, with no library yet: the sidebar shows its first-run prompt"
  },
  {
@@ -416,9 +233,6 @@
  },
  {
   "layout": "editor"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -471,66 +285,7 @@
   "bitmap": true
  },
  {
-  "layout": "editor"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "NotesEditorLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "NotesEditorLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-notes-editor-live",
-  "bitmap": true
- },
- {
   "layout": "split"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -583,66 +338,7 @@
   "bitmap": true
  },
  {
-  "layout": "split"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "NotesSplitLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "NotesSplitLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-notes-split-live",
-  "bitmap": true
- },
- {
   "layout": "preview"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -701,68 +397,6 @@
   "bitmap": true
  },
  {
-  "layout": "preview"
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "layout": "editor"
- },
- {
-  "selectText": "every element",
-  "offset": 0,
-  "length": 0
- },
- {
-  "type": "NotesPreviewLive ",
-  "interval": 0.04
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "title": {
-    "inPane": true,
-    "followsDocument": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "layout": "preview"
- },
- {
-  "wait": 3.2
- },
- {
-  "assert": {
-   "documentEdited": false,
-   "windows": {
-    "editedDot": false
-   },
-   "documentFile": {
-    "contains": "NotesPreviewLive",
-    "equalsText": true
-   },
-   "title": {
-    "inPane": true,
-    "edited": false,
-    "text": "Showcase.md",
-    "systemHidden": true
-   },
-   "titlebarClean": true
-  }
- },
- {
-  "snapshot": "edited-notes-preview-live",
-  "bitmap": true
- },
- {
   "log": "--- with the side column showing too (Outline, then History), and a library"
  },
  {
@@ -775,9 +409,6 @@
  },
  {
   "layout": "editor"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -838,9 +469,6 @@
   "layout": "editor"
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -897,9 +525,6 @@
  },
  {
   "layout": "editor"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20

@@ -49,7 +49,6 @@ public final class MarkdownDocument: NSDocument {
     public override var fileURL: URL? {
         didSet {
             guard fileURL != oldValue else { return }
-            session.documentURLChanged()
             if let old = oldValue, let new = fileURL { renamedHistory(from: old, to: new) }
             (windowControllers.first as? EditorWindowController)?.documentKeyChanged()
         }

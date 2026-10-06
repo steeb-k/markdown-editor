@@ -98,9 +98,9 @@ final class OverlayRandomTests: XCTestCase {
                 log.append("theme \(theme)")
                 e.session.settings.theme = theme
             case 10:
-                let mode: ViewMode = e.session.viewMode == .live ? .source : .live
-                log.append("mode \(mode)")
-                e.session.setViewMode(mode)
+                let at = Int(rng.next() % UInt64(max(1, length)))
+                log.append("caret \(at)")
+                e.select(at)
             case 11:
                 log.append("focus toggle")
                 e.session.setFocusEnabled(!e.session.focusEnabled)
@@ -112,7 +112,7 @@ final class OverlayRandomTests: XCTestCase {
                 if e.um.canUndo { e.um.undo() }
             }
             XCTAssertTrue(e.session.waitUntilStyled())
-            e.session.refreshLive()
+            e.session.refreshState()
             XCTAssertTrue(e.session.pos.waitUntilSettled())
             e.session.overlay.apply()
             let context = "seed \(seed) step \(step): \(log.suffix(3))"
@@ -144,7 +144,7 @@ final class OverlayRandomTests: XCTestCase {
             }
             // A selection's units are worked out inside the query's window (what is on screen and
             // around it); inside that window the answer is the core's.
-            let w = e.session.liveQueryWindow()
+            let w = e.session.queryWindow()
             func clip(_ rs: [NSRange]) -> [NSRange] { rs.map { NSIntersectionRange($0, w) }.filter { $0.length > 0 } }
             XCTAssertEqual(clip(o.layers.focus ?? []), clip(core), "focus layer, \(context)")
         } else if !e.session.focusEnabled {
@@ -202,7 +202,7 @@ final class OverlayRandomTests: XCTestCase {
 final class IdleTests: XCTestCase {
     func testEverythingGoesIdle() {
         let text = String(repeating: OverlayRandomTests.paragraph, count: 300)
-        let e = Editor.live(text, caret: 100)
+        let e = Editor.laidOut(text, caret: 100)
         e.privatePasteboard()
         let tagger = FakeTagger()
         e.session.pos.tagger = tagger
@@ -216,9 +216,9 @@ final class IdleTests: XCTestCase {
         XCTAssertTrue(e.session.pos.waitUntilSettled())
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
         let o = e.session.overlay
-        let before = (tagger.calls, e.session.pos.refreshes, o.applications, e.session.stateQueries, e.session.coordinator.latestSeq, e.session.liveQueries)
+        let before = (tagger.calls, e.session.pos.refreshes, o.applications, e.session.stateQueries, e.session.coordinator.latestSeq)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 2.0))
-        let after = (tagger.calls, e.session.pos.refreshes, o.applications, e.session.stateQueries, e.session.coordinator.latestSeq, e.session.liveQueries)
+        let after = (tagger.calls, e.session.pos.refreshes, o.applications, e.session.stateQueries, e.session.coordinator.latestSeq)
         XCTAssertTrue(before == after, "something kept running while idle: \(before) -> \(after)")
         XCTAssertTrue(e.session.pos.isSettled)
         XCTAssertTrue(e.session.isStyled)
@@ -288,64 +288,54 @@ final class FocusTypingTests: XCTestCase {
 /// the window of what was on screen: the selection lights itself only.
 final class FocusScrollTests: XCTestCase {
     func testASelectionScrolledIntoViewGetsItsUnits() {
-        for mode in [ViewMode.source, .live] {
-            let text = String(repeating: OverlayRandomTests.paragraph, count: 400)
-            let e = Editor(text: text)
-            var visible = NSRange(location: 0, length: 3_000)
-            e.session.visibleRange = { RangeMath.clamp(visible, toLength: e.session.storage.length) }
-            e.session.setViewMode(mode)
-            let ns = text as NSString
-            let far = ns.range(of: "second one", options: [], range: NSRange(location: 90_000, length: 5_000))
-            e.select(far.location, far.length)
-            e.session.setFocusEnabled(true)
-            e.settle()
-            XCTAssertEqual(e.session.overlay.layers.focus, [far], "\(mode): asked about off screen, the selection lights itself only")
-            visible = NSRange(location: far.location - 1_000, length: 3_000)
-            e.session.viewportChanged()
-            XCTAssertTrue(spin { e.session.selectionStateSettled })
-            e.settle()
-            XCTAssertEqual(e.session.overlay.layers.focus, [far], "\(mode): scrolled into view, the selection still holds it")
-            // Found again from a caret at the top: held where the caret's sentence was.
-            visible = NSRange(location: 0, length: 3_000)
-            e.select(5)
-            e.session.viewportChanged()
-            e.settle()
-            let top = e.session.overlay.layers.focus
-            e.select(far.location, far.length)
-            e.settle()
-            visible = NSRange(location: far.location - 1_000, length: 3_000)
-            e.session.viewportChanged()
-            XCTAssertTrue(spin { e.session.selectionStateSettled })
-            e.settle()
-            XCTAssertEqual(e.session.overlay.layers.focus, top, "\(mode): a Find match holds the dimming where it was")
-            // Collapsed to a caret in it, on screen: the sentence it is in.
-            e.select(far.location + 2)
-            e.settle()
-            let core = e.session.coordinator.sync { doc in
-                doc.focusRange(selection: Utf16Range(start: UInt32(far.location + 2), end: UInt32(far.location + 2)), scope: .sentence).map(\.nsRange)
-            }
-            XCTAssertEqual(e.session.overlay.layers.focus, core, "\(mode): on screen, the sentence the caret is in")
+        let text = String(repeating: OverlayRandomTests.paragraph, count: 400)
+        let e = Editor(text: text)
+        var visible = NSRange(location: 0, length: 3_000)
+        e.session.visibleRange = { RangeMath.clamp(visible, toLength: e.session.storage.length) }
+        let ns = text as NSString
+        let far = ns.range(of: "second one", options: [], range: NSRange(location: 90_000, length: 5_000))
+        e.select(far.location, far.length)
+        e.session.setFocusEnabled(true)
+        e.settle()
+        XCTAssertEqual(e.session.overlay.layers.focus, [far], "asked about off screen, the selection lights itself only")
+        visible = NSRange(location: far.location - 1_000, length: 3_000)
+        e.session.viewportChanged()
+        XCTAssertTrue(spin { e.session.selectionStateSettled })
+        e.settle()
+        XCTAssertEqual(e.session.overlay.layers.focus, [far], "scrolled into view, the selection still holds it")
+        // Found again from a caret at the top: held where the caret's sentence was.
+        visible = NSRange(location: 0, length: 3_000)
+        e.select(5)
+        e.session.viewportChanged()
+        e.settle()
+        let top = e.session.overlay.layers.focus
+        e.select(far.location, far.length)
+        e.settle()
+        visible = NSRange(location: far.location - 1_000, length: 3_000)
+        e.session.viewportChanged()
+        XCTAssertTrue(spin { e.session.selectionStateSettled })
+        e.settle()
+        XCTAssertEqual(e.session.overlay.layers.focus, top, "a Find match holds the dimming where it was")
+        // Collapsed to a caret in it, on screen: the sentence it is in.
+        e.select(far.location + 2)
+        e.settle()
+        let core = e.session.coordinator.sync { doc in
+            doc.focusRange(selection: Utf16Range(start: UInt32(far.location + 2), end: UInt32(far.location + 2)), scope: .sentence).map(\.nsRange)
         }
+        XCTAssertEqual(e.session.overlay.layers.focus, core, "on screen, the sentence the caret is in")
     }
 }
 
-/// Undo asks about the selection again on the next turn; with nothing to ask (Source mode,
-/// focus off) that must not leave the request hanging, which would stop Live mode refreshing.
+/// Undo asks about the selection again on the next turn; with nothing to ask (focus off) that must not leave the
+/// request hanging.
 final class UndoRefreshTests: XCTestCase {
-    func testUndoInSourceModeLeavesNothingPending() {
+    func testUndoWithFocusOffLeavesNothingPending() {
         let e = Editor(text: "Some *text* here.\n")
         e.um.groupsByEvent = false
         e.select(4)
         e.type("x")
         e.um.undo()
-        XCTAssertTrue(spin(timeout: 2) { !e.session.livePending })
+        XCTAssertTrue(spin(timeout: 2) { !e.session.statePending })
         XCTAssertTrue(e.session.selectionStateSettled)
-        // Live mode still follows edits: the emphasis markup is hidden once the caret leaves it.
-        e.session.setViewMode(.live)
-        e.select(0)
-        e.type("A ")
-        e.settle()
-        XCTAssertFalse(e.session.livePending)
-        XCTAssertFalse(e.session.layoutManager.live.hidden.isEmpty, "concealment was refreshed")
     }
 }

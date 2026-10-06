@@ -280,10 +280,10 @@ final class FocusCentring {
         caretPlacedByMouse = false
     }
 
-    /// The text re-laid out (concealment changed, a picture arrived): keep the middle, unless the user
-    /// is scrolling or put the caret where it is with the mouse. (The focus range and Live mode's
-    /// concealment for a click arrive after the click when the analysis queue is busy, out of any
-    /// mouse event: they must not slide the clicked line away.)
+    /// The text re-laid out (the focus range changed the lines' heights): keep the middle, unless the user
+    /// is scrolling or put the caret where it is with the mouse. (The focus range for a click arrives
+    /// after the click when the analysis queue is busy, out of any mouse event: it must not slide the
+    /// clicked line away.)
     func layoutChanged() {
         guard isActive, !userScrolling, !caretPlacedByMouse, !selectionHeld else { return }
         request(nil, user: false)

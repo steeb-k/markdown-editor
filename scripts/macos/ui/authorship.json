@@ -25,9 +25,6 @@
   ]
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -423,9 +420,6 @@
   "reopen": true
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -552,9 +546,6 @@
   }
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -576,39 +567,8 @@
  },
  {
   "setting": {
-   "theme": "light"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "I wrote this paragraph myself",
-  "offset": 20,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "10-light-live",
-  "bitmap": true
- },
- {
-  "setting": {
    "theme": "dark"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -632,39 +592,8 @@
  },
  {
   "setting": {
-   "theme": "dark"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "I wrote this paragraph myself",
-  "offset": 20,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "10-dark-live",
-  "bitmap": true
- },
- {
-  "setting": {
    "theme": "sepia"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -687,34 +616,6 @@
   "bitmap": true
  },
  {
-  "setting": {
-   "theme": "sepia"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "I wrote this paragraph myself",
-  "offset": 20,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "10-sepia-live",
-  "bitmap": true
- },
- {
   "focus": {
    "on": true,
    "scope": "paragraph"
@@ -724,9 +625,6 @@
   "setting": {
    "theme": "light"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -750,39 +648,8 @@
  },
  {
   "setting": {
-   "theme": "light"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "concentrates the light",
-  "offset": 4,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "20-light-live-focus",
-  "bitmap": true
- },
- {
-  "setting": {
    "theme": "dark"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -806,39 +673,8 @@
  },
  {
   "setting": {
-   "theme": "dark"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "concentrates the light",
-  "offset": 4,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "20-dark-live-focus",
-  "bitmap": true
- },
- {
-  "setting": {
    "theme": "sepia"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -861,34 +697,6 @@
   "bitmap": true
  },
  {
-  "setting": {
-   "theme": "sepia"
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitStyled": 20
- },
- {
-  "selectText": "concentrates the light",
-  "offset": 4,
-  "length": 0
- },
- {
-  "wait": 0.4
- },
- {
-  "assert": {
-   "overlayConsistent": true
-  }
- },
- {
-  "snapshot": "20-sepia-live-focus",
-  "bitmap": true
- },
- {
   "focus": {
    "on": true,
    "scope": "sentence"
@@ -898,9 +706,6 @@
   "setting": {
    "theme": "light"
   }
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 20
@@ -914,7 +719,7 @@
   "wait": 0.4
  },
  {
-  "snapshot": "21-light-live-sentence-reference",
+  "snapshot": "21-light-source-sentence-reference",
   "bitmap": true
  },
  {
@@ -936,9 +741,6 @@
   }
  },
  {
-  "viewMode": "live"
- },
- {
   "waitStyled": 20
  },
  {
@@ -955,7 +757,7 @@
   }
  },
  {
-  "snapshot": "11-light-live-syntax",
+  "snapshot": "11-light-source-syntax",
   "bitmap": true
  },
  {
@@ -970,9 +772,6 @@
   "setting": {
    "theme": "light"
   }
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20

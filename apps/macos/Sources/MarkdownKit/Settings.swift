@@ -83,7 +83,6 @@ public final class Settings: NSObject {
         static let autoHide = "autoHideChrome"
         static let chromeReturns = "chromeReturnsAfterPause"
         static let centreFocus = "centreFocusedLine"
-        static let defaultViewMode = "defaultViewMode"
         static let defaultLayout = "defaultLayout"
         static let splitRatio = "previewSplitRatio"
         static let focusMode = "focusMode"
@@ -123,7 +122,6 @@ public final class Settings: NSObject {
             Key.autoHide: true,
             Key.chromeReturns: true,
             Key.centreFocus: true,
-            Key.defaultViewMode: ViewMode.source.rawValue,
             Key.defaultLayout: LayoutMode.editor.rawValue,
             Key.splitRatio: 0.5,
             Key.focusMode: false,
@@ -189,12 +187,6 @@ public final class Settings: NSObject {
     public var showFormattingToolbar: Bool {
         get { defaults.bool(forKey: Key.showToolbar) }
         set { defaults.set(newValue, forKey: Key.showToolbar); changed() }
-    }
-
-    /// The mode new windows start in. Styled source unless the user picks Live.
-    public var defaultViewMode: ViewMode {
-        get { ViewMode(rawValue: defaults.string(forKey: Key.defaultViewMode) ?? "") ?? .source }
-        set { defaults.set(newValue.rawValue, forKey: Key.defaultViewMode); changed() }
     }
 
     /// The layout new windows start in: the editor alone, the editor and the preview, or the preview.

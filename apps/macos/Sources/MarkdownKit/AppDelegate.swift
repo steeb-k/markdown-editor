@@ -138,31 +138,28 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     @objc public func showWelcome(_ sender: Any?) {
         guard let template = HelpDocuments.resource("Welcome", extension: "md") else { NSSound.beep(); return }
         let text = HelpDocuments.welcomeText(template: template, menu: NSApp.mainMenu ?? MainMenu.build())
-        Self.openBundledDocument(named: "Markdown Help", text: text, mode: .live)
+        Self.openBundledDocument(named: "Markdown Help", text: text)
     }
 
     /// Help > Acknowledgements: the third-party notices, as an untitled document.
     @objc public func showAcknowledgements(_ sender: Any?) {
         guard let text = HelpDocuments.resource("Acknowledgements", extension: "md") else { NSSound.beep(); return }
-        Self.openBundledDocument(named: "Acknowledgements", text: text, mode: .source)
+        Self.openBundledDocument(named: "Acknowledgements", text: text)
     }
 
     /// Opens `text` as a new untitled document called `name`. Nothing is written anywhere and
     /// closing it asks nothing until it is edited.
     @discardableResult
-    static func openBundledDocument(named name: String, text: String, mode: ViewMode) -> MarkdownDocument? {
+    static func openBundledDocument(named name: String, text: String) -> MarkdownDocument? {
         let controller = NSDocumentController.shared
         guard let doc = try? controller.makeUntitledDocument(ofType: controller.defaultType ?? "net.daringfireball.markdown") as? MarkdownDocument else { return nil }
         doc.isBundled = true
         doc.session.load(text)
-        doc.session.setViewMode(mode)
         doc.displayName = name
         controller.addDocument(doc)
         doc.makeWindowControllers()
         doc.showWindows()
-        // The text view exists now: Live mode asks the core what to conceal, and nothing the
-        // document did to itself while loading counts as an edit.
-        doc.session.refreshLive(force: true)
+        // Nothing the document did to itself while loading counts as an edit.
         doc.updateChangeCount(.changeCleared)
         // (Styling that follows the window's first layout can register as an edit: cleared again once it has run.)
         for delay in [0.2, 0.8] {

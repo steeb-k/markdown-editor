@@ -1,14 +1,13 @@
 [
  {
-  "log": "Pictures at the size their resolution says (a retina screenshot is half its pixels in points; a wider one is fitted to the column) in the editor and in the preview, where the <img> carries width and height; moving down into a picture puts the caret in its source at the column it came from (the fourth character, as on the line above)."
+  "log": "Pictures at the size their resolution says in the preview (a retina screenshot is half its pixels in points; a wider one is fitted to the column), where the <img> carries width and height."
  },
  {
   "setting": {
    "theme": "light",
    "fontChoice": "iaQuattro",
    "spellCheck": false,
-   "autoHideChrome": false,
-   "defaultViewMode": "live"
+   "autoHideChrome": false
   }
  },
  {
@@ -22,9 +21,6 @@
   ]
  },
  {
-  "viewMode": "live"
- },
- {
   "layout": "split"
  },
  {
@@ -32,31 +28,10 @@
   "offset": 0
  },
  {
-  "waitImages": 10
- },
- {
   "waitStyled": 20
  },
  {
   "waitPreview": 30
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "retina-144dpi.png",
-    "width": 360,
-    "height": 180
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "plain-72dpi.png",
-    "width": 644,
-    "height": 322
-   }
-  }
  },
  {
   "evalPreview": "const i = document.querySelector('img[src*=\"retina\"]'); return i.getAttribute('width') + 'x' + i.getAttribute('height');",
@@ -74,74 +49,20 @@
   "snapshot": "pictures-split"
  },
  {
-  "layout": "editor"
- },
- {
-  "selectText": "A retina screenshot",
-  "offset": 3
- },
- {
-  "waitStyled": 10
- },
- {
-  "command": "moveDown:"
- },
- {
-  "waitStyled": 10
- },
- {
-  "command": "moveDown:"
- },
- {
-  "waitStyled": 10
- },
- {
-  "assert": {
-   "selection": [
-    46,
-    0
-   ]
-  }
- },
- {
-  "snapshot": "pictures-caret-in-source"
- },
- {
-  "log": "--- An image inside a sentence: its alt text shows like a link with the markup concealed and no picture (the sentence stays whole); a picture only for an image that is a paragraph of its own"
+  "log": "--- An image inside a sentence stays inline in the preview; an image that is a paragraph of its own is a block"
  },
  {
   "layout": "split"
- },
- {
-  "viewMode": "live"
  },
  {
   "selectText": "The end.",
   "offset": 0
  },
  {
-  "waitImages": 10
- },
- {
   "waitStyled": 20
  },
  {
   "waitPreview": 30
- },
- {
-  "assert": {
-   "decorations": {
-    "image": 3
-   },
-   "hidden": [
-    "# ",
-    "![retina screenshot](retina-144dpi.png)",
-    "![plain picture](plain-72dpi.png)",
-    "![",
-    "](small.png)",
-    "![a picture of its own](small.png)"
-   ]
-  }
  },
  {
   "assert": {
@@ -169,43 +90,5 @@
  {
   "snapshot": "pictures-sentence",
   "bitmap": true
- },
- {
-  "selectText": "tiny",
-  "offset": 2
- },
- {
-  "waitStyled": 10
- },
- {
-  "assert": {
-   "decorations": {
-    "image": 3
-   },
-   "hidden": [
-    "# ",
-    "![retina screenshot](retina-144dpi.png)",
-    "![plain picture](plain-72dpi.png)",
-    "![a picture of its own](small.png)"
-   ]
-  }
- },
- {
-  "snapshot": "pictures-sentence-caret-in",
-  "bitmap": true
- },
- {
-  "selectText": "The end.",
-  "offset": 0
- },
- {
-  "waitStyled": 10
- },
- {
-  "assert": {
-   "decorations": {
-    "image": 3
-   }
-  }
  }
 ]

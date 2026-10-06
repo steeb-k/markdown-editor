@@ -7,8 +7,7 @@
    "theme": "light",
    "fontChoice": "iaQuattro",
    "spellCheck": false,
-   "autoHideChrome": false,
-   "defaultViewMode": "source"
+   "autoHideChrome": false
   }
  },
  {
@@ -107,9 +106,6 @@
  },
  {
   "snapshot": "find-bar-end"
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 20

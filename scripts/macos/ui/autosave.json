@@ -3,7 +3,6 @@
   {"setting": {"theme": "light", "fontChoice": "iaQuattro", "fontSize": 17, "lineWidth": 72, "autoHideChrome": false, "spellCheck": false, "showFormattingToolbar": true}},
   {"open": "scripts/macos/ui/fixtures/tour.md", "folder": true},
   {"resize": [900, 700]},
-  {"viewMode": "source"},
   {"waitStyled": 20},
   {"assert": {"windows": {"editedDot": false}, "documentEdited": false, "documentFile": {"lacks": "Autosaved. "}}},
   {"selectText": "Writing should feel calm", "offset": 0, "length": 0},
@@ -38,7 +37,6 @@
 
   {"log": "Another app's newer file is never overwritten: ours is kept in the history, the file is read again, and a bar says so"},
   {"open": "scripts/macos/ui/fixtures/tour.md", "folder": true},
-  {"viewMode": "source"},
   {"waitStyled": 20},
   {"selectText": "Writing should feel calm", "offset": 0, "length": 0},
   {"type": "mine "},

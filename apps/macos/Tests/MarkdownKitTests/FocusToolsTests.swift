@@ -97,20 +97,16 @@ final class FocusToolsTests: XCTestCase {
 
     // MARK: dimming equals the core
 
-    func testDimmingEqualsTheCoresRangesAtEveryCaretInSourceAndLive() {
+    func testDimmingEqualsTheCoresRangesAtEveryCaret() {
         for scope in [FocusScopeChoice.sentence, .paragraph] {
-            for mode in [ViewMode.source, .live] {
-                let settings = isolatedSettings()
-                settings.focusScope = scope
-                let e = Editor(text: Self.sample, settings: settings)
-                e.session.setViewMode(mode)
-                e.session.setFocusEnabled(true)
-                let length = (Self.sample as NSString).length
-                let stride = mode == .live ? 3 : 1
-                for p in Swift.stride(from: 0, through: length, by: stride) {
-                    assertDimmingEqualsTheCore(e, selection: NSRange(location: p, length: 0), scope: scope == .sentence ? .sentence : .paragraph,
-                                               "\(mode) \(scope) caret \(p)")
-                }
+            let settings = isolatedSettings()
+            settings.focusScope = scope
+            let e = Editor(text: Self.sample, settings: settings)
+            e.session.setFocusEnabled(true)
+            let length = (Self.sample as NSString).length
+            for p in 0...length {
+                assertDimmingEqualsTheCore(e, selection: NSRange(location: p, length: 0), scope: scope == .sentence ? .sentence : .paragraph,
+                                           "\(scope) caret \(p)")
             }
         }
     }
@@ -133,64 +129,61 @@ final class FocusToolsTests: XCTestCase {
     /// focus range is neither asked for nor changed and no dimming is applied or removed; the selection collapsing to a caret
     /// brings one normal update. Also while the mouse button is down in the text, before anything is selected.
     func testASelectionHoldsTheFocusRangeAndTheDimmingHoweverItIsMade() {
-        for mode in [ViewMode.source, .live] {
-            let settings = isolatedSettings()
-            settings.focusScope = .paragraph
-            let e = Editor(text: Self.sample, settings: settings)
-            e.session.setViewMode(mode)
-            e.session.setFocusEnabled(true)
-            let ns = Self.sample as NSString
-            e.select(ns.range(of: "Does a third").location + 3)
+        let settings = isolatedSettings()
+        settings.focusScope = .paragraph
+        let e = Editor(text: Self.sample, settings: settings)
+        e.session.setFocusEnabled(true)
+        let ns = Self.sample as NSString
+        e.select(ns.range(of: "Does a third").location + 3)
+        e.settle()
+        let lit = e.session.overlay.layers.focus
+        XCTAssertEqual(lit, ranges(e, e.tv.selectedRange(), .paragraph))
+        let dim = dimmed(e)
+        let operations = e.session.overlay.operations
+        func held(_ how: String, file: StaticString = #filePath, line: UInt = #line) {
             e.settle()
-            let lit = e.session.overlay.layers.focus
-            XCTAssertEqual(lit, ranges(e, e.tv.selectedRange(), .paragraph), "\(mode)")
-            let dim = dimmed(e)
-            let operations = e.session.overlay.operations
-            func held(_ how: String, file: StaticString = #filePath, line: UInt = #line) {
-                e.settle()
-                XCTAssertGreaterThan(e.tv.selectedRange().length, 0, "\(mode) \(how): a selection", file: file, line: line)
-                XCTAssertEqual(e.session.overlay.layers.focus, lit, "\(mode) \(how): the focus range holds", file: file, line: line)
-                XCTAssertEqual(e.session.overlay.operations, operations, "\(mode) \(how): no dimming applied or removed", file: file, line: line)
-                XCTAssertEqual(dimmed(e), dim, "\(mode) \(how): the same characters dimmed", file: file, line: line)
-            }
-            // Shift-arrows, down past the paragraph's end into the list.
-            for _ in 0..<5 { e.tv.doCommand(by: #selector(NSResponder.moveDownAndModifySelection(_:))) }
-            held("shift-down x5")
-            // A double-click's word and a triple-click's paragraph elsewhere (as AppKit sets them).
-            let word = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "quote that").location + 2, length: 0), granularity: .selectByWord)
-            e.tv.setSelectedRange(word)
-            held("double-click")
-            let para = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "A task with").location, length: 0), granularity: .selectByParagraph)
-            e.tv.setSelectedRange(para)
-            held("triple-click")
-            e.tv.selectAll(nil)
-            held("select all")
-            // A Find match: the selection set and scrolled to.
-            let match = ns.range(of: "code. block")
-            e.tv.setSelectedRange(match)
-            e.tv.scrollRangeToVisible(match)
-            held("find match")
-            // Back to a caret: one normal update, to the caret's paragraph.
-            let caret = ns.range(of: "nested item").location
-            e.select(caret)
-            e.settle()
-            XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: caret, length: 0), .paragraph), "\(mode): a caret resumes")
-            XCTAssertNotEqual(e.session.overlay.layers.focus, lit)
-
-            // The mouse button down in the text: a click's caret is held until the release, which catches up once.
-            let lit2 = e.session.overlay.layers.focus
-            let operations2 = e.session.overlay.operations
-            e.tv.isTrackingMouse = true
-            let clicked = ns.range(of: "Does a third").location
-            e.select(clicked)
-            e.settle()
-            XCTAssertEqual(e.session.overlay.layers.focus, lit2, "\(mode): held while the button is down")
-            XCTAssertEqual(e.session.overlay.operations, operations2)
-            e.tv.mouseTrackingEnded()
-            e.settle()
-            XCTAssertFalse(e.tv.isTrackingMouse)
-            XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: clicked, length: 0), .paragraph), "\(mode): the release updates")
+            XCTAssertGreaterThan(e.tv.selectedRange().length, 0, "\(how): a selection", file: file, line: line)
+            XCTAssertEqual(e.session.overlay.layers.focus, lit, "\(how): the focus range holds", file: file, line: line)
+            XCTAssertEqual(e.session.overlay.operations, operations, "\(how): no dimming applied or removed", file: file, line: line)
+            XCTAssertEqual(dimmed(e), dim, "\(how): the same characters dimmed", file: file, line: line)
         }
+        // Shift-arrows, down past the paragraph's end into the list.
+        for _ in 0..<5 { e.tv.doCommand(by: #selector(NSResponder.moveDownAndModifySelection(_:))) }
+        held("shift-down x5")
+        // A double-click's word and a triple-click's paragraph elsewhere (as AppKit sets them).
+        let word = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "quote that").location + 2, length: 0), granularity: .selectByWord)
+        e.tv.setSelectedRange(word)
+        held("double-click")
+        let para = e.tv.selectionRange(forProposedRange: NSRange(location: ns.range(of: "A task with").location, length: 0), granularity: .selectByParagraph)
+        e.tv.setSelectedRange(para)
+        held("triple-click")
+        e.tv.selectAll(nil)
+        held("select all")
+        // A Find match: the selection set and scrolled to.
+        let match = ns.range(of: "code. block")
+        e.tv.setSelectedRange(match)
+        e.tv.scrollRangeToVisible(match)
+        held("find match")
+        // Back to a caret: one normal update, to the caret's paragraph.
+        let caret = ns.range(of: "nested item").location
+        e.select(caret)
+        e.settle()
+        XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: caret, length: 0), .paragraph), "a caret resumes")
+        XCTAssertNotEqual(e.session.overlay.layers.focus, lit)
+
+        // The mouse button down in the text: a click's caret is held until the release, which catches up once.
+        let lit2 = e.session.overlay.layers.focus
+        let operations2 = e.session.overlay.operations
+        e.tv.isTrackingMouse = true
+        let clicked = ns.range(of: "Does a third").location
+        e.select(clicked)
+        e.settle()
+        XCTAssertEqual(e.session.overlay.layers.focus, lit2, "held while the button is down")
+        XCTAssertEqual(e.session.overlay.operations, operations2)
+        e.tv.mouseTrackingEnded()
+        e.settle()
+        XCTAssertFalse(e.tv.isTrackingMouse)
+        XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, NSRange(location: clicked, length: 0), .paragraph), "the release updates")
     }
 
     func testCaretOnABlankLineDimsEverything() {
@@ -281,22 +274,18 @@ final class FocusToolsTests: XCTestCase {
     }
 
     func testOneRoundTripPerSelectionChange() {
-        for mode in [ViewMode.source, .live] {
-            for focus in [false, true] {
-                let e = Editor(text: Self.sample)
-                e.session.setViewMode(mode)
-                e.session.setFocusEnabled(focus)
-                e.settle()
-                let ns = Self.sample as NSString
-                let before = e.session.stateQueries
-                e.select(ns.range(of: "Does a third").location + 3)
-                XCTAssertEqual(e.session.stateQueries - before, 1, "\(mode) focus \(focus): one query for the move")
-                // ... and it brought everything: the format state too.
-                e.select(ns.range(of: "**bold.**").location + 3)
-                XCTAssertTrue(e.session.formatState.strong || spin { e.session.formatState.strong }, "\(mode) focus \(focus)")
-                if focus { XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, e.tv.selectedRange(), .sentence)) }
-                if mode == .live { XCTAssertFalse(e.lm.live.isEmpty) }
-            }
+        for focus in [false, true] {
+            let e = Editor(text: Self.sample)
+            e.session.setFocusEnabled(focus)
+            e.settle()
+            let ns = Self.sample as NSString
+            let before = e.session.stateQueries
+            e.select(ns.range(of: "Does a third").location + 3)
+            XCTAssertEqual(e.session.stateQueries - before, 1, "focus \(focus): one query for the move")
+            // ... and it brought everything: the format state too.
+            e.select(ns.range(of: "**bold.**").location + 3)
+            XCTAssertTrue(e.session.formatState.strong || spin { e.session.formatState.strong }, "focus \(focus)")
+            if focus { XCTAssertEqual(e.session.overlay.layers.focus, ranges(e, e.tv.selectedRange(), .sentence)) }
         }
     }
 
@@ -379,7 +368,7 @@ final class FocusToolsTests: XCTestCase {
     func testScrollingBackNeverTagsAgain() {
         let text = (0..<1_200).map { "Paragraph number \($0) holds several wonderful sentences." }.joined(separator: "\n\n")
         let tagger = FakeTagger()
-        let (e, scroll) = LiveLayoutStabilityTests.scrolled(text, height: 400, mode: .source)
+        let (e, scroll) = TestScroll.scrolled(text, height: 400)
         e.session.pos.tagger = tagger
         e.session.pos.languageOverride = .english
         e.session.setSyntaxEnabled(true)
@@ -389,21 +378,21 @@ final class FocusToolsTests: XCTestCase {
         XCTAssertLessThan(top, 600, "only the visible text and a margin is tagged")
         let ns = text as NSString
         // Far away: new units are tagged.
-        LiveLayoutStabilityTests.scroll(e, scroll, toCharacter: ns.length * 2 / 3)
+        TestScroll.scroll(e, scroll, toCharacter: ns.length * 2 / 3)
         wait(e)
         let far = tagger.calls
         XCTAssertGreaterThan(far, top)
         XCTAssertFalse(e.session.overlay.layers.pos.isEmpty)
         XCTAssertGreaterThan(e.session.overlay.layers.pos.first!.range.location, ns.length / 2, "colours follow the visible text")
         // And back: what was tagged is in the cache, and its colours are back at once.
-        LiveLayoutStabilityTests.scroll(e, scroll, toCharacter: 0)
+        TestScroll.scroll(e, scroll, toCharacter: 0)
         wait(e)
         XCTAssertEqual(e.session.overlay.layers.pos.first?.range.location ?? .max, 0, "the colours are back")
         // (A unit at the very edge of a window may be looked at for the first time now.)
         XCTAssertLessThan(tagger.calls, far + 12)
         // Scrolling around: only text that was never in view is tagged, never a unit again.
         for target in [400, ns.length * 2 / 3, 0, ns.length / 3, ns.length * 2 / 3, 0] {
-            LiveLayoutStabilityTests.scroll(e, scroll, toCharacter: target)
+            TestScroll.scroll(e, scroll, toCharacter: target)
             wait(e)
         }
         XCTAssertEqual(Set(tagger.texts).count, tagger.texts.count, "no unit was ever tagged twice")
@@ -678,40 +667,4 @@ final class FocusToolsTests: XCTestCase {
         XCTAssertEqual(dark, e.session.appearance.palette.focusDim.hexString)
         XCTAssertNotEqual(light, dark)
     }
-
-    // MARK: hand-drawn things dim with their text
-
-    func testDecorationsAreDimmedOutsideTheFocusRange() {
-        let e = Editor.live("- first item here.\n\n- [ ] a task here.\n\n> a quote here.\n\nlast paragraph.", caret: 3)
-        e.session.setFocusEnabled(true)
-        e.select(3)
-        e.settle()
-        let o = e.session.overlay
-        let ns = e.string as NSString
-        let bullet = e.lm.live.decorations.first { if case .bullet = $0.kind { return true } else { return false } }!
-        XCTAssertFalse(o.isDimmed(bullet.range), "the item the caret is in keeps its bullet")
-        let box = e.lm.live.decorations.first { if case .checkbox = $0.kind { return true } else { return false } }!
-        XCTAssertTrue(o.isDimmed(box.range))
-        let bar = e.lm.live.decorations.first { if case .quoteBar = $0.kind { return true } else { return false } }!
-        XCTAssertTrue(o.isDimmed(bar.range))
-        e.select(ns.range(of: "a task").location)
-        e.settle()
-        XCTAssertTrue(o.isDimmed(bullet.range))
-        XCTAssertFalse(o.isDimmed(box.range))
-        // A bar recedes line by line.
-        XCTAssertEqual(o.pieces(of: NSRange(location: 0, length: ns.length)).map(\.dimmed), [true, false, true])
-    }
-}
-
-/// The whole of Live mode's caret behaviour again, with focus mode and syntax highlighting on.
-final class LiveCaretFocusToolsTests: LiveCaretTests {
-    override func setUp() { super.setUp(); TestMode.focusTools = true }
-    override func tearDown() { TestMode.focusTools = false; super.tearDown() }
-}
-
-/// The stress tests again, with focus mode and syntax highlighting on, and the overlay checked
-/// against the core after every step.
-final class LiveStressFocusToolsTests: LiveStressTests {
-    override func setUp() { super.setUp(); TestMode.focusTools = true }
-    override func tearDown() { TestMode.focusTools = false; super.tearDown() }
 }

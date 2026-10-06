@@ -719,7 +719,7 @@ final class AuthorshipFileTests: XCTestCase {
 /// Random typing, deletion, Paste As, Mark As, command edits, copy and paste, and random
 /// undo/redo walks, against a reference history of (text, attribution) at every step.
 class AuthorshipRandomTests: XCTestCase {
-    var live: Bool { false }
+    var laidOut: Bool { false }
 
     struct State: Equatable {
         var text: String
@@ -759,7 +759,7 @@ class AuthorshipRandomTests: XCTestCase {
             if let only = ProcessInfo.processInfo.environment["AUTHORSHIP_ONLY_ROUND"].flatMap({ Int($0) }), only != round { continue }
             let seed = UInt64(ProcessInfo.processInfo.environment["AUTHORSHIP_SEED"] ?? "") ?? 0xA17_0000
             var rng = SplitMix(seed: seed + UInt64(round))
-            let e = live ? Editor.live(Self.base, caret: 0) : Editor(text: Self.base)
+            let e = laidOut ? Editor.laidOut(Self.base, caret: 0) : Editor(text: Self.base)
             e.privatePasteboard()
             e.session.holdsRealigns = true
             // Undo is grouped by event, as in the app: an edit is one step, and an operation that
@@ -923,7 +923,7 @@ class AuthorshipRandomTests: XCTestCase {
                         e.tv.didChangeText()
                     }
                 case 19:
-                    // A checkbox click (the core's toggle, as Live mode does it).
+                    // A checkbox click (the core's toggle, as the click does it).
                     let boxes = [ns.range(of: "- [ ]"), ns.range(of: "- [x]")].filter { $0.location != NSNotFound }
                     guard let box = boxes.first else { isEdit = false; break }
                     log.append("toggle task at \(box.location)")
@@ -1010,12 +1010,8 @@ class AuthorshipRandomTests: XCTestCase {
     }
 }
 
-final class AuthorshipRandomLiveTests: AuthorshipRandomTests {
-    override var live: Bool { true }
-}
-
 final class AuthorshipRandomFocusToolsTests: AuthorshipRandomTests {
-    override var live: Bool { true }
+    override var laidOut: Bool { true }
     override func setUp() { super.setUp(); TestMode.focusTools = true }
     override func tearDown() { TestMode.focusTools = false; super.tearDown() }
 }
@@ -1112,18 +1108,6 @@ final class AuthorshipDisplayTests: XCTestCase {
         e.session.overlay.setPos([])
         e.session.overlay.apply()
         XCTAssertEqual(colour("beta"), p.authorAI.hexString)
-    }
-
-    func testLiveModeDrawsBorrowedBulletsInTheirColourAndKeepsGlyphsRight() {
-        let e = Editor.live("- first item\n- second **item**\n", caret: 0)
-        e.privatePasteboard()
-        e.session.mark(NSRange(location: 15, length: 14), as: .ai)
-        e.settle()
-        XCTAssertEqual(e.authorshipProblems(), [])
-        let p = e.session.appearance.palette
-        XCTAssertEqual(e.session.overlay.authorshipColor(at: 20)?.hexString, p.authorAI.hexString)
-        XCTAssertNil(e.session.overlay.authorshipColor(at: 2))
-        XCTAssertEqual(LiveStressTests.glyphProblems(e), [])
     }
 
     func testEveryThemeKeepsBorrowedTextReadableButQuieter() {
@@ -1270,10 +1254,10 @@ final class AuthorshipContextMenuTests: XCTestCase {
 }
 
 final class AuthorshipModesTests: XCTestCase {
-    func run(live: Bool, tools: Bool) {
+    func run(tools: Bool) {
         TestMode.focusTools = tools
         defer { TestMode.focusTools = false }
-        let e = live ? Editor.live("# Heading\n\nSome *emphasis* and text.\n\n- list item\n", caret: 0) : Editor(text: "# Heading\n\nSome *emphasis* and text.\n\n- list item\n")
+        let e = Editor.laidOut("# Heading\n\nSome *emphasis* and text.\n\n- list item\n", caret: 0)
         e.privatePasteboard()
         e.select(11)
         e.paste("Borrowed **sentence** here. ", as: .ai)
@@ -1282,19 +1266,14 @@ final class AuthorshipModesTests: XCTestCase {
         e.select((e.string as NSString).range(of: "list").location)
         e.settle()
         XCTAssertEqual(e.authorshipProblems(), [])
-        e.session.setViewMode(live ? .source : .live)
-        e.settle()
-        XCTAssertEqual(e.authorshipProblems(), [])
         e.um.undo()
         e.settle()
         XCTAssertEqual(e.authorshipProblems(), [])
         XCTAssertEqual(e.runs(), [])
     }
 
-    func testSource() { run(live: false, tools: false) }
-    func testLive() { run(live: true, tools: false) }
-    func testSourceWithFocusAndSyntax() { run(live: false, tools: true) }
-    func testLiveWithFocusAndSyntax() { run(live: true, tools: true) }
+    func testPlain() { run(tools: false) }
+    func testWithFocusAndSyntax() { run(tools: true) }
 }
 
 final class AuthorshipPerformanceTests: XCTestCase {

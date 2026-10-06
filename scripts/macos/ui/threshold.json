@@ -1,6 +1,6 @@
 [
  {
-  "log": "Either side of the 150k whole-text limit for Live-mode queries: caret moves, arrow keys and jumps. Run with RELEASE=1."
+  "log": "A 150k document: caret moves, arrow keys, typing and jumps on either side of 150,000 UTF-16 units. Run with RELEASE=1."
  },
  {
   "setting": {
@@ -21,9 +21,6 @@
    900,
    820
   ]
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 60
@@ -84,9 +81,6 @@
    900,
    820
   ]
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 60

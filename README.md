@@ -1,13 +1,13 @@
 # markdown
 
-A native macOS Markdown editor on a shared Rust core, built for writing: styled source, a Live mode that hides the markup, a preview, focus mode, a notes library with wikilinks and tags, and a history of every pause.
+A native macOS Markdown editor on a shared Rust core, built for writing: styled source, a preview, focus mode, a notes library with wikilinks and tags, and a history of every pause.
 
 Requirements: Xcode 26+, Rust (rustup) with `aarch64-apple-darwin` and `x86_64-apple-darwin` targets. No other tools needed (UniFFI's bindgen is a workspace binary).
 
 ```sh
 # Rust tests (spans, markup, offsets, dirty ranges, proptest, CommonMark spec, insta snapshots,
 # an oracle against pulldown-cmark's event stream, editing commands, tables, bare-URL autolinks, themes,
-# Live-mode concealment, focus ranges, part-of-speech units, authorship: run arithmetic and the
+# focus ranges, part-of-speech units, authorship: run arithmetic and the
 # Markdown Annotations format, and the HTML renderer: fixture snapshots, every CommonMark example, GFM,
 # data-line, slugs, the sanitizer, fragments, highlighting, the stylesheet and its contrast)
 cargo test --workspace
@@ -55,24 +55,20 @@ scripts/gen-acknowledgements.py
 
 # Drive the real app from a JSON script (no Accessibility permission needed): snapshots + log.json
 scripts/macos/ui-script.sh scripts/macos/ui/smoke.json          # -> build/ui/smoke/
-scripts/macos/ui-script.sh scripts/macos/ui/live.json           # Live mode tour -> build/ui/live/
-scripts/macos/ui-script.sh scripts/macos/ui/live-look.json      # Live mode by eye: pictures, selections, drop/paste
-scripts/macos/ui-script.sh scripts/macos/ui/live-edge.json      # Live mode edge cases
 scripts/macos/ui-script.sh scripts/macos/ui/look.json           # the M2 look: the tour in three themes, Settings
-scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
-scripts/macos/ui-script.sh scripts/macos/ui/code.json           # code highlighting: theme colours, the language badge and its menu, Source and Live, focus mode
+scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, three themes
+scripts/macos/ui-script.sh scripts/macos/ui/code.json           # code highlighting: theme colours, the language badge and its menu, focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As (Edit menu and context menu, with Mark This Passage As over a run), typing in borrowed text, undo, save and reopen; three themes
 scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep-or-discard sheet for marks that may be misplaced
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
-RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-live.json   # the same in Live mode
-RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/threshold.json  # Live mode either side of the whole-text limit
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/threshold.json  # typing, caret moves and jumps either side of 150,000 units
 scripts/macos/ui-script.sh scripts/macos/ui/preview.json        # Split and Preview layouts: three themes, typing, scroll sync both ways, links, fonts, snapshots of the web view
 scripts/macos/ui-script.sh scripts/macos/ui/preview-export.json # PDF export (Dark, Sepia; preview hidden, split, preview): pages, text, picture, white page, margins
 scripts/macos/ui-script.sh scripts/macos/ui/preview-edge.json   # pictures of every kind in editor and preview alike, links of every kind, a hostile document, themes and fonts, untitled
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/preview-big.json   # 1 MB in Split: typing with the preview closed and open, preview latency, main-thread cost of an update (≤ 16 ms)
 scripts/macos/ui-script.sh scripts/macos/ui/soak.json           # everything together at random, checked after every step
-RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/drift.json  # a long Live session at 1 MB: cost per key and per jump must not grow (about 9 minutes)
+RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/drift.json  # a long session at 1 MB: cost per key and per jump must not grow (about 9 minutes)
 scripts/macos/ui-big-focus.sh                                   # 1 MB, release: focus, syntax and authorship off vs on, and a save
 scripts/macos/ui-script.sh scripts/macos/ui/acceptance.json     # 1.0 end to end: a document made with menus and typing, saved, exported, copied, reopened
 scripts/macos/ui-script.sh scripts/macos/ui/pictures.json       # pictures at their declared resolution; Up and Down keep their column through one
@@ -118,7 +114,7 @@ The **outline** lists ATX and setext headings, in lists and quotes too, with the
 looks like a heading inside code or HTML), indented by level with a disclosure triangle per level. The marked entry is where
 the reader is, **not the caret**: the heading at, or the last one above, the first visible line of the editor (a dozen points
 under the title bar's edge count as the top, so a heading just under the bar is the one), updated once per display refresh
-as the editor scrolls and when the headings or the layout change, in Editor, Split and Live; in the Preview layout, the
+as the editor scrolls and when the headings or the layout change, in Editor and Split; in the Preview layout, the
 heading at the top of the page. It is kept in view without taking the keyboard. A click, or Return on the selected row,
 moves the caret there, marks the entry and scrolls the editor so the heading is at the top (in the middle with focus centring
 on), and the preview to the same heading by its source line; the arrow keys move through the list and fold. It comes from the
@@ -160,8 +156,8 @@ its own sidebar state; a window opened from another's sidebar starts with a copy
 - **Daily notes and templates**: File > Today's Note (⌃⌘N) opens `Daily/YYYY-MM-DD.md`, made once from
   `Templates/Daily.md`; File > New from Template (⇧⌘N chooses) fills `{{date}}`, `{{time}}`, `{{title}}`, `{{today}}`
   and puts the caret at `{{cursor}}`. Folder names and the file name format are in Settings.
-- **Wikilinks and tags**: `[[Title]]`, `[[Title|label]]`, `[[Title#Heading]]` and `#tag` are styled in the editor
-  (Live mode conceals the brackets); ⌘-click replaces the window's document with the note (⌘⌥-click opens it in a
+- **Wikilinks and tags**: `[[Title]]`, `[[Title|label]]`, `[[Title#Heading]]` and `#tag` are styled in the editor;
+  ⌘-click replaces the window's document with the note (⌘⌥-click opens it in a
   window of its own), or offers to make it beside the current one; in the preview a click does the same. Without notes mode, a wikilink opens the note beside the document.
 
 - **A history to try**: `examples/History Demo.md` is a short note meant for View > History (⌃⌘H). With the app quit, run
@@ -182,7 +178,7 @@ its layout and mode, and its column. Command-click (⌘-Return in Quick Open, �
 The app keeps its own record of its windows (`~/Library/Application Support/Markdown/session.json`, written a moment
 after anything in it changes and once more on quit) and puts them back at every launch, whatever the system's "Close
 windows when quitting" says: each window's document (a bookmark, so a moved file is found), frame and screen, full
-screen, layout, Source or Live, focus mode, Notes Mode with its folder, selection, filters, sort, open folders and
+screen, layout, focus mode, Notes Mode with its folder, selection, filters, sort, open folders and
 sidebar width and scroll, the side column (shown, pane, width), the caret and the scroll position, the order of the
 windows and which one was key. A file that has gone is skipped (noted in the log, no dialog). An untitled document comes
 back untitled with its text, and quitting never asks to save it. Settings > "Reopen documents at launch" (on) turns it
@@ -221,7 +217,7 @@ clipboard. The panel follows snapshots as they are taken.
 
 ## Code in the editor
 
-Fenced code is highlighted in the editor, in Source and Live, in the languages the preview knows and the theme's `[syntax]` colours; a small badge at the top right of a block names its language and, clicked, offers the others (the choice rewrites the info string, one undo step).
+Fenced code is highlighted in the editor, in the languages the preview knows and the theme's `[syntax]` colours; a small badge at the top right of a block names its language and, clicked, offers the others (the choice rewrites the info string, one undo step).
 
 ## Icons
 

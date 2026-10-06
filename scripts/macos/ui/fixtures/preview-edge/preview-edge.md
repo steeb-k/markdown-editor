@@ -1,6 +1,6 @@
 # Preview edge cases
 
-Every kind of picture a document can name, each on its own line, so the editor (Live mode) and the preview can be compared one for one.
+Every kind of picture a document can name, each on its own line, so the preview can be checked picture by picture.
 
 ![relative](img/a.png)
 

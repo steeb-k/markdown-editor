@@ -307,8 +307,6 @@ final class TitlebarTests: XCTestCase {
             if let tv = i.action.map({ wc.textView.responds(to: $0) }), tv { _ = wc.textView.validateUserInterfaceItem(i) } else { _ = wc.validateMenuItem(i) }
             return i.state
         }
-        XCTAssertEqual(try state("Source"), .on)
-        XCTAssertEqual(try state("Live"), .off)
         XCTAssertEqual(try state("Editor"), .on)
         XCTAssertEqual(try state("Editor and Preview"), .off)
         XCTAssertEqual(try state("Preview"), .off)
@@ -317,14 +315,11 @@ final class TitlebarTests: XCTestCase {
         XCTAssertEqual(try state("Syntax Highlight > Highlight Parts of Speech"), .off)
         XCTAssertEqual(try state("Show Authorship"), doc.session.authorshipDisplay ? .on : .off)
 
-        doc.session.setViewMode(.live)
         doc.session.setLayout(.split)
         doc.session.setFocusEnabled(true)
         doc.session.setSyntaxEnabled(true)
         doc.session.settings.focusScope = .paragraph
         doc.session.setAuthorshipDisplay(!doc.session.authorshipDisplay)
-        XCTAssertEqual(try state("Source"), .off)
-        XCTAssertEqual(try state("Live"), .on)
         XCTAssertEqual(try state("Editor"), .off)
         XCTAssertEqual(try state("Editor and Preview"), .on)
         XCTAssertEqual(try state("Focus Mode"), .on)
@@ -351,13 +346,12 @@ final class TitlebarTests: XCTestCase {
         _ = NSApplication.shared
         let menu = MainMenu.build()
         let view = try XCTUnwrap(menu.items.first { $0.title == "View" }?.submenu)
-        XCTAssertEqual(view.items.map(\.title).filter { !$0.isEmpty }.prefix(11),
-                       ["Source", "Live", "Editor", "Editor and Preview", "Preview", "Focus Mode", "Focus Scope",
+        XCTAssertEqual(view.items.map(\.title).filter { !$0.isEmpty }.prefix(9),
+                       ["Editor", "Editor and Preview", "Preview", "Focus Mode", "Focus Scope",
                         "Keep Focused Line Centred", "Syntax Highlight", "Show Authorship", "Hide Formatting Toolbar"])
         // With no document window, nothing in the responder chain answers the editor's actions: the
         // menu would show them disabled (an item whose action nobody handles is off).
         let editorActions: [Selector] = [
-            #selector(EditorTextView.showSourceMode(_:)), #selector(EditorTextView.showLiveMode(_:)),
             #selector(EditorWindowController.showEditorLayout(_:)), #selector(EditorWindowController.showSplitLayout(_:)),
             #selector(EditorWindowController.showPreviewLayout(_:)), #selector(EditorTextView.toggleFocusMode(_:)),
             #selector(EditorTextView.setFocusScope(_:)), #selector(EditorTextView.toggleSyntaxHighlight(_:)),
@@ -378,8 +372,8 @@ final class TitlebarTests: XCTestCase {
         _ = NSApplication.shared
         let table = HelpDocuments.shortcuts(of: MainMenu.build())
         XCTAssertEqual(table["View > Focus Mode"], "⌘D")
-        XCTAssertEqual(table["View > Source"], "⌥⌘1")
-        XCTAssertEqual(table["View > Live"], "⌥⌘2")
+        XCTAssertNil(table["View > Source"], "the editor has one view: ⌥⌘1 is unused")
+        XCTAssertNil(table["View > Live"])
         XCTAssertEqual(table["View > Editor and Preview"], "⌥⌘4")
         XCTAssertEqual(table["View > Syntax Highlight > Highlight Parts of Speech"], "⇧⌘D")
         XCTAssertEqual(table["View > Show Authorship"], "⌥⌘A")
@@ -952,7 +946,7 @@ final class FocusCentringTests: XCTestCase {
         tv.setSelectedRange(NSRange(location: location(of: 56), length: 0))
         pump(0.1)
         XCTAssertEqual(clip.bounds.minY, before, accuracy: 0.5, "a click or a drag selection leaves the text where it is")
-        // The click's focus range (or Live mode's concealment) arrives later, out of the mouse event,
+        // The click's focus range arrives later, out of the mouse event,
         // when the analysis queue was busy: it does not slide the clicked line either.
         wc.centring.currentEventIsMouse = { false }
         wc.centring.layoutChanged()
@@ -1033,7 +1027,7 @@ final class FocusCentringTests: XCTestCase {
     /// when the resize ends nothing moves. In the editor and in Split, with and without the
     /// formatting bar, with motion (a resize never animates).
     func testALiveResizeKeepsTheLineInTheMiddleAtEveryStep() throws {
-        for (layout, mode) in [(LayoutMode.editor, ViewMode.source), (.editor, .live), (.split, .source)] {
+        for layout in [LayoutMode.editor, .split] {
             for toolbar in [true, false] {
                 _ = NSApplication.shared
                 let settings = isolatedSettings()
@@ -1048,7 +1042,6 @@ final class FocusCentringTests: XCTestCase {
                 window.layoutIfNeeded()
                 XCTAssertTrue(doc.session.waitUntilStyled())
                 doc.session.setLayout(layout)
-                doc.session.setViewMode(mode)
                 XCTAssertTrue(doc.session.waitUntilStyled())
                 let c = wc.centring
                 c.reduceMotion = { false }
@@ -1060,7 +1053,7 @@ final class FocusCentringTests: XCTestCase {
                 let settle = Date(timeIntervalSinceNow: 3)
                 while !c.isSettled, Date() < settle { pump(0.02) }
                 pump(0.1)
-                let label = "\(layout) \(mode) toolbar \(toolbar)"
+                let label = "\(layout) toolbar \(toolbar)"
                 let centres = layout != .split
                 XCTAssertEqual(c.isActive, centres, label)
                 var o = try offsets(wc)

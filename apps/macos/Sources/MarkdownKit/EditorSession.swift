@@ -14,11 +14,6 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public let styler: Styler
     public private(set) var appearance: EditorAppearance
     public private(set) weak var textView: EditorTextView?
-    /// Loads and caches the images Live mode draws.
-    public let imageController = ImageController()
-    /// How the text is shown in this window. Set through `setViewMode`.
-    public internal(set) var viewMode: ViewMode
-    public var onViewModeChange: (() -> Void)?
     /// Whether this window shows the editor, the preview or both. Set through `setLayout`.
     public internal(set) var layout: LayoutMode
     public var onLayoutChange: (() -> Void)?
@@ -49,15 +44,10 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onOpenWikilink: ((WikilinkRef) -> Void)?
     /// Command-Option-click on a wikilink: the note it names opens in a window of its own.
     public var onOpenWikilinkInNewWindow: ((WikilinkRef) -> Void)?
-    /// The text range the layout manager's live state was last computed for.
-    var liveWindow = NSRange(location: 0, length: 0)
     /// The text range focus mode's ranges were last asked for.
     var focusWindow = NSRange(location: 0, length: 0)
-    var liveToken = 0
-    var livePending = false
-    var liveQueries = 0
-    /// The room pictures were last laid out for (the window's height caps it).
-    var lastImageBudget: ImageController.Budget?
+    var stateToken = 0
+    var statePending = false
     /// A query for newly visible text is scheduled (see `visibleRangeChanged`).
     var scrollRefreshPending = false
 
@@ -72,7 +62,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public var onFocusToolsChange: (() -> Void)?
     /// The caret moved or the text changed (the selection changed): focus mode's centring follows.
     public var onCaretActivity: (() -> Void)?
-    /// Concealment or the focus range was applied (the lines may have changed height): centring is kept.
+    /// The focus range was applied (the lines may have changed height): centring is kept.
     public var onLayoutSettled: (() -> Void)?
     // Authorship (see EditorSession+Authorship.swift).
     /// Which author each character belongs to. Main thread only, next to the text: undo has to
@@ -99,7 +89,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     /// Selection queries asked asynchronously whose answer has not been applied yet.
     var stateQueriesInFlight = 0
     /// Nothing about the selection is still to come: no query in flight or scheduled.
-    var selectionStateSettled: Bool { stateQueriesInFlight == 0 && !livePending && !scrollRefreshPending }
+    var selectionStateSettled: Bool { stateQueriesInFlight == 0 && !statePending && !scrollRefreshPending }
     /// Instrumentation: main-thread time spent asking and applying (seconds).
     var timeInStateQueries: TimeInterval = 0
     /// The scope and classes the overlay was last told about (to notice a change in `Settings`).
@@ -158,7 +148,6 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         coordinator = AnalysisCoordinator()
         appearance = EditorAppearance(settings: settings, appearance: forcedAppearance)
         styler = Styler(appearance: appearance)
-        viewMode = settings.defaultViewMode
         layout = settings.defaultLayout
         columnShown = settings.showSideColumnInNewWindows
         columnPane = settings.sideColumnPane
@@ -169,9 +158,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         authorshipDisplay = settings.authorshipDisplay
         appliedFocusScope = settings.focusScope
         appliedSyntaxClasses = settings.syntaxClasses
-        styler.liveMode = viewMode == .live
         super.init()
-        configureLive()
+        layoutManager.palette = appearance.palette
+        layoutManager.bodyFont = appearance.fonts.body
         configureOverlay()
         storage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(container)
@@ -229,8 +218,6 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         textView?.isEditable = true
         activeTable = nil
         formatState = Self.emptyFormatState
-        liveWindow = NSRange(location: 0, length: 0)
-        layoutManager.setLive(LiveState())
         overlay.reset()
         refreshAuthorshipOverlay()
         overlay.apply()
@@ -255,10 +242,8 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         let replacement = storage.mutableString.substring(with: editedRange)
         debt.shift(through: change)
         debt.clamp(toLength: storage.length)
-        layoutManager.shiftLive(through: change)
         overlay.noteEdit(change)
         if syntaxEnabled { pos.noteEdit(change) }
-        liveWindow = RangeMath.shift(liveWindow, through: change)
         focusWindow = RangeMath.shift(focusWindow, through: change)
         if let t = activeTable { activeTable = RangeMath.shift(t, through: change) }
         // What counts as editing a table (so leaving it realigns): typing and commands, not undo
@@ -293,7 +278,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         if outlineShown { scheduleOutline() }
         if result.seq == coordinator.latestSeq {
             if let spans = result.spans, !isComposing() {
-                apply(spans, prose: result.prose, code: result, in: result.range, afterEdit: true)
+                apply(spans, prose: result.prose, code: result, in: result.range)
                 debt.subtract(result.range)
             } else {
                 debt.add(result.range)
@@ -317,10 +302,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     public private(set) var totalStyleTime: TimeInterval = 0
     public private(set) var longestStyle: TimeInterval = 0
 
-    /// `afterEdit`: the result of an edit (the text changed, so Live mode asks again what to
-    /// conceal). Styling owed for unchanged text (a theme change, the initial pass, a mode
-    /// switch) changes no concealment and asks nothing.
-    private func apply(_ spans: [Span], prose: [Utf16Range], code: AnalysisResult, in range: NSRange, afterEdit: Bool) {
+    private func apply(_ spans: [Span], prose: [Utf16Range], code: AnalysisResult, in range: NSRange) {
         let t0 = CFAbsoluteTimeGetCurrent()
         defer {
             let d = CFAbsoluteTimeGetCurrent() - t0
@@ -337,9 +319,6 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         overlay.patchCode(code.highlights.map { OverlayRun($0.range.nsRange, .code($0.role)) }, in: window)
         if !inDelegate { overlay.apply() }
         textView?.refreshTypingAttributes()
-        if viewMode == .live, afterEdit {
-            if inDelegate { scheduleLiveRefresh() } else { refreshLive() }
-        }
         onStyled?()
     }
 
@@ -360,7 +339,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             guard let self else { return }
             debtInFlight = false
             if result.seq == coordinator.latestSeq, !isComposing(), let spans = result.spans {
-                apply(spans, prose: result.prose, code: result, in: RangeMath.clamp(result.range, toLength: storage.length), afterEdit: false)
+                apply(spans, prose: result.prose, code: result, in: RangeMath.clamp(result.range, toLength: storage.length))
                 debt.subtract(result.range)
             }
             DispatchQueue.main.async { [weak self] in self?.kickDebt() }
@@ -450,7 +429,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
             }
             activeTableEdited = false
         }
-        // One round trip to the analysis queue: concealment (Live), focus range (focus mode), format
+        // One round trip to the analysis queue: focus range (focus mode), format
         // state and table. Answered on the spot when the queue is idle.
         refreshState(selectionChange: true)
     }

@@ -224,14 +224,6 @@ extension UIScriptRunner {
             let all = badge(of: n, ignoringCaret: true) != nil, shown = badge(of: n) != nil
             check("badge of \(n.debugDescription) hidden by the caret", all && !shown, "exists \(all) shown \(shown)")
         }
-        if let fences = a["fenceHidden"] as? [String], let lm = tv.layoutManager as? EditorLayoutManager {
-            // The text at the start of each needle is concealed (Live mode, caret elsewhere).
-            let bad = fences.filter { f in
-                let r = (s.text as NSString).range(of: f)
-                return r.location == NSNotFound || !lm.live.isHidden(r.location)
-            }
-            check("fences concealed \(fences)", bad.isEmpty, "not concealed: \(bad)")
-        }
         if let n = a["noBadge"] as? String {
             check("no badge for \(n.debugDescription)", badge(of: n, ignoringCaret: true) == nil)
         }

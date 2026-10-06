@@ -11,11 +11,10 @@ public enum DocumentFileAccess {
         try data.write(to: url, options: .atomic)
     }
 
-    // MARK: pictures: one rule for the editor, the preview, PDF and print
+    // MARK: pictures: one rule for the preview, PDF and print
 
-    /// The schemes a picture is fetched from over the network (by the editor's `ImageController`
-    /// through URLSession, by the preview's web view itself). Both are subject to the same App
-    /// Transport Security settings in Info.plist, so they load the same remote pictures.
+    /// The schemes a picture is fetched from over the network (by the preview's web view itself),
+    /// subject to the App Transport Security settings in Info.plist.
     public static let remotePictureSchemes: Set<String> = ["http", "https"]
 
     /// Where the picture a Markdown document names (`![](destination)`, or an `<img src>`) is:
@@ -25,8 +24,7 @@ public enum DocumentFileAccess {
     /// decoded once, so the destination as written and the same destination as an escaped `src`
     /// attribute give the same file.
     ///
-    /// The editor (`ImageController`) and the preview, PDF and print (`PreviewSchemeHandler`)
-    /// both ask here and then `mayRead`, so they show the same pictures.
+    /// The preview, PDF and print (`PreviewSchemeHandler`) ask here and then `mayRead`.
     public static func pictureURL(for destination: String, documentURL: URL?) -> URL? {
         let d = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !d.isEmpty else { return nil }

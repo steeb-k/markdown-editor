@@ -23,10 +23,8 @@ extension EditorSession {
         if on {
             refreshState(synchronous: true)
         } else {
-            let changed = overlay.isFocusing
             overlay.setFocus(nil)
             overlay.apply()
-            if changed { redrawDecorations() }
         }
         onFocusToolsChange?()
     }
@@ -54,18 +52,8 @@ extension EditorSession {
     func applyFocus(_ ranges: [Utf16Range]?) {
         guard focusEnabled, !focusHeld else { return }
         let new = (ranges ?? []).map(\.nsRange)
-        let changed = new != overlay.layers.focus
         overlay.setFocus(new)
         overlay.apply()
-        if changed { redrawDecorations() }
-    }
-
-    /// Bullets, boxes, bars, rules and pictures are drawn by hand and take their strength from
-    /// the focus range: when it changes, what is on screen is drawn again (colour only, no
-    /// layout). Text itself is redrawn by the temporary attributes.
-    private func redrawDecorations() {
-        guard viewMode == .live, !layoutManager.live.decorations.isEmpty, let tv = textView else { return }
-        tv.setNeedsDisplay(tv.visibleRect, avoidAdditionalLayout: true)
     }
 
     /// `Settings` changed: the scope and the classes apply to every window.

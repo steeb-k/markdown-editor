@@ -36,7 +36,6 @@ public struct SessionRecord: Codable, Equatable {
         public var screen: String?
         public var fullScreen: Bool?
         public var layout: String?
-        public var viewMode: String?
         public var focus: Bool?
         public var syntax: Bool?
         public var authorship: Bool?

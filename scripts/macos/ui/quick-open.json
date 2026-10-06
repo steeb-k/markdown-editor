@@ -1,5 +1,5 @@
 [
-  {"setting": {"theme": "light", "autoHideChrome": false, "defaultViewMode": "source"}},
+  {"setting": {"theme": "light", "autoHideChrome": false}},
   {"open": "scripts/macos/ui/fixtures/tour.md"},
   {"notes": {"library": "scripts/macos/ui/fixtures/library"}},
   {"notes": {"mode": true}},

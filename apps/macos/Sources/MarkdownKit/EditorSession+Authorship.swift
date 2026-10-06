@@ -250,7 +250,7 @@ extension EditorSession {
         // selection was asked about with the window of what was on screen before. Ask again on
         // the next turn, with the view where it ended up (a far selection's units are worked
         // out inside the window, see `focus_ranges`).
-        scheduleLiveRefresh()
+        scheduleStateRefresh()
     }
 
     private func observeUndoManager(_ um: UndoManager) {

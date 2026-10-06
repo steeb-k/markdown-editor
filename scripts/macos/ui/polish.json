@@ -1,6 +1,6 @@
 [
  {
-  "log": "M7 polish by eye and by assertion: an empty fenced block's panel, code-block panels in list items and quotes at three depths, the bullet beside a heading in a list item, pictures at every declared resolution (none, 72, 144, 96, 300, unbelievable 1 and 5000, 72 by 144, wider than the column) in the editor, the preview (narrow and wide) and the PDF, and the footnote. (A picture whose horizontal and vertical resolutions differ keeps its pixel proportions in the preview: CSS height:auto takes the image's own ratio. Such files are rare; the editor draws them at the declared size.)"
+  "log": "M7 polish by eye and by assertion: an empty fenced block's panel, code-block panels in list items and quotes at three depths, pictures at every declared resolution (none, 72, 144, 96, 300, unbelievable 1 and 5000, 72 by 144, wider than the column) in the preview (narrow and wide) and the PDF, and the footnote. (A picture whose horizontal and vertical resolutions differ keeps its pixel proportions in the preview: CSS height:auto takes the image's own ratio. Such files are rare.)"
  },
  {
   "setting": {
@@ -8,7 +8,6 @@
    "fontChoice": "iaQuattro",
    "spellCheck": false,
    "autoHideChrome": false,
-   "defaultViewMode": "live",
    "lineWidth": 72
   }
  },
@@ -23,117 +22,11 @@
   ]
  },
  {
-  "viewMode": "live"
- },
- {
   "selectText": "and the end.",
   "offset": 0
  },
  {
-  "waitImages": 10
- },
- {
   "waitStyled": 20
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "no-dpi.png",
-    "width": 400,
-    "height": 200
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-72.png",
-    "width": 400,
-    "height": 200
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-144.png",
-    "width": 200,
-    "height": 100
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-96.png",
-    "width": 300,
-    "height": 150
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-300.png",
-    "width": 96,
-    "height": 48
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-1.png",
-    "width": 400,
-    "height": 200
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-5000.png",
-    "width": 400,
-    "height": 200
-   }
-  }
- },
- {
-  "assert": {
-   "imageSize": {
-    "destination": "dpi-72x144.png",
-    "width": 400,
-    "height": 100
-   }
-  }
- },
- {
-  "scroll": 0,
-  "notAbove": -32
- },
- {
-  "snapshot": "live-top"
- },
- {
-  "editorScroll": 0.33
- },
- {
-  "snapshot": "live-middle"
- },
- {
-  "editorScroll": 0.66
- },
- {
-  "snapshot": "live-lower"
- },
- {
-  "scroll": "end"
- },
- {
-  "snapshot": "live-end"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20
@@ -143,9 +36,6 @@
  },
  {
   "snapshot": "source-top"
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 20

@@ -24,7 +24,6 @@ extension EditorWindowController {
         w.screen = window.screen?.localizedName
         w.fullScreen = full
         w.layout = session.layout.rawValue
-        w.viewMode = session.viewMode.rawValue
         w.focus = session.focusEnabled
         w.syntax = session.syntaxEnabled
         w.authorship = session.authorshipDisplay
@@ -69,7 +68,6 @@ extension EditorWindowController {
             window.setFrame(frame, display: false)
             windowedFrame = frame
         }
-        if let m = w.viewMode.flatMap(ViewMode.init(rawValue:)) { session.setViewMode(m) }
         if let l = w.layout.flatMap(LayoutMode.init(rawValue:)) { session.setLayout(l) }
         if let on = w.focus { session.setFocusEnabled(on) }
         if let on = w.syntax { session.setSyntaxEnabled(on) }
@@ -111,8 +109,7 @@ extension EditorWindowController {
         }
     }
 
-    /// The text above the viewport is styled after the window is up (Live mode's concealment changes the height of the
-    /// lines there), which moves what is at the top: the position is taken again, every tenth of a second for a few
+    /// The text above the viewport is styled after the window is up (its lines settle into their final heights), which may move what is at the top: the position is taken again, every tenth of a second for a few
     /// seconds, until the person scrolls by hand or focus mode takes the scroll.
     private func holdScroll(_ anchor: EditorTopAnchor, until end: CFAbsoluteTime, since: CFAbsoluteTime) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in

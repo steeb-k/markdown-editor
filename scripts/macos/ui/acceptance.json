@@ -1,6 +1,6 @@
 [
  {
-  "log": "Acceptance: a document made from nothing with menu commands and typing (headings, a list, a task list, a table built with the table helpers, a code block, a link, a dropped picture, a footnote), shown in Source and Live and in the three layouts, with focus and syntax highlighting, text pasted as AI and a selection marked as Reference; saved, exported to PDF, copied as rich text, closed and reopened. Then the bytes on disk, the marks, the PDF and the pasteboard are checked. This is what 'it works' means for 1.0."
+  "log": "Acceptance: a document made from nothing with menu commands and typing (headings, a list, a task list, a table built with the table helpers, a code block, a link, a dropped picture, a footnote), shown in the three layouts, with focus and syntax highlighting, text pasted as AI and a selection marked as Reference; saved, exported to PDF, copied as rich text, closed and reopened. Then the bytes on disk, the marks, the PDF and the pasteboard are checked. This is what 'it works' means for 1.0."
  },
  {
   "setting": {
@@ -8,7 +8,6 @@
    "fontChoice": "iaQuattro",
    "spellCheck": false,
    "autoHideChrome": false,
-   "defaultViewMode": "source",
    "defaultLayout": "editor"
   }
  },
@@ -232,7 +231,7 @@
   }
  },
  {
-  "log": "6. Source and Live, the three layouts (View menu), focus and syntax highlighting on."
+  "log": "6. The three layouts (View menu), focus and syntax highlighting on."
  },
  {
   "select": [
@@ -241,29 +240,10 @@
   ]
  },
  {
-  "action": "showLiveMode:",
-  "edits": false
- },
- {
   "waitStyled": 10
  },
  {
-  "waitImages": 10
- },
- {
-  "assert": {
-   "viewMode": "live",
-   "images": {
-    "loaded": 1
-   },
-   "decorations": {
-    "bullet": 2,
-    "checkbox": 2
-   }
-  }
- },
- {
-  "snapshot": "01-live"
+  "snapshot": "01-editor"
  },
  {
   "action": "showSplitLayout:",
@@ -308,22 +288,6 @@
   "assert": {
    "layout": "editor"
   }
- },
- {
-  "action": "showSourceMode:",
-  "edits": false
- },
- {
-  "waitStyled": 10
- },
- {
-  "assert": {
-   "viewMode": "source"
-  }
- },
- {
-  "action": "showLiveMode:",
-  "edits": false
  },
  {
   "waitStyled": 10
@@ -482,19 +446,6 @@
      ]
     ],
     "pendingDecision": false
-   }
-  }
- },
- {
-  "viewMode": "live"
- },
- {
-  "waitImages": 10
- },
- {
-  "assert": {
-   "images": {
-    "loaded": 1
    }
   }
  },

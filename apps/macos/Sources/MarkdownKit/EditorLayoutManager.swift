@@ -1,10 +1,8 @@
 import AppKit
 
 /// TextKit 1 layout manager. Knows where block backgrounds (code blocks) go: one continuous
-/// panel across the text column. It is also Live mode's concealer (see
-/// `EditorLayoutManager+Live.swift`): the state the core computed lives in `live`, and the
-/// layout manager's delegate methods turn it into null glyphs and collapsed lines without
-/// touching the text storage.
+/// panel across the text column, and draws the backgrounds that focus mode dims (see
+/// `EditorLayoutManager+Backgrounds.swift`).
 public final class EditorLayoutManager: NSLayoutManager {
     /// How far a block panel reaches into the margins, and above/below its text.
     static let blockOutset = NSSize(width: 12, height: 6)
@@ -15,44 +13,14 @@ public final class EditorLayoutManager: NSLayoutManager {
     weak var overlay: OverlayCompositor?
     /// Instrumentation: how many times AppKit finished a layout pass (focus mode must add none).
     var layoutCompletions = 0
-    /// What Live mode currently conceals and decorates. Set through `setLive`.
-    public internal(set) var live = LiveState()
-    /// Characters whose glyphs `drawGlyphs` skips because a decoration is drawn in their place.
-    var markerRanges: [NSRange] = []
-    /// Image decorations and collapsed lines, for the line fragment delegate.
-    var imageDecorations: [LiveDecoration] = []
-    /// Text whose concealment was dropped because an edit touched it: its glyphs are regenerated
-    /// with the next state, whether or not that state differs.
-    var staleRanges: [NSRange] = []
-    /// The hidden `- [ ] ` of each task item: zero width, unlike other hidden leading markup.
-    var taskPrefixes: [NSRange] = []
-    /// High surrogates at the end of a glyph generation piece, to check (see `checkSplitSurrogate`).
-    var splitSurrogates: Set<Int> = []
-
-    /// Set by the session: the room images may take, and what to draw for one.
-    var imageBudget: () -> ImageController.Budget = { ImageController.Budget(width: 600, maxHeight: 400) }
-    var imageEntry: ((String, ImageController.Budget) -> ImageController.Entry)?
-    /// Instrumentation: the character ranges whose glyphs and layout `setLive` invalidated.
-    var recordsInvalidations = false
-    var invalidatedRanges: [NSRange] = []
-    /// Instrumentation: the glyph runs whose backgrounds and strikes were drawn by hand, and the
-    /// horizontal extent (container coordinates) each was given. Recorded while non-nil.
-    var manualDrawings: [(glyphs: NSRange, x: ClosedRange<CGFloat>)]?
     /// Where the background being drawn is anchored (see `fillBackgroundRectArray`).
     var drawOrigin = NSPoint.zero
     /// Set by the session on every appearance change.
     var palette: ThemePalette?
     var bodyFont: NSFont = .systemFont(ofSize: 17)
 
-    /// Height of a collapsed line (a concealed fence or delimiter), and the breathing room
-    /// above and below a drawn image.
     /// How much of an inline-code chip outside the focus range is drawn.
     static let dimmedBackgroundStrength: CGFloat = 0.4
-    static let collapsedHeight: CGFloat = 2
-    static let fenceCollapsedHeight: CGFloat = 8
-    static let imagePadding: CGFloat = 6
-    /// Changed paragraphs closer than this are invalidated as one range (see `setLive`).
-    static let invalidationGap = 256
 
     public override init() {
         super.init()
@@ -60,9 +28,6 @@ public final class EditorLayoutManager: NSLayoutManager {
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
-
-    /// The height of the panel of a fenced block with nothing in it (its fences are concealed).
-    static let emptyBlockHeight: CGFloat = 14
 
     /// How far in a block's panel starts: the container prefix before its opening fence (blanks,
     /// quote markers, a list marker), so a code block in a list item or a quote starts at the item's
@@ -119,27 +84,12 @@ public final class EditorLayoutManager: NSLayoutManager {
             var rect = NSRect.null
             var lastLine = NSRect.null
             var firstLine: (line: NSRect, textEnd: CGFloat, characters: NSRange)?
-            // The concealed fences, for a block with nothing else (an empty fence still shows a panel).
-            var fences = NSRect.null
-            let concealing = !live.isEmpty
             enumerateLineFragments(forGlyphRange: g) { [self] line, used, _, fragGlyphs, _ in
-                if concealing {
-                    // Concealed fences take no part in the panel, and a fragment that only
-                    // carries the next paragraph's hidden characters is not the block's.
-                    let fc = characterRange(forGlyphRange: fragGlyphs, actualGlyphRange: nil)
-                    if collapsedLine(inFragment: fc) != nil { fences = fences.union(line); return }
-                    let inside = NSIntersectionRange(fc, run)
-                    if inside.length == 0 || (inside.location..<NSMaxRange(inside)).allSatisfy({ live.isHidden($0) }) { return }
-                }
                 if firstLine == nil { firstLine = (line, used.maxX, characterRange(forGlyphRange: fragGlyphs, actualGlyphRange: nil)) }
                 rect = rect.union(line)
                 lastLine = line
             }
-            if rect.isNull, !fences.isNull {
-                // Nothing in the block but its two concealed fences: a small panel where they were.
-                rect = fences
-                rect.size.height = max(rect.height, Self.emptyBlockHeight)
-            } else if rect.isNull {
+            if rect.isNull {
                 continue
             } else if let font = storage.attribute(.font, at: NSMaxRange(run) - 1, effectiveRange: nil) as? NSFont {
                 // The line spacing under the last line is not part of the block: it ends where the

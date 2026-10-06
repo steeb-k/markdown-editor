@@ -763,7 +763,6 @@ final class AutosaveTests: XCTestCase {
         wc.adopt(ws)
         wc.showWindow(nil)
         doc.session.setLayout(.split)
-        doc.session.setViewMode(.live)
         doc.session.setHistoryShown(true)
         let frame = try XCTUnwrap(wc.window).frame
         // What `openNote` does once the old document is settled: the new document's window takes over, then the old closes.
@@ -784,7 +783,6 @@ final class AutosaveTests: XCTestCase {
         XCTAssertEqual(window.frame.width, frame.width, accuracy: 1)
         XCTAssertEqual(window.frame.height, frame.height, accuracy: 1)
         XCTAssertEqual(next.session.layout, .split)
-        XCTAssertEqual(next.session.viewMode, .live)
         XCTAssertTrue(next.session.historyShown)
         XCTAssertNotNil(nwc.history)
         XCTAssertEqual(window.animationBehavior, .default, "the animation is back once the swap is done")

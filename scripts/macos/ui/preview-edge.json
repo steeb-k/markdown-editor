@@ -1,6 +1,6 @@
 [
  {
-  "log": "Preview edge cases: pictures of every kind in the editor and the preview (same rule), links of every kind, a hostile document, themes and fonts, export. Uses the real bundle, so App Transport Security applies."
+  "log": "Preview edge cases: pictures of every kind in the preview, links of every kind, a hostile document, themes and fonts, export. Uses the real bundle, so App Transport Security applies."
  },
  {
   "setting": {
@@ -8,8 +8,7 @@
    "fontChoice": "iaQuattro",
    "fontSize": 17,
    "lineWidth": 72,
-   "autoHideChrome": false,
-   "defaultViewMode": "source"
+   "autoHideChrome": false
   }
  },
  {
@@ -33,29 +32,12 @@
   ]
  },
  {
-  "viewMode": "live"
- },
- {
   "selectText": "Text after the raw HTML",
   "offset": 0,
   "length": 0
  },
  {
   "waitStyled": 20
- },
- {
-  "waitImages": 15
- },
- {
-  "log": "The editor: eight pictures load, the missing one does not."
- },
- {
-  "assert": {
-   "images": {
-    "loaded": 8,
-    "failed": 1
-   }
-  }
  },
  {
   "layout": "split"
@@ -67,7 +49,7 @@
   "wait": 1.5
  },
  {
-  "log": "The preview: the same eight, plus the raw <img src=x> that is broken in both; nothing in the raw HTML ran."
+  "log": "The preview: eight pictures load, the missing one and the raw <img src=x> are broken; nothing in the raw HTML ran."
  },
  {
   "assert": {
@@ -86,7 +68,7 @@
   }
  },
  {
-  "snapshot": "01-split-live-light"
+  "snapshot": "01-split-light"
  },
  {
   "clickPreviewLink": "web"
@@ -331,9 +313,6 @@
  },
  {
   "load": "# Untitled\n\n![relative](img/a.png)\n\n![served](http://127.0.0.1:8767/small.png)\n\nText.\n"
- },
- {
-  "viewMode": "live"
  },
  {
   "layout": "split"

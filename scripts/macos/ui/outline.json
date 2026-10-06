@@ -26,9 +26,6 @@
   ]
  },
  {
-  "viewMode": "source"
- },
- {
   "layout": "editor"
  },
  {
@@ -1232,10 +1229,7 @@
   }
  },
  {
-  "log": "--- Live mode and focus centring: a click centres the heading when centring is on"
- },
- {
-  "viewMode": "live"
+  "log": "--- focus centring: a click centres the heading when centring is on"
  },
  {
   "waitStyled": 20
@@ -1267,7 +1261,7 @@
   }
  },
  {
-  "snapshot": "outline-09-live-focus-centred",
+  "snapshot": "outline-09-focus-centred",
   "bitmap": true
  },
  {
@@ -1277,9 +1271,6 @@
  },
  {
   "wait": 0.5
- },
- {
-  "viewMode": "source"
  },
  {
   "log": "--- with the notes sidebar too: three columns, no window growth, the tabs run between them"

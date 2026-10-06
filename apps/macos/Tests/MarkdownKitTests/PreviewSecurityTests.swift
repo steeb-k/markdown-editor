@@ -6,8 +6,8 @@ import MarkdownCore
 @testable import MarkdownKit
 
 /// What a hostile Markdown file can do in the preview: run nothing, navigate nowhere, reach the
-/// network only to fetch pictures (as the editor does), and read through the app's scheme only
-/// what the editor would show as a picture, for display.
+/// network only to fetch pictures, and read through the app's scheme only
+/// what a picture may be, for display.
 @MainActor
 final class PreviewSecurityTests: XCTestCase {
     private var tmp: URL!
@@ -128,7 +128,7 @@ final class PreviewSecurityTests: XCTestCase {
         print("without the policy the page fetched: \(server.paths)")
     }
 
-    /// Pictures are the one thing a document may fetch (as the editor does, under the same rules):
+    /// Pictures are the one thing a document may fetch:
     /// the server sees that request, and only that.
     func testPicturesAreTheOnlyThingFetched() throws {
         let server = try RecordingServer()
@@ -179,17 +179,15 @@ final class PreviewSecurityTests: XCTestCase {
         XCTAssertTrue(spin(timeout: 5) { !state().values.contains("loading") && state().count == 6 }, "\(state())")
         let s = state()
         XCTAssertEqual(s["ok"], "loaded")
-        XCTAssertEqual(s["link"], "loaded", "the editor follows the link too")
+        XCTAssertEqual(s["link"], "loaded", "a link to a picture is followed")
         XCTAssertEqual(s["rel-escape"], "broken", "an escaped slash cannot climb out of the folder")
         XCTAssertEqual(s["rel-dots"], "broken")
         XCTAssertEqual(s["old-abs-route"], "broken", "there is no route by absolute path")
-        XCTAssertEqual(s["not-a-picture"], "broken", "served (the editor would read it too) but it is not a picture")
+        XCTAssertEqual(s["not-a-picture"], "broken", "served but it is not a picture")
         XCTAssertGreaterThanOrEqual(p.schemeHandler.denied, 3)
-        // The editor agrees on each.
-        let images = ImageController()
-        images.documentURL = { doc.fileURL }
-        XCTAssertNotNil(images.resolve("link.png"))
-        XCTAssertEqual(images.resolve("/etc/hosts"), URL(fileURLWithPath: "/etc/hosts"))
+        // The rule they share (`DocumentFileAccess`) agrees on each.
+        XCTAssertNotNil(DocumentFileAccess.pictureURL(for: "link.png", documentURL: doc.fileURL))
+        XCTAssertEqual(DocumentFileAccess.pictureURL(for: "/etc/hosts", documentURL: doc.fileURL), URL(fileURLWithPath: "/etc/hosts"))
         doc.close()
     }
 

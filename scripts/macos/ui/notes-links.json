@@ -1,5 +1,5 @@
 [
-  {"setting": {"theme": "light", "autoHideChrome": false, "defaultViewMode": "source"}},
+  {"setting": {"theme": "light", "autoHideChrome": false}},
 
   {"log": "Plain mode: a wikilink is styled like a link; Cmd-click finds the note beside the document, or offers to make it"},
   {"open": "scripts/macos/ui/fixtures/library/Links.md", "folder": true},
@@ -71,11 +71,5 @@
   {"wait": 0.8},
   {"assert": {"notes": {"documentURLEndsWith": "Projects/Beta.md"}}},
   {"notes": {"click": "Links.md"}},
-  {"layout": "editor"},
-
-  {"log": "Tags and wikilinks in Live mode: the brackets and the target are concealed, the label shows"},
-  {"viewMode": "live"},
-  {"select": [0, 0]},
-  {"snapshot": "05-live-wikilinks"},
-  {"viewMode": "source"}
+  {"layout": "editor"}
 ]

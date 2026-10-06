@@ -7,8 +7,7 @@
    "theme": "light",
    "fontChoice": "iaQuattro",
    "spellCheck": false,
-   "autoHideChrome": false,
-   "defaultViewMode": "source"
+   "autoHideChrome": false
   }
  },
  {
@@ -41,9 +40,6 @@
  },
  {
   "scroll": "end"
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 600
@@ -99,9 +95,6 @@
  },
  {
   "waitStyled": 60
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 60
@@ -241,9 +234,6 @@
   }
  },
  {
-  "viewMode": "live"
- },
- {
   "layout": "split"
  },
  {
@@ -284,9 +274,6 @@
    "fileEqualsMade": "mixed-endings.md",
    "coreMatchesText": true
   }
- },
- {
-  "viewMode": "live"
  },
  {
   "waitStyled": 10

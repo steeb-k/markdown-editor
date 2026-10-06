@@ -1,6 +1,6 @@
 [
  {
-  "log": "Code highlighting in the editor (M8c): colours from the theme, the language badge, its menu, Source and Live, themes, focus mode"
+  "log": "Code highlighting in the editor (M8c): colours from the theme, the language badge, its menu, themes, focus mode"
  },
  {
   "setting": {
@@ -12,9 +12,6 @@
  },
  {
   "open": "scripts/macos/ui/fixtures/code.md"
- },
- {
-  "viewMode": "source"
  },
  {
   "resize": [
@@ -563,194 +560,6 @@
   }
  },
  {
-  "log": "Live mode: the fences are concealed and the badge stays at the block's top right"
- },
- {
-  "viewMode": "live"
- },
- {
-  "selectText": "Some prose before",
-  "offset": 4
- },
- {
-  "waitStyled": 30
- },
- {
-  "wait": 0.3
- },
- {
-  "scroll": -200
- },
- {
-  "assert": {
-   "viewMode": "live",
-   "coreMatchesText": true,
-   "code": {
-    "badges": [
-     "Rust",
-     "Python",
-     "JavaScript",
-     "Bourne Again Shell (bash)",
-     "Go",
-     "JSON",
-     "Rust"
-    ],
-    "badgeAtTopRightOf": "fn main",
-    "codeColours": [
-     {
-      "needle": "fn main",
-      "role": "keyword"
-     },
-     {
-      "needle": "// Greets",
-      "role": "comment"
-     }
-    ],
-    "fenceHidden": [
-     "```rust",
-     "```python {.numberLines}",
-     "```js title=\"greet.js\""
-    ]
-   }
-  }
- },
- {
-  "snapshot": "code-08-live-light",
-  "bitmap": true
- },
- {
-  "codeBadge": {
-   "click": "fn main",
-   "choose": "C"
-  }
- },
- {
-  "waitStyled": 30
- },
- {
-  "wait": 0.3
- },
- {
-  "assert": {
-   "textContains": "```c\n// Greets",
-   "code": {
-    "badges": [
-     "C",
-     "Python",
-     "JavaScript",
-     "Bourne Again Shell (bash)",
-     "Go",
-     "JSON",
-     "Rust"
-    ],
-    "badgeAtTopRightOf": "fn main"
-   }
-  }
- },
- {
-  "snapshot": "code-09-live-chose-c",
-  "bitmap": true
- },
- {
-  "undo": true
- },
- {
-  "waitStyled": 30
- },
- {
-  "assert": {
-   "textContains": "```rust\n// Greets"
-  }
- },
- {
-  "selectText": "let count",
-  "offset": 4
- },
- {
-  "waitStyled": 30
- },
- {
-  "wait": 0.3
- },
- {
-  "assert": {
-   "code": {
-    "badges": [
-     "Rust",
-     "Python",
-     "JavaScript",
-     "Bourne Again Shell (bash)",
-     "Go",
-     "JSON",
-     "Rust"
-    ],
-    "badgeAtTopRightOf": "fn main",
-    "caretClearOfBadge": true
-   }
-  }
- },
- {
-  "snapshot": "code-10-live-caret-in-the-block",
-  "bitmap": true
- },
- {
-  "setting": {
-   "theme": "dark"
-  }
- },
- {
-  "waitStyled": 60
- },
- {
-  "selectText": "Some prose before",
-  "offset": 4
- },
- {
-  "waitStyled": 30
- },
- {
-  "assert": {
-   "theme": "dark",
-   "code": {
-    "codeColours": [
-     {
-      "needle": "fn main",
-      "role": "keyword"
-     },
-     {
-      "needle": "\"world\"",
-      "role": "string"
-     }
-    ],
-    "badgeAtTopRightOf": "fn main"
-   }
-  }
- },
- {
-  "snapshot": "code-11-live-dark",
-  "bitmap": true
- },
- {
-  "setting": {
-   "theme": "sepia"
-  }
- },
- {
-  "waitStyled": 60
- },
- {
-  "snapshot": "code-12-live-sepia",
-  "bitmap": true
- },
- {
-  "setting": {
-   "theme": "light"
-  }
- },
- {
-  "waitStyled": 60
- },
- {
   "log": "focus mode dims highlighted code with everything else"
  },
  {
@@ -787,7 +596,7 @@
   }
  },
  {
-  "snapshot": "code-13-live-focus-away-from-code",
+  "snapshot": "code-13-source-focus-away-from-code",
   "bitmap": true
  },
  {
@@ -812,11 +621,8 @@
   }
  },
  {
-  "snapshot": "code-14-live-focus-in-the-code",
+  "snapshot": "code-14-source-focus-in-the-code",
   "bitmap": true
- },
- {
-  "viewMode": "source"
  },
  {
   "selectText": "Some prose before",

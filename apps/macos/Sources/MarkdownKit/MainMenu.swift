@@ -215,9 +215,6 @@ enum MainMenu {
         }
 
         _ = submenu(main, "View") { m in
-            _ = item(m, "Source", #selector(EditorTextView.showSourceMode(_:)), "1", [.command, .option])
-            _ = item(m, "Live", #selector(EditorTextView.showLiveMode(_:)), "2", [.command, .option])
-            m.addItem(.separator())
             // Layouts: the editor alone, beside the preview, the preview alone.
             _ = item(m, "Editor", #selector(EditorWindowController.showEditorLayout(_:)), "3", [.command, .option])
             _ = item(m, "Editor and Preview", #selector(EditorWindowController.showSplitLayout(_:)), "4", [.command, .option])

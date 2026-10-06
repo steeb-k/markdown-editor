@@ -246,14 +246,13 @@ extension EditorWindowController {
     }
 
     /// This window stands in for the one `old` is in: the same place and size, the same workspace (so the sidebar is as it
-    /// was), the same layout, mode and column, and no animation, so that the document seems to change in the window.
+    /// was), the same layout and column, and no animation, so that the document seems to change in the window.
     func takeOver(from old: EditorWindowController) {
         guard let window, let oldWindow = old.window else { return }
         window.animationBehavior = .none
         window.setFrame(oldWindow.frame, display: false)
-        // What the window was showing it still shows: the layout, the mode, the tools.
+        // What the window was showing it still shows: the layout, the tools.
         let was = old.session
-        session.setViewMode(was.viewMode)
         session.setLayout(was.layout)
         session.setFocusEnabled(was.focusEnabled)
         session.setSyntaxEnabled(was.syntaxEnabled)

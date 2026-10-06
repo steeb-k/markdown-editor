@@ -26,9 +26,6 @@
   ]
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -64,12 +61,10 @@
   "assert": {
    "menu": {
     "View > Source": {
-     "enabled": true,
-     "state": "on"
+     "absent": true
     },
     "View > Live": {
-     "enabled": true,
-     "state": "off"
+     "absent": true
     },
     "View > Editor": {
      "enabled": true,
@@ -114,10 +109,6 @@
   }
  },
  {
-  "action": "showLiveMode:",
-  "edits": false
- },
- {
   "action": "toggleFocusMode:",
   "edits": false
  },
@@ -135,12 +126,6 @@
  {
   "assert": {
    "menu": {
-    "View > Source": {
-     "state": "off"
-    },
-    "View > Live": {
-     "state": "on"
-    },
     "View > Editor": {
      "state": "off"
     },
@@ -160,7 +145,6 @@
      "enabled": true
     }
    },
-   "viewMode": "live",
    "layout": "split",
    "focusing": true,
    "syntaxing": true
@@ -183,14 +167,6 @@
     "View > Focus Mode": {
      "enabled": true,
      "state": "on"
-    },
-    "View > Source": {
-     "enabled": true,
-     "state": "off"
-    },
-    "View > Live": {
-     "enabled": true,
-     "state": "on"
     }
    }
   }
@@ -204,10 +180,6 @@
   "edits": false
  },
  {
-  "action": "showSourceMode:",
-  "edits": false
- },
- {
   "action": "showEditorLayout:",
   "edits": false
  },
@@ -217,9 +189,6 @@
  {
   "assert": {
    "menu": {
-    "View > Source": {
-     "state": "on"
-    },
     "View > Editor": {
      "state": "on"
     },

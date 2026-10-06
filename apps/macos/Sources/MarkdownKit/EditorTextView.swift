@@ -16,14 +16,6 @@ public final class EditorTextView: NSTextView {
     public var onTyping: (() -> Void)?
     /// Where copy, cut and paste go. The general pasteboard, except in tests and UI scripts.
     public var pasteboard: NSPasteboard = .general
-    /// The key binding command being performed (`moveLeft:`...), while it runs.
-    public internal(set) var currentCommand: Selector?
-    /// The selection Live mode last extended from the keyboard, and its anchor.
-    var liveAnchor: (selection: NSRange, anchor: Int)?
-    /// Up and Down through pictures in Live mode (see `moveVerticallyThroughPictures`): the column
-    /// the run of presses keeps, the caret it left, and whether it has placed the caret itself
-    /// (AppKit's own memory of the column is lost once the selection is set by hand).
-    var verticalGoal: (selection: NSRange, x: CGFloat, placed: Bool)?
     /// The pointing hand is showing for a Command-hover over a link.
     var showsLinkCursor = false
     /// The caret's place when the language badges were last redrawn for it (see `codeBadgeCaretMoved`).
@@ -73,9 +65,9 @@ public final class EditorTextView: NSTextView {
     }
 
     ///
-    /// Only for the selection, though (the caret, a found match, a revealed element). AppKit itself
+    /// Only for the selection, though (the caret, a found match). AppKit itself
     /// calls this with whatever is on screen when the text view changes size (the layout manager
-    /// keeps that text in view while the window resizes or concealment changes line heights): that
+    /// keeps that text in view while the window resizes): that
     /// is not a line to centre, and taking it for the user's caret move centred the wrong text.
     public override func scrollRangeToVisible(_ range: NSRange) {
         let selection = selectedRange()
@@ -190,8 +182,6 @@ public final class EditorTextView: NSTextView {
         let local = rect.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: 0, dy: -EditorLayoutManager.blockOutset.height)
         let glyphs = lm.glyphRange(forBoundingRectWithoutAdditionalLayout: local, in: tc)
         lm.drawBlockBackgrounds(forGlyphRange: glyphs, at: origin)
-        // Live mode's decorations are drawn by the layout manager, after the selection highlight
-        // (which would cover a selected line's bullet or checkbox), before the glyphs.
     }
 
     func visibleCharacterRange() -> NSRange {
@@ -237,7 +227,7 @@ public final class EditorTextView: NSTextView {
         super.unmarkText()
         session?.overlay.apply()
         session?.kickDebt()
-        session?.refreshLive()
+        session?.refreshState()
     }
 
     public override func didChangeText() {
@@ -246,7 +236,7 @@ public final class EditorTextView: NSTextView {
         session?.overlay.apply()
         if !hasMarkedText() {
             session?.kickDebt()
-            session?.refreshLive()
+            session?.refreshState()
         }
     }
 
@@ -267,11 +257,6 @@ public final class EditorTextView: NSTextView {
     }
 
     public override func doCommand(by selector: Selector) {
-        // Live mode's caret rules depend on what kind of move asked for a new selection.
-        let previous = currentCommand
-        currentCommand = selector
-        defer { currentCommand = previous }
-        if session != nil, !hasMarkedText(), handleLiveCommand(selector) { return }
         if session != nil, !hasMarkedText() {
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):
@@ -280,8 +265,6 @@ public final class EditorTextView: NSTextView {
                 if handleTab(outdent: false) { return }
             case #selector(NSResponder.insertBacktab(_:)):
                 if handleTab(outdent: true) { return }
-            case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:)):
-                if moveVerticallyThroughPictures(selector) { return }
             default: break
             }
         }
@@ -358,12 +341,5 @@ public final class EditorTextView: NSTextView {
         textStorage?.replaceCharacters(in: range, with: replacement)
         didChangeText()
         return true
-    }
-}
-
-extension EditorTextView {
-    /// Cursor rects and mouse tracking that Live mode needs (pointing hand over checkboxes).
-    func updateTrackingForLive() {
-        window?.invalidateCursorRects(for: self)
     }
 }

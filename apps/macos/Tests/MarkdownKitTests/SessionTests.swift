@@ -22,7 +22,6 @@ final class SessionRecordTests: XCTestCase {
         w.file = DocumentFileAccess.makeFileRef(scratch)
         w.frame = [10, 20, 800, 600]
         w.layout = "split"
-        w.viewMode = "live"
         w.caret = [4, 2]
         w.scrollCharacter = 120
         w.scrollInto = 3.5
@@ -46,7 +45,16 @@ final class SessionRecordTests: XCTestCase {
         let record = try XCTUnwrap(SessionRecord.decode(Data(json.utf8)))
         XCTAssertEqual(record.windows.count, 1)
         XCTAssertEqual(record.windows[0].layout, "split")
-        XCTAssertNil(record.windows[0].viewMode)
+    }
+
+    /// A record from a build that had Live mode names a view mode that no longer exists: it is ignored, and the
+    /// window restores as it always does, in the editor's one view.
+    func testARecordFromABuildWithLiveModeStillRestores() throws {
+        let json = #"{"version":1,"key":0,"windows":[{"layout":"split","viewMode":"live","focus":true}]}"#
+        let record = try XCTUnwrap(SessionRecord.decode(Data(json.utf8)))
+        XCTAssertEqual(record.windows.count, 1)
+        XCTAssertEqual(record.windows[0].layout, "split")
+        XCTAssertEqual(record.windows[0].focus, true)
     }
 
     func testABadFileIsIgnored() {
@@ -103,7 +111,6 @@ final class SessionRecordTests: XCTestCase {
         var open = SessionRecord.Window()
         open.file = DocumentFileAccess.makeFileRef(file)
         open.layout = "split"
-        open.viewMode = "live"
         var gone = SessionRecord.Window()
         gone.file = DocumentFileAccess.FileRef(path: scratch.appendingPathComponent("gone.md").path, bookmark: nil)
         let before = NSDocumentController.shared.documents.count
@@ -115,7 +122,6 @@ final class SessionRecordTests: XCTestCase {
         XCTAssertEqual(restorer.restoredCount, 1)
         XCTAssertEqual(restorer.skipped, 1)
         XCTAssertEqual(doc.session.layout, .split)
-        XCTAssertEqual(doc.session.viewMode, .live)
         (doc.windowControllers.first as? EditorWindowController)?.window?.close()
     }
 

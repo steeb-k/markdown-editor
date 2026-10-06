@@ -15,8 +15,8 @@ enum Fixtures {
     }
 }
 
-/// Suites that run again with focus mode and syntax highlighting on (see `LiveCaretFocusToolsTests`)
-/// set this for their duration: every editor they make starts with both on.
+/// Suites that run again with focus mode and syntax highlighting on set this for their duration: every editor
+/// they make starts with both on.
 enum TestMode {
     nonisolated(unsafe) static var focusTools = false
 }
@@ -25,8 +25,6 @@ func isolatedSettings() -> Settings {
     let name = "markdown-tests-\(UUID().uuidString)"
     let d = UserDefaults(suiteName: name)!
     d.removePersistentDomain(forName: name)
-    // Most tests are about styled source; Live mode tests ask for it.
-    d.set(ViewMode.source.rawValue, forKey: "defaultViewMode")
     if TestMode.focusTools {
         d.set(true, forKey: "focusMode")
         d.set(true, forKey: "syntaxHighlight")
@@ -90,6 +88,69 @@ struct Editor {
             out.append(contentsOf: Array(repeating: sig, count: r.length))
         }
         return out
+    }
+}
+
+extension Editor {
+    /// An editor sized to `width`, with the caret at `caret` (default: the end) and everything laid out.
+    static func laidOut(_ text: String, caret: Int? = nil, width: CGFloat = 800) -> Editor {
+        let e = Editor(text: text)
+        e.tv.setFrameSize(NSSize(width: width, height: 600))
+        e.select(caret ?? (text as NSString).length)
+        e.settle()
+        return e
+    }
+
+    /// Waits for styling and for what the selection asks of the core, then lays everything out.
+    func settle() {
+        _ = session.waitUntilStyled()
+        session.refreshState()
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: session.storage.length))
+    }
+
+    var lm: EditorLayoutManager { session.layoutManager }
+
+    /// Width of the first line fragment's used rect.
+    func firstLineWidth() -> CGFloat {
+        var w: CGFloat = 0
+        lm.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: lm.numberOfGlyphs)) { _, used, _, _, stop in
+            w = used.width
+            stop.pointee = true
+        }
+        return w
+    }
+
+    /// Top of the line fragment holding the character at `i`.
+    func lineTop(of i: Int) -> CGFloat {
+        lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: i), effectiveRange: nil).minY
+    }
+
+    func lineHeight(of i: Int) -> CGFloat {
+        lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: i), effectiveRange: nil).height
+    }
+}
+
+/// An editor inside a scroll view, and scrolling it to a character.
+enum TestScroll {
+    /// An editor inside a scroll view of `height` points.
+    static func scrolled(_ text: String, height: CGFloat = 400) -> (Editor, NSScrollView) {
+        let e = Editor(text: text)
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 800, height: height))
+        scroll.documentView = e.tv
+        e.tv.setFrameSize(NSSize(width: 800, height: height))
+        e.select(0)
+        e.settle()
+        return (e, scroll)
+    }
+
+    static func scroll(_ e: Editor, _ scroll: NSScrollView, toCharacter i: Int) {
+        let lm = e.lm
+        lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: i + 1))
+        let rect = lm.lineFragmentRect(forGlyphAt: lm.glyphIndexForCharacter(at: i), effectiveRange: nil)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: rect.minY + e.tv.textContainerOrigin.y))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        e.session.visibleRangeChanged()
+        e.settle()
     }
 }
 

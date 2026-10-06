@@ -127,7 +127,7 @@ final class ReleaseTests: XCTestCase {
         XCTAssertEqual(table["Edit > Paste As > AI"], "⇧⌘V")
         XCTAssertEqual(table["Edit > Paste As > Reference"], "⌃⌘V")
         XCTAssertEqual(table["View > Focus Mode"], "⌘D")
-        XCTAssertEqual(table["View > Source"], "⌥⌘1")
+        XCTAssertNil(table["View > Source"], "the editor has one view: ⌥⌘1 is unused")
         XCTAssertEqual(table["View > Enter Full Screen"], "⌃⌘F")
         XCTAssertNil(table["Window > Show Tab Bar"], "no tabs: no switch for them")
         XCTAssertNil(table["Window > Show Next Tab"])

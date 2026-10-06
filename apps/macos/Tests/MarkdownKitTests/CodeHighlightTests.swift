@@ -4,7 +4,7 @@ import MarkdownCore
 @testable import MarkdownKit
 
 /// Code highlighting in the editor (M8c): the colours the styler stores, the language badge, its menu
-/// and the edit the menu makes, and what themes, Live mode and focus mode do with them.
+/// and the edit the menu makes, and what themes and focus mode do with them.
 final class CodeHighlightTests: XCTestCase {
     private let doc = """
     Some prose first, long enough to be a paragraph of its own.
@@ -182,9 +182,10 @@ final class CodeHighlightTests: XCTestCase {
 
     // MARK: badges
 
-    private func laidOut(_ text: String, live: Bool = false, caret: Int? = nil, width: CGFloat = 800) -> Editor {
-        let e = live ? Editor.live(text, caret: caret, width: width) : Editor(text: text)
-        if !live { e.tv.setFrameSize(NSSize(width: width, height: 600)); e.select(caret ?? 0) }
+    private func laidOut(_ text: String, caret: Int? = nil, width: CGFloat = 800) -> Editor {
+        let e = Editor(text: text)
+        e.tv.setFrameSize(NSSize(width: width, height: 600))
+        e.select(caret ?? 0)
         e.settle()
         return e
     }
@@ -282,47 +283,6 @@ final class CodeHighlightTests: XCTestCase {
         }
     }
 
-    func testLiveModeKeepsTheBadgeAtTheTopRightWithTheFencesConcealed() {
-        let e = laidOut(doc, live: true, caret: 3)
-        let fence = (e.string as NSString).range(of: "```rust")
-        XCTAssertTrue(e.lm.live.isHidden(fence.location), "the fence is concealed")
-        let b = badges(e)
-        XCTAssertEqual(b.map(\.text), ["Rust"])
-        let panel = e.lm.blockPanels(forGlyphRange: NSRange(location: 0, length: e.lm.numberOfGlyphs))[0]
-        XCTAssertEqual(b[0].frame.maxX, panel.rect.maxX - EditorLayoutManager.badgeMargin.width, accuracy: 1)
-        // The panel starts at the first code line, not at the collapsed fence.
-        let codeTop = e.lineTop(of: (e.string as NSString).range(of: "// a comment").location)
-        XCTAssertEqual(panel.rect.minY, codeTop - EditorLayoutManager.blockOutset.height, accuracy: 1.5)
-        XCTAssertEqual(b[0].frame.minY, panel.rect.minY + EditorLayoutManager.badgeMargin.height, accuracy: 1)
-        // Caret on the first code line, whose text is short: the badge stays; the fence stays concealed? (it reveals with the caret on its line only)
-        e.select((e.string as NSString).range(of: "// a comment").location + 4)
-        e.settle()
-        XCTAssertEqual(badges(e).count, 1)
-    }
-
-    func testInLiveModeTheCaretInABlockRevealsTheFencesSoTheBadgeNeverCoversIt() throws {
-        // With the fences concealed the caret is outside the block; once it is inside they are shown, so the first
-        // line is the short fence line, and a long first code line is never the caret's first line under the pill.
-        let text = "```js\nconst_" + String(repeating: "x", count: 120) + " = 1;\nlet b = 1;\n```\n"
-        let e = laidOut(text, live: true, caret: nil, width: 640)
-        let concealed = try XCTUnwrap(firstFragment(e))
-        XCTAssertGreaterThan(concealed.characters.location, 0, "the fence is concealed: the first line is the code's")
-        XCTAssertEqual(badges(e).count, 1, "the caret is outside the block")
-        for loc in 0...(text as NSString).length {
-            e.select(loc)
-            e.settle()
-            guard let f = firstFragment(e) else { continue }
-            let shown = badges(e)
-            let x = caretX(e, loc, f)
-            if let b = shown.first, loc >= f.characters.location, loc <= NSMaxRange(f.characters) {
-                XCTAssertFalse(x >= b.frame.minX - 1 && x <= b.frame.maxX + 1, "caret at \(loc) is under the badge")
-            }
-            if loc > 6 && loc < (text as NSString).range(of: "```\n", options: .backwards).location {
-                XCTAssertEqual(f.characters.location, 0, "the caret is in the block: its fences are shown (caret \(loc))")
-            }
-        }
-    }
-
     func testClickingTheBadgeHitsItAndOnlyIt() throws {
         let e = laidOut(doc, caret: 3)
         e.session.layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: e.session.storage.length))
@@ -399,17 +359,6 @@ final class CodeHighlightTests: XCTestCase {
         e2.tv.setCodeLanguage("rust", inBlock: NSRange(location: (doc as NSString).range(of: "```rust").location, length: 5))
         XCTAssertEqual(e2.string, doc)
         XCTAssertFalse(e2.um.canUndo)
-    }
-
-    func testTheMenuEditWorksInLiveModeWithTheFencesConcealed() throws {
-        let e = laidOut(doc, live: true, caret: 3)
-        let b = try XCTUnwrap(badges(e).first)
-        e.grouped { e.tv.setCodeLanguage("python", inBlock: b.block) }
-        XCTAssertTrue(e.string.contains("```python\n"))
-        e.settle()
-        XCTAssertEqual(badges(e).map(\.text), ["Python"])
-        e.um.undo()
-        XCTAssertEqual(e.string, doc)
     }
 
     // MARK: accessibility

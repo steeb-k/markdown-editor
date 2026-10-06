@@ -1,5 +1,5 @@
 [
-  {"setting": {"theme": "light", "autoHideChrome": false, "defaultViewMode": "source"}},
+  {"setting": {"theme": "light", "autoHideChrome": false}},
   {"open": "scripts/macos/ui/fixtures/tour.md"},
   {"assert": {"notes": {"mode": false, "plainLayout": true, "sidebarShown": false}}},
 
@@ -95,7 +95,6 @@
   {"snapshot": "08-typing-chrome-hidden"},
   {"setting": {"autoHideChrome": false}},
   {"pointer": "moved"},
-  {"viewMode": "source"},
   {"focus": {"on": true, "scope": "paragraph"}},
   {"select": [0, 0]},
   {"type": "\n\nsecond paragraph\n\nthird paragraph"},

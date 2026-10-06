@@ -1,6 +1,6 @@
 [
  {
-  "log": "--- Focus mode with the line kept centred: a live resize (AppKit's own resize loop, one frame per drag) keeps the caret's line in the middle at every frame, in Source and Live (in Split only the dimming applies: nothing is centred), with and without the formatting bar; nothing moves after the mouse-up, and it ends where a keystroke would put it (the caret at the start of a paragraph: at a soft line break the text system's caret rectangle is on the line before)"
+  "log": "--- Focus mode with the line kept centred: a live resize (AppKit's own resize loop, one frame per drag) keeps the caret's line in the middle at every frame, in the editor (in Split only the dimming applies: nothing is centred), with and without the formatting bar; nothing moves after the mouse-up, and it ends where a keystroke would put it (the caret at the start of a paragraph: at a soft line break the text system's caret rectangle is on the line before)"
  },
  {
   "setting": {
@@ -40,9 +40,6 @@
  },
  {
   "layout": "editor"
- },
- {
-  "viewMode": "source"
  },
  {
   "resize": [
@@ -210,187 +207,10 @@
   "wait": 0.5
  },
  {
-  "log": "--- live in editor, formatting bar on"
- },
- {
-  "layout": "editor"
- },
- {
-  "viewMode": "live"
- },
- {
-  "resize": [
-   900,
-   760
-  ]
- },
- {
-  "waitStyled": 20
- },
- {
-  "select": [
-   4860,
-   0
-  ]
- },
- {
-  "focus": {
-   "on": true,
-   "scope": "paragraph"
-  }
- },
- {
-  "wait": 0.8
- },
- {
-  "assert": {
-   "focusCentred": 0.5,
-   "sliding": false,
-   "userScrolling": false
-  }
- },
- {
-  "liveResize": {
-   "steps": [
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ]
-   ],
-   "maxOffset": 0.5
-  }
- },
- {
-  "assert": {
-   "focusCentred": 0.5,
-   "sliding": false,
-   "userScrolling": false
-  }
- },
- {
-  "snapshot": "editor-live-bar-after",
-  "bitmap": true
- },
- {
-  "focus": {
-   "on": false
-  }
- },
- {
-  "wait": 0.5
- },
- {
   "log": "--- source in split, formatting bar on (dimming only: nothing is centred, and a resize starts no slide)"
  },
  {
   "layout": "split"
- },
- {
-  "viewMode": "source"
  },
  {
   "resize": [
@@ -569,9 +389,6 @@
   "layout": "editor"
  },
  {
-  "viewMode": "source"
- },
- {
   "resize": [
    900,
    760
@@ -737,187 +554,10 @@
   "wait": 0.5
  },
  {
-  "log": "--- live in editor, formatting bar off"
- },
- {
-  "layout": "editor"
- },
- {
-  "viewMode": "live"
- },
- {
-  "resize": [
-   900,
-   760
-  ]
- },
- {
-  "waitStyled": 20
- },
- {
-  "select": [
-   4860,
-   0
-  ]
- },
- {
-  "focus": {
-   "on": true,
-   "scope": "paragraph"
-  }
- },
- {
-  "wait": 0.8
- },
- {
-  "assert": {
-   "focusCentred": 0.5,
-   "sliding": false,
-   "userScrolling": false
-  }
- },
- {
-  "liveResize": {
-   "steps": [
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     -24,
-     0
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     0,
-     -18
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     30,
-     12
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ],
-    [
-     -8,
-     26
-    ]
-   ],
-   "maxOffset": 0.5
-  }
- },
- {
-  "assert": {
-   "focusCentred": 0.5,
-   "sliding": false,
-   "userScrolling": false
-  }
- },
- {
-  "snapshot": "editor-live-nobar-after",
-  "bitmap": true
- },
- {
-  "focus": {
-   "on": false
-  }
- },
- {
-  "wait": 0.5
- },
- {
   "log": "--- source in split, formatting bar off (dimming only: nothing is centred, and a resize starts no slide)"
  },
  {
   "layout": "split"
- },
- {
-  "viewMode": "source"
  },
  {
   "resize": [

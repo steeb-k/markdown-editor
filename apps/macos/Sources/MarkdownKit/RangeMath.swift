@@ -9,6 +9,20 @@ public struct TextChange: Equatable {
 }
 
 public enum RangeMath {
+    /// Sorted, with empty ranges dropped and overlapping or touching ones merged.
+    public static func normalized(_ ranges: [NSRange]) -> [NSRange] {
+        let sorted = ranges.filter { $0.length > 0 }.sorted { $0.location < $1.location }
+        var out: [NSRange] = []
+        for r in sorted {
+            if let last = out.last, r.location <= NSMaxRange(last) {
+                out[out.count - 1] = NSUnionRange(last, r)
+            } else {
+                out.append(r)
+            }
+        }
+        return out
+    }
+
     /// Where a range ends up once `change` has happened. A boundary inside the replaced text
     /// collapses to the start (for a start) or to the end (for an end) of the replacement.
     public static func shift(_ r: NSRange, through c: TextChange) -> NSRange {

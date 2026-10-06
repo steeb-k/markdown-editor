@@ -201,15 +201,13 @@ final class PreviewLookAndLayoutTests: XCTestCase {
         pump(0.1)
         XCTAssertTrue(wc.chromeVisible)
         XCTAssertTrue(wc.toolbar.isHidden, "no formatting toolbar over a preview")
-        // Split: Live mode, focus, syntax and authorship all work in the editor half.
+        // Split: focus, syntax and authorship all work in the editor half.
         doc.session.setLayout(.split)
-        doc.session.setViewMode(.live)
         doc.session.setFocusEnabled(true)
         doc.session.setSyntaxEnabled(true)
         wc.textView.setSelectedRange(NSRange(location: 9, length: 4))
         wc.textView.markAsAI(nil)
         pump(0.5)
-        XCTAssertEqual(doc.session.viewMode, .live)
         XCTAssertTrue(doc.session.focusEnabled && doc.session.syntaxEnabled)
         XCTAssertTrue(doc.session.authorship.hasMarks())
         XCTAssertTrue(wc.previewController.waitUntilSettled())

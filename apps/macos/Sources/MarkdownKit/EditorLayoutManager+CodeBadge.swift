@@ -27,8 +27,7 @@ extension EditorLayoutManager {
 
     /// The badges of the blocks touching `glyphs`. The pill sits in the panel's top-right corner. A
     /// pill covers the code beneath it, and so it can cover the insertion point: while the caret is
-    /// on the block's first visible line (the fence's in Source mode, the first code line in Live
-    /// mode, where the fences are concealed) and within a few points of the pill's horizontal extent,
+    /// on the block's first line (the fence's) and within a few points of the pill's horizontal extent,
     /// the badge is left out, drawn and hit-tested alike, until the caret moves on. A caret further
     /// left on that line, or on any other line, leaves the badge where it is.
     /// `ignoringCaret`: all the badges there are, for redrawing the ones the caret's moving changes.

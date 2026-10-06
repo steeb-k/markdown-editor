@@ -468,10 +468,6 @@ final class UIScriptRunner {
             later(0.3, done)
         } else if let m = step["measurePreview"] as? [String: Any] {
             measurePreview(m, then: done)
-        } else if let mode = str("viewMode") {
-            menuAction(mode == "live" ? #selector(EditorTextView.showLiveMode(_:)) : #selector(EditorTextView.showSourceMode(_:)))
-            record(["viewMode": mode], ok: session?.viewMode.rawValue == mode)
-            done()
         } else if let f = step["focus"] as? [String: Any] {
             if let scope = f["scope"] as? String, let c = FocusScopeChoice(rawValue: scope) { Settings.shared.focusScope = c }
             if let on = f["on"] as? Bool, on != session?.focusEnabled { menuAction(#selector(EditorTextView.toggleFocusMode(_:))) }
@@ -496,13 +492,7 @@ final class UIScriptRunner {
             done()
         } else if let n = step["clickCheckbox"] as? Int {
             var ok = false
-            if let tv = textView, let lm = tv.layoutManager as? EditorLayoutManager, let tc = tv.textContainer {
-                let boxes = lm.live.decorations.filter { if case .checkbox = $0.kind { return true } else { return false } }
-                if n < boxes.count, let f = lm.checkboxFrame(of: boxes[n], in: tc) {
-                    let o = tv.textContainerOrigin
-                    ok = tv.handleCheckboxClick(at: NSPoint(x: f.midX + o.x, y: f.midY + o.y))
-                }
-            }
+            if let tv = textView, let p = tv.taskBoxPoint(n) { ok = tv.handleCheckboxClick(at: p) }
             record(["clickCheckbox": n], ok: ok)
             done()
         } else if let needle = str("cmdClickLink") {
@@ -532,11 +522,6 @@ final class UIScriptRunner {
             let ok = (try? FileManager.default.copyItem(at: resolve(from), to: dst)) != nil
             record(["copyFile": c], ok: ok)
             done()
-        } else if step["revalidateImages"] != nil {
-            // What the window becoming key again does.
-            session?.imageController.revalidate()
-            record(["revalidateImages": true], ok: true)
-            later(0.5, done)
         } else if let path = str("pasteImage") {
             // Image data on a private pasteboard, pasted the way Edit > Paste does it.
             let pb = NSPasteboard(name: NSPasteboard.Name("markdown-ui-script-\(UUID().uuidString)"))
@@ -561,13 +546,6 @@ final class UIScriptRunner {
             pb.releaseGlobally()
             record(["dropFile": path], ok: ok)
             done()
-        } else if let w = num("waitImages") {
-            let deadline = Date(timeIntervalSinceNow: w)
-            func poll() {
-                if (session?.imageController.isLoading ?? false) && Date() < deadline { later(0.05, poll) } else { later(0.2, done) }
-            }
-            record(["waitImages": w], ok: true)
-            poll()
         } else if let g = step["openGenerated"] as? [String: Any], let from = g["from"] as? String {
             // A big document: `from` repeated until it is at least `minLength` UTF-16 units.
             let unit = (try? String(contentsOf: resolve(from), encoding: .utf8)) ?? "x\n"
@@ -638,12 +616,11 @@ final class UIScriptRunner {
         } else if let command = str("command") {
             let run: () -> Void = { self.textView?.doCommand(by: Selector(command)) }
             if step["edits"] as? Bool == false { run() } else { asEvent(run) }
-            // Where the caret ended up: the selection, and the caret's x in the text container.
+            // Where the caret ended up: the selection.
             var entry: [String: Any] = ["command": command]
             if let tv = textView {
                 let sel = tv.selectedRange()
                 entry["selection"] = [sel.location, sel.length]
-                entry["caretX"] = Double(tv.caretX(at: sel.location))
             }
             var ok = textView != nil
             if let want = step["expectSelection"] as? [Int], let got = entry["selection"] as? [Int] { ok = ok && want == got }
@@ -910,8 +887,6 @@ final class UIScriptRunner {
             measureCaret(m, then: done)
         } else if let m = step["measureDrift"] as? [String: Any] {
             measureDrift(m, then: done)
-        } else if let m = step["caretWalk"] as? [String: Any] {
-            caretWalk(m, then: done)
         } else if let m = step["measureKeys"] as? [String: Any] {
             measureKeys(m, then: done)
         } else if let m = step["measureJump"] as? [String: Any] {
@@ -1092,7 +1067,6 @@ final class UIScriptRunner {
         if let v = s["autoHideChrome"] as? Bool { st.autoHideChrome = v }
         if let v = s["chromeReturnsAfterPause"] as? Bool { st.chromeReturnsAfterPause = v }
         if let v = s["centreFocusedLine"] as? Bool { st.centreFocusedLine = v }
-        if let v = s["defaultViewMode"] as? String, let m = ViewMode(rawValue: v) { st.defaultViewMode = m }
         if let v = s["focusMode"] as? Bool { st.focusMode = v }
         if let v = s["focusScope"] as? String, let m = FocusScopeChoice(rawValue: v) { st.focusScope = m }
         if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
@@ -1585,7 +1559,7 @@ final class UIScriptRunner {
 
     /// Everything together, at random, through the paths a person uses: typing (key events),
     /// Return and Backspace, Paste As and Mark As (menu actions), undo and redo, caret moves and
-    /// scrolling, Source and Live, themes, focus mode, syntax highlighting and the authorship
+    /// scrolling, themes, focus mode, syntax highlighting and the authorship
     /// display switched on and off. After every step, once styling and tagging have settled:
     /// the core's text is the storage's, every character's temporary colour is what the layers
     /// say (outside the overlay's window: nothing), the layers are what their sources say (the
@@ -1638,7 +1612,7 @@ final class UIScriptRunner {
             if o.layers.authorship != OverlayCompositor.merged(want) { fail("the authorship layer is not the attribution") }
             if s.focusEnabled {
                 let sel = tv.selectedRange()
-                let w = s.liveQueryWindow()
+                let w = s.queryWindow()
                 let scope: FocusScope = s.settings.focusScope == .sentence ? .sentence : .paragraph
                 let core = s.coordinator.sync { doc in
                     doc.focusRange(selection: Utf16Range(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel))), scope: scope).map(\.nsRange)
@@ -1785,10 +1759,10 @@ final class UIScriptRunner {
                 opLog.append("scroll to \(p)")
                 tv.scrollRangeToVisible(NSRange(location: p, length: 0))
             case 15:
-                name = "mode"
-                let mode: ViewMode = s.viewMode == .live ? .source : .live
-                opLog.append("mode \(mode)")
-                s.setViewMode(mode)
+                name = "caret"
+                let p = randomPlace()
+                opLog.append("caret \(p)")
+                tv.setSelectedRange(NSRange(location: p, length: 0))
             case 16:
                 name = "theme"
                 let t = [ThemeChoice.light, .dark, .sepia][Int(rnd() % 3)]
@@ -1812,7 +1786,7 @@ final class UIScriptRunner {
 
     /// Moves the caret through the text, `count` steps of `stride` characters, and records how
     /// long the main thread was busy per move (the selection change and everything it causes:
-    /// the concealment query and its application), as the arrow keys would.
+    /// the state query and its application), as the arrow keys would.
     private func measureCaret(_ m: [String: Any], then done: @escaping () -> Void) {
         let count = m["count"] as? Int ?? 100
         let stride = m["stride"] as? Int ?? 7
@@ -1826,7 +1800,7 @@ final class UIScriptRunner {
                 let stats: [String: Any] = [
                     "moves": perMove.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000,
                     "mean_ms": perMove.reduce(0, +) / Double(max(1, perMove.count)) * 1000,
-                    "live_queries": session?.liveQueries ?? 0, "state_queries": session?.stateQueries ?? 0,
+                    "state_queries": session?.stateQueries ?? 0,
                     "overlay_ops": session?.overlay.operations ?? 0, "overlay_chars": session?.overlay.charactersTouched ?? 0,
                 ]
                 let limit = (m["maxMs"] as? NSNumber)?.doubleValue
@@ -1858,7 +1832,7 @@ final class UIScriptRunner {
     /// A long session at random: each round jumps the caret to `moves` scattered places, then
     /// types `keys` characters (with a Backspace now and then) at the last one, and records the
     /// main-thread cost per key and per jump together with the size of everything the session
-    /// keeps (concealment, overlay runs, attribute runs, undo steps). The cost per key in the
+    /// keeps (overlay runs, attribute runs, undo steps). The cost per key in the
     /// first tenth of the rounds is compared with the last tenth: a cost that grows with the
     /// length of the session fails (`factor`, default 2, plus `slackMs`, default 1).
     private func measureDrift(_ m: [String: Any], then done: @escaping () -> Void) {
@@ -1941,9 +1915,6 @@ final class UIScriptRunner {
                                 "state_ms": (s.timeInStateQueries - state0) / Double(keys + moves) * 1000,
                                 "overlay_edit_ms": (s.overlay.timeFollowingEdits - edit0) / Double(keys) * 1000,
                                 "overlay_apply_ms": (s.overlay.timeApplying - apply0) / Double(keys) * 1000,
-                                "live_hidden": s.layoutManager.live.hidden.count,
-                                "live_collapsed": s.layoutManager.live.collapsed.count,
-                                "live_decorations": s.layoutManager.live.decorations.count,
                                 "phases_ms_per_key": s.phaseTimes.mapValues { _ in 0 }.merging(s.phaseTimes) { _, v in v }
                                     .reduce(into: [String: Double]()) { $0[$1.key] = (($1.value - (phases0[$1.key] ?? 0)) / Double(keys) * 10_000).rounded() / 10 },
                                 "analysis_ms_per_edit": ((s.coordinator.instrumentation.process - inst0.process) * 1000 / Double(max(1, s.coordinator.instrumentation.edits - inst0.edits))),
@@ -1972,50 +1943,8 @@ final class UIScriptRunner {
         oneRound()
     }
 
-    /// Presses an arrow key (`command`) until the caret stops (or `count` presses) and checks Live
-    /// mode's caret rules on every press: the press passed something visible (before or after),
-    /// and the caret does not rest inside, or at the start of, hidden text.
-    private func caretWalk(_ m: [String: Any], then done: @escaping () -> Void) {
-        let command = Selector((m["command"] as? String) ?? "moveRight:")
-        let count = m["count"] as? Int ?? 100_000
-        var problems: [String] = []
-        var presses = 0
-        var seen: [Int: Int] = [:]
-        func step() {
-            guard presses < count, let tv = textView, let s = session else { finishWalk(); return }
-            let before = tv.selectedRange().location
-            // A place reached twice by the same key means the walk goes round in circles (in
-            // right-to-left text Right moves backwards: AppKit's visual movement).
-            seen[before, default: 0] += 1
-            if seen[before]! > 1 {
-                let ns = (s.text as NSString)
-                let para = ns.paragraphRange(for: NSRange(location: min(before, max(0, ns.length - 1)), length: 0))
-                record(["caretWalk": "\(command)", "cycle at": before, "paragraph": ns.substring(with: para)], ok: true)
-                finishWalk()
-                return
-            }
-            let liveBefore = s.layoutManager.live
-            // (No undo group: an empty one still counts as a change to the document.)
-            tv.doCommand(by: command)
-            _ = s.waitUntilStyled(timeout: 5)
-            let after = tv.selectedRange().location
-            presses += 1
-            if after == before { finishWalk(); return }
-            let live = s.layoutManager.live
-            let passed = min(before, after)..<max(before, after)
-            if !passed.contains(where: { !liveBefore.isHidden($0) || !live.isHidden($0) }) { problems.append("\(before)->\(after) passed only hidden text") }
-            if let h = RangeList.range(containing: live.hidden, after) { problems.append("rests in hidden \(h) at \(after)") }
-            later(0, step)
-        }
-        func finishWalk() {
-            record(["caretWalk": "\(command)", "presses": presses, "problems": Array(problems.prefix(20))], ok: problems.isEmpty)
-            done()
-        }
-        step()
-    }
-
     /// Presses an arrow key (`command`, default `moveRight:`) `count` times through the key
-    /// bindings and records the main-thread time per press, the concealment it causes included.
+    /// bindings and records the main-thread time per press.
     private func measureKeys(_ m: [String: Any], then done: @escaping () -> Void) {
         let count = m["count"] as? Int ?? 200
         let command = Selector((m["command"] as? String) ?? "moveRight:")
@@ -2042,8 +1971,7 @@ final class UIScriptRunner {
     }
 
     /// Jumps `count` times to places spread over the document (as dragging the scroller does) and
-    /// records how long laying out and drawing the screenful takes, the Live-mode query for the
-    /// newly visible text included: a proxy for scrolling smoothness.
+    /// records how long laying out and drawing the screenful takes: a proxy for scrolling smoothness.
     private func measureJump(_ m: [String: Any], then done: @escaping () -> Void) {
         let count = m["count"] as? Int ?? 20
         var per: [Double] = []
@@ -2052,8 +1980,7 @@ final class UIScriptRunner {
             guard i < count, let tv = textView, let s = session, let clip = tv.enclosingScrollView?.contentView else {
                 let sorted = per.sorted()
                 func pct(_ p: Double) -> Double { sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * p))] * 1000 }
-                let stats: [String: Any] = ["jumps": per.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000,
-                                            "live_queries": session?.liveQueries ?? 0]
+                let stats: [String: Any] = ["jumps": per.count, "p50_ms": pct(0.5), "p99_ms": pct(0.99), "max_ms": (sorted.last ?? 0) * 1000]
                 let limit = (m["maxMs"] as? NSNumber)?.doubleValue
                 record(["measureJump": stats], ok: limit.map { (sorted.last ?? 0) * 1000 <= $0 } ?? true)
                 done()
@@ -2065,7 +1992,7 @@ final class UIScriptRunner {
             let t0 = CFAbsoluteTimeGetCurrent()
             clip.scroll(to: NSPoint(x: 0, y: max(0, y)))
             tv.enclosingScrollView?.reflectScrolledClipView(clip)
-            // Live mode asks about newly visible text on the main queue, before the run loop
+            // What asks about newly visible text on the main queue runs before the run loop
             // draws: that turn is part of the jump.
             DispatchQueue.main.async {
                 tv.displayIfNeeded()
@@ -2257,10 +2184,9 @@ final class UIScriptRunner {
         weak let wc = controller
         weak let win = window
         weak let d = doc
-        // Also the preview's web view and preview controller, and the session's picture cache.
+        // Also the preview's web view and preview controller, .
         weak let web = controller?.previewController.webView
         weak let pc = controller?.previewController
-        weak let images = doc.session.imageController
         document = nil
         doc.updateChangeCount(.changeCleared)
         doc.close()
@@ -2270,7 +2196,7 @@ final class UIScriptRunner {
         let started = Date()
         func poll() {
             drainEventPool()
-            let ours = d == nil && wc == nil && s == nil && c == nil && pc == nil && images == nil
+            let ours = d == nil && wc == nil && s == nil && c == nil && pc == nil
             let all = ours && win == nil && tv == nil && web == nil
             if !all && Date().timeIntervalSince(started) < 10 { later(0.25, poll); return }
             let secs = String(format: "%.2f", Date().timeIntervalSince(started))
@@ -2279,7 +2205,6 @@ final class UIScriptRunner {
             self.check("session deallocated", s == nil)
             self.check("coordinator (and its queue) deallocated", c == nil)
             self.check("preview controller deallocated", pc == nil)
-            self.check("picture cache deallocated", images == nil)
             self.record(["closed web view freed": web == nil, "print renderers alive": PrintRenderer.live], ok: true)
             // AppKit keeps a closed window (and so its text view) for a while, even a plain
             // NSWindow (see `controlLeakProbe`); reported, not judged.
@@ -2289,7 +2214,7 @@ final class UIScriptRunner {
             // the script waits, so that `leaks --traceTree=<address> <pid>` can say what holds it.
             if !ours, let pause = ProcessInfo.processInfo.environment["UI_SCRIPT_LEAK_PAUSE"].flatMap(Double.init) {
                 var alive: [String: String] = ["pid": "\(getpid())"]
-                for (name, o) in [("session", s as AnyObject?), ("coordinator", c), ("images", images), ("document", d), ("controller", wc)] {
+                for (name, o) in [("session", s as AnyObject?), ("coordinator", c), ("document", d), ("controller", wc)] {
                     if let o { alive[name] = "\(Unmanaged.passUnretained(o).toOpaque())" }
                 }
                 self.record(["leakPause": pause, "alive": alive], ok: true)
@@ -2713,29 +2638,6 @@ final class UIScriptRunner {
                 check("pasteboard has rich text", (rtf?.count ?? 0) > 0 && !text.isEmpty, "\(rtf?.count ?? 0) bytes")
             }
         }
-        if let v = a["viewMode"] as? String { check("viewMode \(v)", session?.viewMode.rawValue == v, session?.viewMode.rawValue ?? "nil") }
-        if let v = a["hidden"] as? [String], let s = session {
-            _ = s.waitUntilStyled(timeout: 30)
-            s.refreshLive()
-            let got = s.layoutManager.live.hidden.map { (text as NSString).substring(with: $0) }
-            check("hidden \(v)", got == v, "\(got)")
-        }
-        if let v = a["decorations"] as? [String: Int], let s = session {
-            var counts: [String: Int] = [:]
-            for d in s.layoutManager.live.decorations {
-                let k: String
-                switch d.kind {
-                case .bullet: k = "bullet"
-                case .checkbox: k = "checkbox"
-                case .rule: k = "rule"
-                case .image: k = "image"
-                case .quoteBar: k = "quoteBar"
-                }
-                counts[k, default: 0] += 1
-            }
-            check("decorations \(v)", v.allSatisfy { counts[$0.key, default: 0] == $0.value }, "\(counts)")
-        }
-        if let v = a["collapsedLines"] as? Int, let s = session { check("collapsed lines \(v)", s.layoutManager.live.collapsed.count == v, "\(s.layoutManager.live.collapsed.count)") }
         if let v = a["pasted"] as? Bool { check("pasted \(v)", Self.pasted == v, Self.pasted.map { "\($0)" } ?? "pending") }
         if let v = a["assets"] as? Int {
             // Files in `<document>.assets` beside the current document.
@@ -2743,22 +2645,6 @@ final class UIScriptRunner {
             let dir = url.map { $0.deletingLastPathComponent().appendingPathComponent($0.deletingPathExtension().lastPathComponent + ".assets") }
             let files = dir.flatMap { try? FileManager.default.contentsOfDirectory(atPath: $0.path) }?.filter { !$0.hasPrefix(".") }.sorted() ?? []
             check("assets \(v)", files.count == v, "\(files)")
-        }
-        if let v = a["imageSize"] as? [String: Any], let s = session, let dest = v["destination"] as? String {
-            // A loaded picture's size in the editor, in points.
-            let e = s.imageController.entry(for: dest, budget: s.imageBudget(), scale: window?.backingScaleFactor ?? 2)
-            let (w, h) = ((v["width"] as? NSNumber)?.doubleValue ?? 0, (v["height"] as? NSNumber)?.doubleValue ?? 0)
-            check("imageSize \(dest) \(w)x\(h)", e.phase == .loaded && abs(e.size.width - w) < 1 && abs(e.size.height - h) < 1, "\(e.phase) \(e.size)")
-        }
-        if let v = a["images"] as? [String: Int], let s = session {
-            // How many picture decorations are loaded, failed or still loading.
-            var counts: [String: Int] = [:]
-            for d in s.layoutManager.imageDecorations {
-                guard case .image(let destination, _) = d.kind else { continue }
-                let e = s.imageController.entry(for: destination, budget: s.imageBudget(), scale: window?.backingScaleFactor ?? 2)
-                counts["\(e.phase)", default: 0] += 1
-            }
-            check("images \(v)", v.allSatisfy { counts[$0.key, default: 0] == $0.value }, "\(counts)")
         }
         if let v = a["linkOpened"] as? String { check("linkOpened \(v)", Self.opened?.absoluteString == v, Self.opened?.absoluteString ?? "nil") }
         if let v = a["inTable"] as? Bool { check("inTable \(v)", session?.formatState.inTable == v) }

@@ -1,9 +1,9 @@
 ---
-title: Live mode tour
-tags: [markdown, live]
+title: Markup tour
+tags: [markdown, tour]
 ---
 
-# Live mode
+# Markup
 
 Writing should feel calm. This paragraph has **bold words**, some *emphasis*, a `code span`, a ~~struck~~ phrase and a [link to the site](https://example.com/page "A title") in it, long enough to wrap onto a second line so that the shape of the column can be judged. An escaped \* star and a bare URL https://example.com/bare sit here too.
 

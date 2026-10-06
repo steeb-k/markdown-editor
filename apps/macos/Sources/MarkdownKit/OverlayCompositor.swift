@@ -53,8 +53,8 @@ public struct OverlayLayers: Equatable {
 /// within a window (the visible text and a margin, moved as the view scrolls). Changing the
 /// focus range by a sentence therefore touches two stretches of text, not the window.
 ///
-/// It also answers `isDimmed` for the things a layout manager draws by hand (decorations,
-/// pictures, strikethrough, inline-code backgrounds), which never see temporary attributes.
+/// It also answers `isDimmed` for the things a layout manager draws by hand (inline-code
+/// backgrounds), which never see temporary attributes.
 ///
 /// Main thread only.
 public final class OverlayCompositor {
@@ -152,7 +152,7 @@ public final class OverlayCompositor {
     public var isFocusing: Bool { layers.focus != nil }
 
     /// Is any of `range` outside the focus range? (False while focus mode is off.) For hand
-    /// drawn things: text that is dimmed draws its bullet, box, bar or picture dimmed too.
+    /// drawn things: text that is dimmed draws its chip dimmed too.
     public func isDimmed(_ range: NSRange) -> Bool {
         guard let keep = layers.focus else { return false }
         return !Self.intersects(keep, range)
@@ -514,7 +514,7 @@ public final class OverlayCompositor {
             }
             if r.length > 0 { out.append(r) }
         }
-        return RangeList.normalized(out)
+        return RangeMath.normalized(out)
     }
 
     /// `runs` without `range`.

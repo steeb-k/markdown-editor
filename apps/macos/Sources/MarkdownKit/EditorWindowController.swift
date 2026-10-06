@@ -241,7 +241,6 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             self?.outlineLayoutChanged()
             self?.recordChanged()
         }
-        session.onViewModeChange = { [weak self] in self?.recordChanged() }
         session.onColumnChange = { [weak self] in
             self?.applyColumn()
             self?.recordChanged()
@@ -491,16 +490,13 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
 
     // MARK: the View menu while the preview has the keyboard
 
-    /// The view mode, focus and authorship switches are the text view's actions; in the Preview
+    /// The focus, syntax and authorship switches are the text view's actions; in the Preview
     /// layout the web view is first responder and the menu would find nobody to ask.
     private static let forwardedToEditor: Set<Selector> = [
-        #selector(EditorTextView.showSourceMode(_:)), #selector(EditorTextView.showLiveMode(_:)),
         #selector(EditorTextView.toggleFocusMode(_:)), #selector(EditorTextView.setFocusScope(_:)),
         #selector(EditorTextView.toggleSyntaxHighlight(_:)), #selector(EditorTextView.toggleSyntaxClass(_:)),
         #selector(EditorTextView.toggleAuthorshipDisplay(_:)),
     ]
-    @objc func showSourceMode(_ sender: Any?) { textView.showSourceMode(sender) }
-    @objc func showLiveMode(_ sender: Any?) { textView.showLiveMode(sender) }
     @objc func toggleFocusMode(_ sender: Any?) { textView.toggleFocusMode(sender) }
     @objc func setFocusScope(_ sender: Any?) { textView.setFocusScope(sender) }
     @objc func toggleSyntaxHighlight(_ sender: Any?) { textView.toggleSyntaxHighlight(sender) }
@@ -676,8 +672,6 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         recordChanged()
         session.refreshAppearance()
         documentBecameFront()
-        // Pictures another app changed while this window was in the background.
-        session.imageController.revalidate()
     }
 
     // MARK: for tests and UI scripts

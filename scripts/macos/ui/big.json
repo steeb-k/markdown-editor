@@ -2,7 +2,6 @@
   {"log": "1 MB document: open, scroll, type; run in a release build (RELEASE=1) for timings"},
   {"setting": {"theme": "light", "fontChoice": "iaQuattro", "spellCheck": true}},
   {"openGenerated": {"from": "scripts/macos/ui/fixtures/tour.md", "minLength": 1000000}},
-  {"viewMode": "source"},
   {"resize": [900, 820]},
   {"waitStyled": 120},
   {"assert": {"coreMatchesText": true}},

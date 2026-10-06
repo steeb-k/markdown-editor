@@ -7,8 +7,7 @@ import UniformTypeIdentifiers
 import MarkdownCore
 
 /// How a window shows its document: the editor alone, the editor beside the preview, or the
-/// preview alone (read-only). Independent of `ViewMode` (Source or Live), which says how the
-/// editor itself looks.
+/// preview alone (read-only).
 public enum LayoutMode: String, CaseIterable, Sendable {
     case editor, split, preview
 
@@ -426,7 +425,7 @@ public struct BodyPatch: Equatable {
 // MARK: - serving the preview's files
 
 /// Answers `mdoc://` requests: pictures and files (resolved and checked by `DocumentFileAccess`,
-/// the sandbox seam, exactly as the editor's pictures are) and the bundled fonts. WebKit calls it
+/// the sandbox seam) and the bundled fonts. WebKit calls it
 /// on the main thread and its replies are made there; the reading happens on a background queue.
 @MainActor
 public final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -750,7 +749,7 @@ enum PreviewScripts {
 /// The sizes, in points, of the local pictures a document refers to, for the `width` and `height`
 /// the preview's `<img>` elements carry (so the page does not jump as pictures arrive, and a retina
 /// screenshot is as big there as in the editor: its points are its pixels over its declared
-/// resolution, see `ImageController.sizes(of:)`). Only a file's header is read, once per
+/// resolution, see `sizes(of:)`). Only a file's header is read, once per
 /// modification. Safe to call from any thread.
 final class PictureSizes: @unchecked Sendable {
     private let lock = NSLock()
@@ -771,7 +770,7 @@ final class PictureSizes: @unchecked Sendable {
                 size = known.size
             } else {
                 size = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
-                    .flatMap { ImageController.sizes(of: $0)?.points }
+                    .flatMap { Self.sizes(of: $0)?.points }
                 lock.lock()
                 cache[url] = (modified, size)
                 if cache.count > 2_000 { cache.removeAll() }
@@ -782,5 +781,29 @@ final class PictureSizes: @unchecked Sendable {
             }
         }
         return out
+    }
+
+    /// How big a picture is: in pixels, and in points. A file that declares its resolution is
+    /// drawn at the size it declares (a retina screenshot is 144 dpi: its points are half its
+    /// pixels, as Preview and Finder show it); one that does not, or says 72, is a point per pixel.
+    /// Orientation is applied.
+    static func sizes(of src: CGImageSource) -> (pixels: CGSize, points: CGSize)? {
+        guard CGImageSourceGetCount(src) > 0,
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, w > 0, h > 0
+        else { return nil }
+        // Only a believable resolution counts (0 and 1 are what some writers put for "unknown").
+        func factor(_ key: CFString) -> Double {
+            guard let dpi = (props[key] as? NSNumber)?.doubleValue, dpi >= 24, dpi <= 2400 else { return 1 }
+            return 72 / dpi
+        }
+        var pixels = CGSize(width: w, height: h)
+        var points = CGSize(width: w * factor(kCGImagePropertyDPIWidth), height: h * factor(kCGImagePropertyDPIHeight))
+        if ((props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1) >= 5 {
+            pixels = CGSize(width: pixels.height, height: pixels.width)
+            points = CGSize(width: points.height, height: points.width)
+        }
+        return (pixels, points)
     }
 }

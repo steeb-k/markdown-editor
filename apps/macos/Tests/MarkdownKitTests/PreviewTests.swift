@@ -293,27 +293,30 @@ final class PreviewTests: XCTestCase {
         ]
     }
 
-    func testThePreviewResolvesPicturesExactlyAsTheEditorDoes() throws {
+    func testThePreviewResolvesPicturesByTheSharedRule() throws {
         let root = URL(fileURLWithPath: "/Users/me/work")
         let home = FileManager.default.homeDirectoryForCurrentUser
         let doc = root.appendingPathComponent("notes/doc.md")
-        let images = ImageController()
-        images.documentURL = { doc }
+        var documentURL: URL? = doc
+        func resolve(_ destination: String) -> URL? {
+            guard let url = DocumentFileAccess.pictureURL(for: destination, documentURL: documentURL) else { return nil }
+            return url.isFileURL && !DocumentFileAccess.mayRead(url, documentURL: documentURL) ? nil : url
+        }
         for (destination, want) in Self.pictureCases(root: root, home: home) {
-            let editor = images.resolve(destination)
-            XCTAssertEqual(editor?.standardizedFileURL, want?.standardizedFileURL, "editor: \(destination.debugDescription)")
+            let shared = resolve(destination)
+            XCTAssertEqual(shared?.standardizedFileURL, want?.standardizedFileURL, "rule: \(destination.debugDescription)")
             // The page sends the destination as written (an attribute's value: after the
             // renderer's escaping, which decoding undoes the same way).
             let preview = PreviewURL.resolve(PreviewURL.picture(destination), documentURL: doc)
             XCTAssertEqual(preview, want.map { .file($0.standardizedFileURL) } ?? .denied, "preview: \(destination.debugDescription)")
         }
-        // Remote and inline pictures are the page's own business, and the editor's: both load them.
-        XCTAssertEqual(images.resolve("https://example.com/a.png"), URL(string: "https://example.com/a.png"))
-        XCTAssertEqual(images.resolve("http://example.com/a.png"), URL(string: "http://example.com/a.png"))
-        XCTAssertEqual(images.resolve("data:image/png;base64,AAAA")?.scheme, "data")
+        // Remote and inline pictures are the page's own business: it loads them.
+        XCTAssertEqual(resolve("https://example.com/a.png"), URL(string: "https://example.com/a.png"))
+        XCTAssertEqual(resolve("http://example.com/a.png"), URL(string: "http://example.com/a.png"))
+        XCTAssertEqual(resolve("data:image/png;base64,AAAA")?.scheme, "data")
         // An untitled document has no folder: relative pictures resolve nowhere, in both.
-        images.documentURL = { nil }
-        XCTAssertNil(images.resolve("img/a.png"))
+        documentURL = nil
+        XCTAssertNil(resolve("img/a.png"))
         XCTAssertEqual(PreviewURL.resolve(PreviewURL.picture("img/a.png"), documentURL: nil), .denied)
         XCTAssertEqual(PreviewURL.resolve(PreviewURL.picture(root.appendingPathComponent("x.png").path), documentURL: nil), .file(root.appendingPathComponent("x.png")))
         // Other routes.
@@ -329,9 +332,8 @@ final class PreviewTests: XCTestCase {
         XCTAssertEqual(r("mdoc://elsewhere/rel/a.png"), .unknown)
     }
 
-    /// The same table, end to end: real files on disk; the editor's ImageController and the
-    /// preview's page each load what the table says, and nothing else.
-    func testThePreviewAndTheEditorLoadTheSamePictures() throws {
+    /// The same table, end to end: real files on disk; the preview's page loads what the table says, and nothing else.
+    func testThePreviewLoadsWhatTheTableSays() throws {
         let png = try Data(contentsOf: Fixtures.root.appendingPathComponent("scripts/macos/ui/fixtures/images/small.png"))
         let root = tmp!
         let home = tmp.appendingPathComponent("home")
@@ -361,20 +363,9 @@ final class PreviewTests: XCTestCase {
         }
         XCTAssertTrue(spin(timeout: 10) { pageState().count == all.count }, "\(pageState())")
         let page = pageState()
-        // The editor's loader, through the same function.
-        let images = doc.session.imageController
-        images.documentURL = { [weak doc] in doc?.fileURL }
-        var editor: [String: Bool] = [:]
-        for (i, destination) in all.enumerated() {
-            let trimmed = destination.trimmingCharacters(in: .whitespaces)
-            _ = images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1)
-            XCTAssertTrue(spin(timeout: 5) { images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1).phase != .loading }, trimmed)
-            editor["p\(i)"] = images.entry(for: trimmed, budget: .init(width: 300, maxHeight: 300), scale: 1).phase == .loaded
-        }
         for (i, destination) in all.enumerated() {
             let want = i < cases.count ? cases[i].1 != nil : false
             XCTAssertEqual(page["p\(i)"], want, "preview: \(destination.debugDescription)")
-            XCTAssertEqual(editor["p\(i)"], want, "editor: \(destination.debugDescription)")
         }
         XCTAssertEqual(p.schemeHandler.unanswered, 0, "every request was answered")
         doc.close()
@@ -673,8 +664,6 @@ final class PreviewTests: XCTestCase {
         doc.session.setLayout(.preview); pump(0.1)
         doc.session.setLayout(.split); pump(0.1)
         atTop("after the preview layout")
-        doc.session.setViewMode(.live); pump(0.2)
-        atTop("live")
         wc.window?.setContentSize(NSSize(width: 700, height: 500)); pump(0.1)
         atTop("narrow window")
         // Chrome hidden and shown changes the insets under the scroll position.
@@ -698,12 +687,12 @@ final class PreviewTests: XCTestCase {
         // The switches that used to sit in the title bar are View-menu items now: they stay available in
         // every layout, answered by the editor, and the window controller answers while the preview has the keys.
         let view = try XCTUnwrap(MainMenu.build().items.first { $0.title == "View" }?.submenu)
-        for title in ["Source", "Live", "Focus Mode", "Show Authorship"] {
+        for title in ["Focus Mode", "Show Authorship"] {
             let menuItem = try XCTUnwrap(view.items.first { $0.title == title })
             XCTAssertTrue(wc.validateMenuItem(menuItem), "\(title) in the split layout")
         }
         doc.session.setLayout(.preview)
-        for title in ["Source", "Live", "Focus Mode", "Show Authorship"] {
+        for title in ["Focus Mode", "Show Authorship"] {
             let menuItem = try XCTUnwrap(view.items.first { $0.title == title })
             XCTAssertTrue(wc.validateMenuItem(menuItem), "\(title) in the preview layout, with the web view first responder")
         }

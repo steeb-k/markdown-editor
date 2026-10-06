@@ -4,9 +4,9 @@ This page is a Markdown document, and it is yours: change it, break it, close it
 
 Markdown is plain text with a few marks that mean something: `#` makes a heading, `*` or `_` makes *emphasis*, two of them make **strong** text. The file stays plain text, so any other program can read it, and it will outlive this one.
 
-## Two ways of seeing your words
+## Seeing your words
 
-**Source** shows every mark, dimmed, so you can see exactly what you wrote. **Live** hides the marks until the caret touches the thing they belong to: put the caret inside a **bold word** and the stars appear; move away and they go. The text on disk is the same either way. Choose in the View menu (Source, Live). Which one new windows start in is a setting.
+The editor shows every mark, dimmed, so you can see exactly what you wrote: the stars around a **bold word** are there, only quieter. The text on disk is the text you see.
 
 Beside the editor you can have a preview: **Editor and Preview** puts the two side by side and keeps them scrolled together; **Preview** shows the finished page alone. Pictures, tables, footnotes and highlighted code blocks look as they will when you print or export.
 
@@ -19,7 +19,7 @@ Type. Press Return at the end of a list item and the list goes on; press it on a
 - Wrap the selection in marks from the Format menu: Strong, Emphasis, Strikethrough, Inline Code, Link.
 - Pick a heading level from Format > Heading, or toggle a quote, a list, a task list or a code block.
 - [ ] A task is a list item that starts with `[ ]`.
-- [x] In Live mode the box is drawn as a checkbox: click it to check the task off.
+- [x] Click the `[ ]` or `[x]` of a task to check it off or back on.
 
 > A quote is a paragraph that starts with `>`.
 
@@ -45,7 +45,7 @@ Tables stay as source so you can see the pipes line up, and the Table menu does 
 
 ## Pictures
 
-Write `![a description](picture.png)` on a line by itself. In Live mode the picture is drawn there; move the caret onto the line and the source returns. Drop an image file onto the window to link it, or paste an image from the clipboard and it is saved beside the document in a folder named after it.
+Write `![a description](picture.png)` on a line by itself; the preview draws it. Drop an image file onto the window to link it, or paste an image from the clipboard and it is saved beside the document in a folder named after it.
 
 ## Focus, syntax and authorship
 

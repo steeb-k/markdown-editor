@@ -23,9 +23,6 @@
   ]
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -87,9 +84,6 @@
   "open": "fixtures/authorship/mismatch.md"
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -147,9 +141,6 @@
   "open": "fixtures/authorship/malformed.md"
  },
  {
-  "viewMode": "source"
- },
- {
   "waitStyled": 20
  },
  {
@@ -187,9 +178,6 @@
  },
  {
   "open": "fixtures/authorship/ai-draft.md"
- },
- {
-  "viewMode": "source"
  },
  {
   "waitStyled": 20

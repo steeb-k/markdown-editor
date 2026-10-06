@@ -19,11 +19,6 @@ public final class Styler {
         didSet { prefixWidthCache.removeAll() }
     }
 
-    /// Live mode hides the whole `- [ ] ` of a task item and draws a checkbox in the bullet's
-    /// place, so a task paragraph hangs like a bullet item: the text starts where a bullet
-    /// item's would. (The same in every caret position; only the mode changes it.)
-    public var liveMode = false
-
     /// Instrumentation: every range this styler has rewritten, in order.
     public var recordsTouchedRanges = false
     public private(set) var touchedRanges: [NSRange] = []
@@ -139,9 +134,8 @@ public final class Styler {
                 // Drawn by the layout manager as one continuous panel (a glyph background would
                 // leave stripes between lines).
                 storage.addAttribute(.markdownBlockBackground, value: p.codeBackground, range: r)
-                // A code line in a quote hangs under the quote's text: its `> ` keeps its width when
-                // Live mode hides it (the layout manager keeps a hidden prefix's width only in a
-                // hanging paragraph), so the code does not run into the quote's bar.
+                // A code line in a quote hangs under the quote's text, so wrapped code does not run
+                // back under the quote's markers.
                 let plain = a.paragraphStyle(font: font, multiple: 1.4)
                 eachParagraph(r) { pr in
                     let hang = self.quotePrefixWidth(of: ns, paragraph: pr, font: font)
@@ -173,19 +167,11 @@ public final class Styler {
                     let w = self.prefixWidth(of: ns, paragraph: pr, list: false)
                     storage.addAttribute(.paragraphStyle, value: a.paragraphStyle(font: fonts.body, headIndent: w), range: pr)
                 }
-            case .listMarker, .taskMarker:
-                if case .listMarker = span.kind {
-                    let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
-                    let w = prefixWidth(of: ns, paragraph: pr, list: true)
-                    storage.addAttribute(.paragraphStyle, value: a.paragraphStyle(font: fonts.body, headIndent: w), range: pr)
-                } else if liveMode {
-                    let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
-                    if let (head, first) = taskIndents(of: ns, paragraph: pr) {
-                        storage.addAttribute(.paragraphStyle,
-                                             value: a.paragraphStyle(font: fonts.body, headIndent: head, firstLineHeadIndent: first), range: pr)
-                    }
-                }
-            case .codeInfo, .linkDestination, .footnoteDefinition, .thematicBreak, .html, .hardBreak,
+            case .listMarker:
+                let pr = ns.paragraphRange(for: NSRange(location: r.location, length: 0))
+                let w = prefixWidth(of: ns, paragraph: pr, list: true)
+                storage.addAttribute(.paragraphStyle, value: a.paragraphStyle(font: fonts.body, headIndent: w), range: pr)
+            case .taskMarker, .codeInfo, .linkDestination, .footnoteDefinition, .thematicBreak, .html, .hardBreak,
                  .markup, .tableDelimiterRow:
                 break
             }
@@ -269,36 +255,6 @@ public final class Styler {
         return (prefix as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
     }
 
-    /// For a task item in Live mode: where wrapped lines hang (the text after the list marker, as
-    /// for a bullet) and how far the first line starts in (the width of the marker and the blank
-    /// after it, which is hidden along with the checkbox's `[ ]`).
-    private func taskIndents(of ns: NSString, paragraph: NSRange) -> (CGFloat, CGFloat)? {
-        let line = ns.substring(with: paragraph) as NSString
-        let n = line.length
-        func at(_ i: Int) -> unichar { i < n ? line.character(at: i) : 0 }
-        func skipBlanks(_ i: inout Int) { while at(i) == 0x20 || at(i) == 0x09 { i += 1 } }
-        var i = 0
-        skipBlanks(&i)
-        while at(i) == 0x3E { // >
-            i += 1
-            if at(i) == 0x20 { i += 1 }
-            let save = i
-            skipBlanks(&i)
-            if at(i) != 0x3E { i = save }
-        }
-        skipBlanks(&i)
-        let marker = i
-        guard at(i) == 0x2D || at(i) == 0x2A || at(i) == 0x2B else { return nil }
-        i += 1
-        skipBlanks(&i)
-        func width(_ end: Int) -> CGFloat {
-            let prefix = line.substring(to: end).replacingOccurrences(of: "\t", with: "    ")
-            return (prefix as NSString).size(withAttributes: [.font: appearance.fonts.body]).width.rounded(.up)
-        }
-        let head = width(i)
-        return (head, max(0, head - width(marker)))
-    }
-
     /// Width of a line's quote/list prefix in the body font: wrapped lines hang under the text.
     private func prefixWidth(of ns: NSString, paragraph: NSRange, list: Bool) -> CGFloat {
         let line = ns.substring(with: paragraph) as NSString
@@ -346,7 +302,7 @@ public final class Styler {
 ///
 /// NSTextStorage keeps its attribute runs in one array: a change that splits or merges runs moves
 /// every run after it. Styling a range in place takes dozens of overlapping changes, each paying for
-/// the whole rest of the document: restyling everything (a theme, a font, Source to Live) took 9 s of
+/// the whole rest of the document: restyling everything (a theme, a font) took 9 s of
 /// main-thread time in 12,000-character pieces of up to 190 ms at 1 MB, 36 s at 2 MB and some 15
 /// minutes at 10 MB. Written back run by run, a range whose runs keep their shape (any restyle of text
 /// already styled) costs almost nothing: 1.3 s instead of 43 s for 2 MB in a benchmark.

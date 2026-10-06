@@ -17,7 +17,7 @@ A calm page to read. This paragraph is long enough to wrap across several lines 
 
 1. First, numbered.
 2. Second, also numbered.
-3. Third, with a [relative link](live.md) to another file.
+3. Third, with a [relative link](markup.md) to another file.
 
 > A block quote that is long enough to wrap onto a second line, where the continuation lines up under the text.
 >

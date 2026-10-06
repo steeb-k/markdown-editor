@@ -63,9 +63,6 @@ struct SettingsView: View {
             Stepper(value: Binding(get: { s.lineWidth }, set: { s.lineWidth = $0 }), in: Settings.lineWidthRange, step: 2) {
                 Text("Line width: \(s.lineWidth) characters")
             }
-            Picker("Default view", selection: Binding(get: { s.defaultViewMode }, set: { s.defaultViewMode = $0 })) {
-                ForEach(ViewMode.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
             Picker("Default layout", selection: Binding(get: { s.defaultLayout }, set: { s.defaultLayout = $0 })) {
                 ForEach(LayoutMode.allCases, id: \.self) { Text($0.title).tag($0) }
             }

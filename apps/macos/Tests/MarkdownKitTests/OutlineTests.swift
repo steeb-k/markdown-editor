@@ -240,10 +240,9 @@ final class OutlineTests: XCTestCase {
 
     // MARK: the window
 
-    private func open(_ text: String, layout: LayoutMode = .editor, mode: ViewMode = .source, outline: Bool = false, settings: Settings = isolatedSettings()) throws -> (MarkdownDocument, EditorWindowController) {
+    private func open(_ text: String, layout: LayoutMode = .editor, outline: Bool = false, settings: Settings = isolatedSettings()) throws -> (MarkdownDocument, EditorWindowController) {
         _ = NSApplication.shared
         settings.defaultLayout = layout
-        settings.defaultViewMode = mode
         settings.showSideColumnInNewWindows = outline
         let doc = MarkdownDocument(settings: settings)
         try doc.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
@@ -395,24 +394,24 @@ final class OutlineTests: XCTestCase {
     // MARK: following the scroll
 
     func testScrollingThroughALongDocumentMarksEachHeadingInTurn() throws {
-        for (layout, mode) in [(LayoutMode.editor, ViewMode.source), (.split, .source), (.editor, .live), (.split, .live)] {
-            let (doc, wc) = try open(Self.sample, layout: layout, mode: mode, outline: true)
+        for layout in [LayoutMode.editor, .split] {
+            let (doc, wc) = try open(Self.sample, layout: layout, outline: true)
             defer { doc.close() }
             XCTAssertTrue(waitEntries(wc, 4))
             let entries = try XCTUnwrap(wc.outline?.entries)
             for (i, e) in entries.enumerated() {
                 scroll(wc, toCharacter: Int(e.range.start))
                 pump(0.1)
-                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): \(e.text) at the top")
+                XCTAssertEqual(marked(wc), e.text, "\(layout): \(e.text) at the top")
                 // The heading's line just under the bar is visible: it counts, with its top edge a few points below the bar's.
                 scroll(wc, toCharacter: Int(e.range.start), into: 8)
                 pump(0.1)
-                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): \(e.text) just under the bar")
+                XCTAssertEqual(marked(wc), e.text, "\(layout): \(e.text) just under the bar")
                 // Midway to the next heading: still this one.
                 let next = i + 1 < entries.count ? Int(entries[i + 1].range.start) : (wc.textView.string as NSString).length - 1
                 scroll(wc, toCharacter: (Int(e.range.start) + next) / 2)
                 pump(0.1)
-                XCTAssertEqual(marked(wc), e.text, "\(layout) \(mode): between \(e.text) and the next")
+                XCTAssertEqual(marked(wc), e.text, "\(layout): between \(e.text) and the next")
             }
             // Back above the first heading's text: the first stays (nothing above it).
             scroll(wc, toCharacter: 0)

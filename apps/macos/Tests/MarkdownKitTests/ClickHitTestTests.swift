@@ -225,6 +225,54 @@ final class ClickHitTestTests: XCTestCase {
     }
 }
 
+/// A click on the `[ ]` of a task item toggles it, as one undo step, and leaves the caret where it was.
+final class TaskBoxClickTests: XCTestCase {
+    private static let text = "# Tasks\n\n- [ ] first\n- [x] second\n1. [ ] third\n> - [ ] quoted\n\n- not a task [ ]\n"
+
+    func testAClickOnTheBoxTogglesItAsOneUndoStep() throws {
+        let e = Editor.laidOut(Self.text, caret: 3)
+        let point = try XCTUnwrap(e.tv.taskBoxPoint(0))
+        XCTAssertTrue(e.tv.handleCheckboxClick(at: point))
+        XCTAssertTrue(e.string.contains("- [x] first"))
+        XCTAssertEqual(e.tv.selectedRange(), NSRange(location: 3, length: 0), "the caret stays where it was")
+        e.um.undo()
+        XCTAssertEqual(e.string, Self.text)
+        XCTAssertTrue(e.string.contains("- [ ] first"))
+        // A ticked box is cleared, wherever the task is (a numbered item, a quote).
+        XCTAssertTrue(e.tv.handleCheckboxClick(at: try XCTUnwrap(e.tv.taskBoxPoint(1))))
+        XCTAssertTrue(e.string.contains("- [ ] second"))
+        XCTAssertTrue(e.tv.handleCheckboxClick(at: try XCTUnwrap(e.tv.taskBoxPoint(2))))
+        XCTAssertTrue(e.string.contains("1. [x] third"))
+        XCTAssertTrue(e.tv.handleCheckboxClick(at: try XCTUnwrap(e.tv.taskBoxPoint(3))))
+        XCTAssertTrue(e.string.contains("> - [x] quoted"))
+        XCTAssertNil(e.tv.taskBoxPoint(4), "text that only looks like a box is not one")
+    }
+
+    func testOnlyTheThreeCharactersOfTheBoxAreHot() {
+        let e = Editor.laidOut(Self.text, caret: 0)
+        let ns = e.string as NSString
+        let box = ns.range(of: "[ ] first")
+        XCTAssertEqual(e.tv.taskBox(containing: box.location), NSRange(location: box.location, length: 3))
+        XCTAssertEqual(e.tv.taskBox(containing: box.location + 2), NSRange(location: box.location, length: 3))
+        XCTAssertNil(e.tv.taskBox(containing: box.location + 3), "the space after the box is text")
+        XCTAssertNil(e.tv.taskBox(containing: box.location - 1), "so is the dash before it")
+        XCTAssertNil(e.tv.taskBox(containing: ns.range(of: "[ ]", options: .backwards).location), "a bracket pair in a sentence")
+        XCTAssertNil(e.tv.taskBox(containing: 0))
+    }
+
+    func testAClickAwayFromTheBoxesIsNotAToggle() throws {
+        let e = Editor.laidOut(Self.text, caret: 0)
+        let ns = e.string as NSString
+        let other = e.tv.convert(NSPoint.zero, from: nil)
+        XCTAssertFalse(e.tv.handleCheckboxClick(at: other))
+        // Away from the boxes: the word "second".
+        let g = e.lm.glyphRange(forCharacterRange: ns.range(of: "second"), actualCharacterRange: nil)
+        let r = e.lm.boundingRect(forGlyphRange: g, in: try XCTUnwrap(e.tv.textContainer))
+        XCTAssertFalse(e.tv.handleCheckboxClick(at: NSPoint(x: r.midX + e.tv.textContainerOrigin.x, y: r.midY + e.tv.textContainerOrigin.y)))
+        XCTAssertEqual(e.string, Self.text)
+    }
+}
+
 /// Records the mouse events a view is given.
 private final class MouseRecorder: NSView {
     var seen: [String] = []

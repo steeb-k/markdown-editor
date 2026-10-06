@@ -81,14 +81,11 @@ extension UIScriptRunner {
             let rr = outline.rect(ofRow: row)
             return (outline.convert(NSPoint(x: rr.midX, y: rr.midY), to: nil), nil, "row \(row)")
         case "checkbox":
-            // The n-th task checkbox of Live mode, where it is drawn.
+            // The n-th task's `[ ]`, at the middle of its space character.
             let tv = wc.textView
-            guard let lm = tv.layoutManager as? EditorLayoutManager, let tc = tv.textContainer else { return nil }
             let n = c["index"] as? Int ?? 0
-            let boxes = lm.live.decorations.filter { if case .checkbox = $0.kind { return true } else { return false } }
-            guard n < boxes.count, let f = lm.checkboxFrame(of: boxes[n], in: tc) else { return nil }
-            let o = tv.textContainerOrigin
-            return (tv.convert(NSPoint(x: f.midX + o.x, y: f.midY + o.y), to: nil), nil, "checkbox \(n)")
+            guard let p = tv.taskBoxPoint(n) else { return nil }
+            return (tv.convert(p, to: nil), nil, "checkbox \(n)")
         case "window":
             // A point of the window: `x`, `y` as fractions of its size, or points (above 1) from its bottom left.
             guard let w = wc.window else { return nil }

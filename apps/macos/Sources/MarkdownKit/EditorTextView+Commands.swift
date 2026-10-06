@@ -50,11 +50,6 @@ extension EditorTextView {
         perform(actionName: "Image") { $0.format(command: .image(destination: dest, alt: alt), selection: $1) }
     }
 
-    // MARK: View mode
-
-    @objc public func showSourceMode(_ sender: Any?) { session?.setViewMode(.source) }
-    @objc public func showLiveMode(_ sender: Any?) { session?.setViewMode(.live) }
-
     // MARK: Focus tools
 
     @objc public func toggleFocusMode(_ sender: Any?) {
@@ -160,8 +155,6 @@ extension EditorTextView {
     func validateEditorAction(_ action: Selector?, tag: Int) -> (enabled: Bool, on: Bool)? {
         guard let action else { return nil }
         if let r = validateAuthorshipAction(action) { return r }
-        if action == #selector(showSourceMode(_:)) { return (true, session?.viewMode == .source) }
-        if action == #selector(showLiveMode(_:)) { return (true, session?.viewMode == .live) }
         if action == #selector(toggleFocusMode(_:)) { return (true, session?.focusEnabled == true) }
         if action == #selector(setFocusScope(_:)) {
             return (true, session?.settings.focusScope == (tag == 1 ? .paragraph : .sentence))
