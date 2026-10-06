@@ -701,6 +701,22 @@ enum PreviewTypography {
         .iaMono: "Bundled Mono", .iaDuo: "Bundled Duo", .iaQuattro: "Bundled Quattro",
     ]
 
+    /// The CSS family for a bundled face, found by the PostScript name's prefix (the part before the style:
+    /// `iAWriterQuattroS-Bold`), which is also the name of its files. Not derived from the CSS name: the two are
+    /// unrelated, and deriving one from the other once left the page without its `@font-face` rules.
+    static let familiesByPrefix: [String: String] = [
+        "iAWriterMonoS": bundledFamilies[.iaMono]!,
+        "iAWriterDuoS": bundledFamilies[.iaDuo]!,
+        "iAWriterQuattroS": bundledFamilies[.iaQuattro]!,
+    ]
+
+    /// The PostScript prefix of a bundled face, or nil for any other font.
+    private static func bundledPrefix(of font: NSFont) -> String? {
+        guard font.fontName.hasPrefix("iAWriter"), let dash = font.fontName.firstIndex(of: "-") else { return nil }
+        let prefix = String(font.fontName[..<dash])
+        return familiesByPrefix[prefix] == nil ? nil : prefix
+    }
+
     static func make(from a: EditorAppearance) -> Typography {
         let bodyIsMono = FontSet.isMonospaced(a.fonts.body)
         let body = stack(for: a.fonts.body, monospaced: bodyIsMono)
@@ -718,8 +734,7 @@ enum PreviewTypography {
         // The font class in the descriptor's symbolic traits: 1...5 are the serif classes.
         let serif = (1...5).contains(font.fontDescriptor.symbolicTraits.rawValue >> 28) || family.contains("New York")
         let fallback = monospaced ? monoFallback : (serif ? serifFallback : sansFallback)
-        if font.fontName.hasPrefix("iAWriter"),
-           let name = bundledFamilies.values.first(where: { font.fontName.hasPrefix($0.replacingOccurrences(of: " ", with: "")) }) {
+        if let prefix = bundledPrefix(of: font), let name = familiesByPrefix[prefix] {
             return "\"\(name)\", \(fallback)"
         }
         if family.isEmpty || family.hasPrefix(".") || family == "System Font" { return fallback }
@@ -732,10 +747,8 @@ enum PreviewTypography {
         guard let a = appearance, FontStore.bundledFontsAvailable else { return "" }
         var out = ""
         var seen = Set<String>()
-        for font in [a.fonts.body, a.fonts.mono] where font.fontName.hasPrefix("iAWriter") {
-            guard let dash = font.fontName.firstIndex(of: "-") else { continue }
-            let prefix = String(font.fontName[..<dash])   // iAWriterQuattroS
-            guard seen.insert(prefix).inserted, let cssFamily = bundledFamilies.values.first(where: { $0.replacingOccurrences(of: " ", with: "") == prefix }) else { continue }
+        for font in [a.fonts.body, a.fonts.mono] {
+            guard let prefix = bundledPrefix(of: font), seen.insert(prefix).inserted, let cssFamily = familiesByPrefix[prefix] else { continue }
             for (style, weight, italic) in [("Regular", 400, false), ("Italic", 400, true), ("Bold", 700, false), ("BoldItalic", 700, true)] {
                 out += "@font-face { font-family: \"\(cssFamily)\"; font-weight: \(weight); font-style: \(italic ? "italic" : "normal"); "
                 out += "src: url(\"mdoc://doc/font/\(prefix)-\(style).ttf\") format(\"truetype\"); }\n"
