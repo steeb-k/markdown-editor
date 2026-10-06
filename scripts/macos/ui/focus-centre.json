@@ -1711,6 +1711,11 @@
   "wait": 0.6
  },
  {
+  "setting": {
+   "centreFocusedLine": true
+  }
+ },
+ {
   "log": "--- a selection holds focus mode still, however it is made (the owner's decision of 5 October): tour"
  },
  {
