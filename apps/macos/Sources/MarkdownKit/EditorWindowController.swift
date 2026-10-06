@@ -391,7 +391,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         if anchor.character == 0 && anchor.intoLine <= 0 {
             y = anchor.intoLine
         } else {
-            let character = min(anchor.character, session.storage.length - 1)
+            let character = max(0, min(anchor.character, session.storage.length - 1))
             lm.ensureLayout(forCharacterRange: NSRange(location: 0, length: character + 1))
             let glyph = lm.glyphIndexForCharacter(at: character)
             let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)

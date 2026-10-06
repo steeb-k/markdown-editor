@@ -87,7 +87,7 @@ public enum NoteNaming {
     public static func fileName(from typed: String) -> String? {
         let clean = typed.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, !clean.hasPrefix(".") else { return nil }
+        guard !clean.isEmpty, !clean.hasPrefix("."), !clean.contains("\0") else { return nil }
         return clean
     }
 

@@ -457,7 +457,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn dispatch(&mut self, ev: Event<'_>, r: Range<usize>) {
+    fn dispatch(&mut self, ev: Event<'_>, mut r: Range<usize>) {
         if !matches!(ev, Event::Text(_)) {
             self.flush_run();
         }
@@ -467,8 +467,13 @@ impl<'a> Builder<'a> {
             // reports the element's range over it). Content resumes after it.
             let mut s = r.start;
             let mut i = r.start;
+            // Where the last line break was, when the element's range ends inside the quote
+            // marker that follows it: `<!a\r> b` in a quote is reported as `<!a\r>`, closed by
+            // the marker's own `>`. The element ends at the break then; the marker is not its.
+            let mut cut: Option<usize> = None;
             while i < r.end {
                 if matches!(self.b[i], b'\n' | b'\r') {
+                    let brk = i;
                     if s < i {
                         self.texts.push((s, i));
                     }
@@ -478,6 +483,7 @@ impl<'a> Builder<'a> {
                     }
                     // `>` markers each after at most three blanks. Deeper (a quote inside a list
                     // item) is left as content: a marker shown is better than content hidden.
+                    cut = None;
                     loop {
                         let mut j = i;
                         while j < r.end && j - i < 3 && self.b[j] == b' ' {
@@ -487,6 +493,9 @@ impl<'a> Builder<'a> {
                             i = j + 1;
                             if i < r.end && matches!(self.b[i], b' ' | b'\t') {
                                 i += 1;
+                            }
+                            if i >= r.end {
+                                cut = Some(brk);
                             }
                         } else {
                             break;
@@ -499,6 +508,11 @@ impl<'a> Builder<'a> {
             }
             if s < r.end {
                 self.texts.push((s, r.end));
+            }
+            if let (Some(c), Event::InlineHtml(_)) = (cut, &ev)
+                && c > r.start
+            {
+                r.end = c;
             }
         } else if matches!(ev, Event::Text(_) | Event::Html(_)) && r.start < r.end {
             self.texts.push((r.start, r.end));

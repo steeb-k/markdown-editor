@@ -655,6 +655,10 @@ final class OutlineTests: XCTestCase {
             weakNode = o.view.list.item(atRow: 0) as? OutlineNode
             XCTAssertNotNil(weakNode)
             doc.updateChangeCount(.changeCleared)
+            // A closing window fades out, and AppKit holds it (and its views, and the list's items) until the fade has
+            // run, which takes a display that is being drawn: with the screen locked it never ends. No fade, and what is
+            // alive afterwards is what this app holds.
+            wc.window?.animationBehavior = .none
             doc.close()
         }
         XCTAssertTrue(spin(timeout: 5) { weakController == nil && weakOutline == nil && weakNode == nil })

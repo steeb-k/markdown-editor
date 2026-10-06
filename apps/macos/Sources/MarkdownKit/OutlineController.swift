@@ -75,7 +75,10 @@ enum OutlineModel {
     /// The heading at the top of the preview when its top is source line `line` (a fraction counts: the line
     /// being read): the last heading on or before that line (nil above the first).
     static func index(atLine line: Double, in entries: [OutlineEntry]) -> Int? {
-        let whole = Int(line.rounded(.down))
+        // A line that is not a number (the page's script divided by nothing) or is out of any range is still a place:
+        // `Int(_:)` of such a Double traps.
+        guard !line.isNaN else { return nil }
+        let whole = Int(max(-1e9, min(1e9, line.rounded(.down))))
         var lo = 0, hi = entries.count
         while lo < hi {
             let mid = (lo + hi) / 2

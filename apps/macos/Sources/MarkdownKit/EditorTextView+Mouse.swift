@@ -372,6 +372,10 @@ public enum LinkOpener {
     /// Whether opening `file` would run something rather than show it: an application, an
     /// executable, a script, an installer, a shortcut to elsewhere.
     public static func launchesSomething(_ file: URL) -> Bool {
+        // A link to `readme.md` that is a symbolic link (a folder of notes from a zip can hold one) to an application
+        // opens that application: what it points at counts as well as its name.
+        let target = file.resolvingSymlinksInPath()
+        if target.path != file.path, launchesSomething(target) { return true }
         let ext = file.pathExtension.lowercased()
         if ["app", "command", "tool", "sh", "bash", "zsh", "csh", "ksh", "py", "rb", "pl", "scpt", "applescript", "scptd",
             "workflow", "action", "terminal", "pkg", "mpkg", "jar", "webloc", "inetloc", "fileloc", "url", "prefpane",

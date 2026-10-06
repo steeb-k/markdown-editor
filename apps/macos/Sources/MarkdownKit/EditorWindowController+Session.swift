@@ -94,8 +94,14 @@ extension EditorWindowController {
         window?.contentView?.layoutSubtreeIfNeeded()
         let length = session.storage.length
         if caret, let c = w.caret, c.count == 2 {
-            let location = min(max(0, c[0]), length)
-            textView.setSelectedRange(NSRange(location: location, length: min(max(0, c[1]), length - location)))
+            // The file may have changed since the record was written: the ends go to the edges of a character, never
+            // into the middle of an emoji or a letter with its accent.
+            let ns = session.storage.string as NSString
+            func edge(_ i: Int) -> Int { i < length ? ns.rangeOfComposedCharacterSequence(at: i).location : length }
+            let start = min(max(0, c[0]), length)
+            let location = edge(start)
+            let end = edge(max(0, c[1]) >= length - start ? length : start + max(0, c[1]))
+            textView.setSelectedRange(NSRange(location: location, length: max(0, end - location)))
         }
         guard let character = w.scrollCharacter else { return }
         let anchor = EditorTopAnchor(character: character, intoLine: CGFloat(w.scrollInto ?? 0))

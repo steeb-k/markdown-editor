@@ -463,6 +463,9 @@ final class TitleViewTests: XCTestCase {
             weakController = wc
             wc.leaveWorkspace()
             doc.updateChangeCount(.changeCleared)
+            // No fade-out: AppKit holds a closing window until the fade has run, which takes a display that is being
+            // drawn (with the screen locked it never ends). What is alive afterwards is what this app holds.
+            wc.window?.animationBehavior = .none
             doc.close()
             docs.removeAll { $0 === doc }
         }

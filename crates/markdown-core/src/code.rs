@@ -31,16 +31,26 @@ impl Document {
         let mut text = String::new();
         let mut parts = Vec::with_capacity(c.chunks.len());
         // A chunk is one line, or several when nothing separates them (no container prefix).
+        // A line ends at `\n`, `\r\n` or a lone `\r` (the core reads all three as line ends): a run never
+        // crosses one, whatever the highlighter makes of the text.
         for &(s, e) in &c.chunks {
-            let mut at = s;
-            for line in src[s..e].split_inclusive('\n') {
-                let content = line.strip_suffix('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).unwrap_or(line);
-                parts.push((text.len(), at, content.len()));
-                text.push_str(content);
-                if content.len() != line.len() {
+            let seg = &src.as_bytes()[s..e];
+            let mut i = 0;
+            while i < seg.len() {
+                let from = i;
+                while i < seg.len() && seg[i] != b'\n' && seg[i] != b'\r' {
+                    i += 1;
+                }
+                let content_end = i;
+                let terminated = i < seg.len();
+                if terminated {
+                    i += if seg[i] == b'\r' && seg.get(i + 1) == Some(&b'\n') { 2 } else { 1 };
+                }
+                parts.push((text.len(), s + from, content_end - from));
+                text.push_str(&src[s + from..s + content_end]);
+                if terminated {
                     text.push('\n');
                 }
-                at += line.len();
             }
         }
         CodeText { text, parts }

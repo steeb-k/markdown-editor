@@ -12,17 +12,19 @@ enum HistoryModel {
     /// The versions (newest first, as the core lists them) in a section for each calendar day, titled "Today",
     /// "Yesterday" or the date.
     static func sections(_ versions: [HistoryVersion], now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> [Section] {
-        var out: [Section] = []
+        // Grouped first and made into sections after: a day with thousands of versions is one append each, not a copy
+        // of the day so far (a section is a value, and adding to the one in `out` copied its array every time).
+        var days: [(title: String, versions: [HistoryVersion])] = []
         var currentDay: Date?
         for v in versions {
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(v.time)))
             if day != currentDay {
                 currentDay = day
-                out.append(Section(title: dayTitle(day, now: now, calendar: calendar, locale: locale), versions: []))
+                days.append((dayTitle(day, now: now, calendar: calendar, locale: locale), []))
             }
-            out[out.count - 1] = Section(title: out[out.count - 1].title, versions: out[out.count - 1].versions + [v])
+            days[days.count - 1].versions.append(v)
         }
-        return out
+        return days.map { Section(title: $0.title, versions: $0.versions) }
     }
 
     static func dayTitle(_ day: Date, now: Date, calendar: Calendar, locale: Locale) -> String {

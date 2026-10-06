@@ -765,3 +765,24 @@ fn highlight_cost_at_one_megabyte_and_in_a_big_block() {
         highlight::cache_bytes() / 1024
     );
 }
+
+#[test]
+fn a_lone_cr_ends_a_line_for_the_runs_too() {
+    // Found by tests/fuzz.rs: a string token opened on one line ran over a bare `\r` (the core reads `\r` as a
+    // line end, the highlighter was handed the block split on `\n` only).
+    for text in ["~~~rust\n\u{1F389}\n!:\rRequest and Response\n~~~\n", "```rust\nlet a = \"x\rlet b = 1;\n```\n", "```rust\r\nlet a = \"x\r\nlet b = 1;\r\n```\r\n"] {
+        for enc in [OffsetEncoding::Utf8, OffsetEncoding::Utf16, OffsetEncoding::Utf32] {
+            let d = Document::new(text, enc);
+            for h in d.code_highlights(None) {
+                let s = slice_units(d.text(), enc, h.range);
+                assert!(!s.contains(['\n', '\r']), "{text:?}: {h:?} {s:?}");
+            }
+            check_highlights(&d);
+        }
+    }
+    // A comment ends at a lone `\r` as it does at `\n`.
+    let lf = doc("```rust\nlet a = 1; // c\nlet b = \"s\";\n```\n");
+    let cr = doc("```rust\nlet a = 1; // c\rlet b = \"s\";\n```\n");
+    let on = |d: &Document| d.code_highlights(None).iter().map(|h| (slice_units(d.text(), d.encoding(), h.range), h.role)).collect::<Vec<_>>();
+    assert_eq!(on(&lf), on(&cr));
+}

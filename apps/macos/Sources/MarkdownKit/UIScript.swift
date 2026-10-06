@@ -1610,7 +1610,16 @@ final class UIScriptRunner {
                 }
             }
             if o.layers.authorship != OverlayCompositor.merged(want) { fail("the authorship layer is not the attribution") }
-            if s.focusEnabled {
+            if s.focusEnabled, s.focusHeld {
+                // Focus mode holds still while text is selected or the button is down (`EditorSession.focusHeld`): the layer is
+                // what the core said for the selection before the hold, so it cannot be compared with the core's answer for
+                // the selection now. What must hold is that it is a set of disjoint, ordered ranges inside the text.
+                var at = 0
+                for r in o.layers.focus ?? [] {
+                    if r.location < at || r.length <= 0 || NSMaxRange(r) > length { fail("the held focus layer \(o.layers.focus ?? []) is not ordered ranges inside the text (length \(length))") ; break }
+                    at = NSMaxRange(r)
+                }
+            } else if s.focusEnabled {
                 let sel = tv.selectedRange()
                 let w = s.queryWindow()
                 let scope: FocusScope = s.settings.focusScope == .sentence ? .sentence : .paragraph

@@ -322,8 +322,9 @@ final class TitleRenamer: NSObject, NSTextFieldDelegate, NSPopoverDelegate {
     /// Where a document called `original` goes when renamed `typed`: in the same folder, with the old extension if none
     /// was typed. Nil for a name that cannot be a file's (empty, a slash, a leading dot, too long).
     static func destination(for url: URL, typed: String) -> URL? {
-        var name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !name.contains("/"), !name.hasPrefix("."), name.utf8.count <= 255 else { return nil }
+        // A colon is a slash to Finder (the sidebar's rename makes it a hyphen, `NoteNaming.fileName`); a NUL ends a path.
+        var name = typed.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ":", with: "-")
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\0"), !name.hasPrefix("."), name.utf8.count <= 255 else { return nil }
         if (name as NSString).pathExtension.isEmpty, !url.pathExtension.isEmpty { name += "." + url.pathExtension }
         return url.deletingLastPathComponent().appendingPathComponent(name)
     }

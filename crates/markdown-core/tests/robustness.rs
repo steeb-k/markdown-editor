@@ -185,3 +185,25 @@ fn tab_indented_marker_inside_quoted_html_block() {
     let spans = doc.spans(None);
     assert!(spans.iter().any(|s| s.kind == markdown_core::SpanKind::Html));
 }
+
+/// An inline HTML declaration closed by the `>` of the next line's quote marker: the parser
+/// reports `<!a\r>` over the marker, which used to overlap the marker's own span.
+const HTML_CLOSED_BY_QUOTE_MARKER: &[&str] = &[
+    "> a<!a  a00\r> a\ré0a\t\u{1F389}",
+    "> ~<!h )q<7\r> |\r> \u{e9}:p\n\u{1F389}",
+    "> a<!a\n> b",
+    "> a<!a\r\n> b",
+    "> > a<!a\n> > b",
+    "> a<!a\n>b",
+];
+
+#[test]
+fn inline_html_closed_by_a_quote_marker_derives_valid_spans() {
+    for text in HTML_CLOSED_BY_QUOTE_MARKER {
+        for enc in [OffsetEncoding::Utf8, OffsetEncoding::Utf16, OffsetEncoding::Utf32] {
+            let doc = Document::new(text, enc);
+            check_everything(&doc).unwrap();
+            let _ = doc.spans(None);
+        }
+    }
+}
