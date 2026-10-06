@@ -53,7 +53,7 @@ Three independent aids, all in the View menu:
 
 - **Focus Mode** dims everything except the sentence or paragraph you are writing (Focus Scope chooses which), and keeps the line you are on in the middle of the window, sliding the page as you type. Keep Focused Line Centred, in the same menu and in Settings, turns the centring off.
 - **Syntax Highlight** colours the parts of speech: adjectives, nouns, adverbs, verbs and conjunctions, each of which can be switched off. It is for rereading: long runs of one colour are where a draft is flabby.
-- **Authorship** keeps track of whose words are whose. Paste text with Edit > Paste As > AI or Reference, or select text and use Mark As, and it is coloured as borrowed. Your own writing stays the plain text colour. The marks are saved at the end of the file in the open Markdown Annotations format other editors read; a file with no borrowed text is never touched. Show Authorship hides the colours without removing the marks.
+- **Authorship** keeps track of whose words are whose. Paste text with Edit > Paste As > AI or Reference, or select text and use Mark As, and it is coloured as borrowed. Your own writing stays the plain text colour. The marks are saved at the end of the file in the open Markdown Annotations format other editors read; a file with no borrowed text is never touched. The same Paste As and Mark As are in the context menu, and over borrowed text it also offers Mark This Passage As, which changes the whole passage under the pointer without selecting it. Show Authorship hides the colours without removing the marks.
 
 ## Saving and history
 

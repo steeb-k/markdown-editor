@@ -25,6 +25,30 @@ enum MainMenu {
         holder.submenu = menu
     }
 
+    private static func attach(_ parent: NSMenu, _ menu: NSMenu) {
+        parent.addItem(withTitle: menu.title, action: nil, keyEquivalent: "").submenu = menu
+    }
+
+    /// Paste As and Mark As, built once here for the Edit menu and the editor's context menu: the same
+    /// selectors and key equivalents (the context menu shows them too), validated by the text view.
+    static func pasteAsMenu() -> NSMenu {
+        let p = NSMenu(title: "Paste As")
+        _ = item(p, "Me", #selector(EditorTextView.pasteAsMe(_:)), "v", [.command, .option])
+        _ = item(p, "AI", #selector(EditorTextView.pasteAsAI(_:)), "v", [.command, .shift])
+        _ = item(p, "Reference", #selector(EditorTextView.pasteAsReference(_:)), "v", [.command, .control])
+        return p
+    }
+
+    static func markAsMenu() -> NSMenu {
+        let a = NSMenu(title: "Mark As")
+        _ = item(a, "Me", #selector(EditorTextView.markAsMe(_:)), "1", [.command, .control])
+        _ = item(a, "AI", #selector(EditorTextView.markAsAI(_:)), "2", [.command, .control])
+        _ = item(a, "Reference", #selector(EditorTextView.markAsReference(_:)), "3", [.command, .control])
+        a.addItem(.separator())
+        _ = item(a, "No Author", #selector(EditorTextView.markAsNoAuthor(_:)), "0", [.command, .control])
+        return a
+    }
+
     static func build() -> NSMenu {
         let name = ProcessInfo.processInfo.processName
         let main = NSMenu()
@@ -82,18 +106,8 @@ enum MainMenu {
             _ = item(m, "Copy", #selector(NSText.copy(_:)), "c")
             _ = item(m, "Paste", #selector(NSText.paste(_:)), "v")
             _ = item(m, "Paste as Plain Text", #selector(NSTextView.pasteAsPlainText(_:)), "v", [.command, .option, .shift])
-            nested(m, "Paste As") { p in
-                _ = item(p, "Me", #selector(EditorTextView.pasteAsMe(_:)), "v", [.command, .option])
-                _ = item(p, "AI", #selector(EditorTextView.pasteAsAI(_:)), "v", [.command, .shift])
-                _ = item(p, "Reference", #selector(EditorTextView.pasteAsReference(_:)), "v", [.command, .control])
-            }
-            nested(m, "Mark As") { a in
-                _ = item(a, "Me", #selector(EditorTextView.markAsMe(_:)), "1", [.command, .control])
-                _ = item(a, "AI", #selector(EditorTextView.markAsAI(_:)), "2", [.command, .control])
-                _ = item(a, "Reference", #selector(EditorTextView.markAsReference(_:)), "3", [.command, .control])
-                a.addItem(.separator())
-                _ = item(a, "No Author", #selector(EditorTextView.markAsNoAuthor(_:)), "0", [.command, .control])
-            }
+            attach(m, pasteAsMenu())
+            attach(m, markAsMenu())
             nested(m, "Copy As") { c in
                 _ = item(c, "HTML", #selector(EditorWindowController.copyAsHTML(_:)))
                 _ = item(c, "Rich Text", #selector(EditorWindowController.copyAsRichText(_:)))

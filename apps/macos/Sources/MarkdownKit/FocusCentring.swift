@@ -248,6 +248,14 @@ final class FocusCentring {
     /// ends a user scroll's hold), or something asked for `range` to be shown.
     func request(_ range: NSRange? = nil, user: Bool = true) {
         guard isActive else { return }
+        // A selection is being made or kept: the view stays where it is (see `selectionHeld`).
+        if selectionHeld {
+            requestPending = false
+            wanted = nil
+            fromMouse = false
+            verifications = 0
+            return
+        }
         let mouse = currentEventIsMouse()
         if user {
             userScrolling = false
@@ -277,7 +285,7 @@ final class FocusCentring {
     /// concealment for a click arrive after the click when the analysis queue is busy, out of any
     /// mouse event: they must not slide the clicked line away.)
     func layoutChanged() {
-        guard isActive, !userScrolling, !caretPlacedByMouse else { return }
+        guard isActive, !userScrolling, !caretPlacedByMouse, !selectionHeld else { return }
         request(nil, user: false)
     }
 
@@ -287,7 +295,7 @@ final class FocusCentring {
         wanted = nil
         let mouse = fromMouse
         fromMouse = false
-        guard isActive, !userScrolling, let range else { return }
+        guard isActive, !userScrolling, !selectionHeld, let range else { return }
         // A drag selection or a click is the user's: the line stays where it was clicked.
         // A newer request makes the checks of the older ones moot (they would bring back a line
         // the caret has left: during key repeat, a slide back and forth).
@@ -317,7 +325,7 @@ final class FocusCentring {
     }
 
     private func verify(_ range: NSRange) {
-        guard isActive, !userScrolling, !requestPending, !fromMouse else { return }
+        guard isActive, !userScrolling, !selectionHeld, !requestPending, !fromMouse else { return }
         guard let target = targetOrigin(for: range), let clip = scrollView?.contentView else { return }
         if slide == nil, abs(clip.bounds.minY - target) >= 0.5 {
             centre(on: range, duration: placesDirectly ? 0 : followDuration)
@@ -349,6 +357,13 @@ final class FocusCentring {
     }
 
     // MARK: geometry
+
+    /// A selection (not a caret) suspends centring: no request, slide or check, and a layout change is ignored, until
+    /// it collapses (typing, a click, an arrow key) and the normal follow resumes. Centring on the selection's start
+    /// moved the view back to it whenever the selection grew upward, or a drag's autoscroll (a timer's event, not the
+    /// mouse's) extended it, far from the text being selected. Turning focus on with a selection present still slides
+    /// once, to its start line (`activate` centres directly), then holds.
+    private var selectionHeld: Bool { (textView?.selectedRange().length ?? 0) > 0 }
 
     private func caretRange() -> NSRange { textView?.selectedRange() ?? NSRange(location: 0, length: 0) }
 

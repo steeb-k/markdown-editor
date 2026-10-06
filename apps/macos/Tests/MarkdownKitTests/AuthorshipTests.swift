@@ -1145,6 +1145,130 @@ final class AuthorshipDisplayTests: XCTestCase {
 
 // MARK: the three modes
 
+// MARK: context menu
+
+final class AuthorshipContextMenuTests: XCTestCase {
+    /// The editor in a window, so that points can be given in the window's coordinates.
+    private func editor(_ text: String) -> (Editor, NSWindow) {
+        _ = NSApplication.shared
+        let e = Editor(text: text)
+        e.privatePasteboard()
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered, defer: true)
+        w.contentView = e.tv
+        e.tv.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        e.tv.layoutManager?.ensureLayout(for: e.tv.textContainer!)
+        return (e, w)
+    }
+
+    /// The window point at the middle of character `i`.
+    private func point(of i: Int, _ e: Editor) -> NSPoint {
+        let lm = e.tv.layoutManager!
+        let r = lm.boundingRect(forGlyphRange: NSRange(location: lm.glyphIndexForCharacter(at: i), length: 1), in: e.tv.textContainer!)
+        let o = e.tv.textContainerOrigin
+        return e.tv.convert(NSPoint(x: r.midX + o.x, y: r.midY + o.y), to: nil)
+    }
+
+    private func menu(_ e: Editor, _ w: NSWindow, at p: NSPoint) throws -> NSMenu {
+        let ev = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: w.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        return try XCTUnwrap(e.tv.menu(for: ev))
+    }
+
+    private func sub(_ m: NSMenu, _ title: String) -> NSMenu? { m.items.first { $0.title == title }?.submenu }
+
+    func testTheMenuKeepsAppKitsItemsAndAddsPasteAsAndMarkAsAfterPaste() throws {
+        let (e, w) = editor("Hello brave new world\n")
+        let m = try menu(e, w, at: point(of: 2, e))
+        let titles = m.items.map(\.title)
+        let paste = try XCTUnwrap(m.items.firstIndex { $0.action == #selector(NSText.paste(_:)) })
+        XCTAssertTrue(m.items.contains { $0.action == #selector(NSText.copy(_:)) })
+        XCTAssertTrue(m.items.contains { $0.action == #selector(NSText.cut(_:)) })
+        XCTAssertEqual(Array(titles[(paste + 1)...(paste + 2)]), ["Paste As", "Mark As"])
+        XCTAssertNil(sub(m, "Mark This Passage As"), "no authored run under the pointer")
+        let pasteAs = try XCTUnwrap(sub(m, "Paste As")), markAs = try XCTUnwrap(sub(m, "Mark As"))
+        XCTAssertEqual(pasteAs.items.map(\.title), ["Me", "AI", "Reference"])
+        XCTAssertEqual(markAs.items.filter { !$0.isSeparatorItem }.map(\.title), ["Me", "AI", "Reference", "No Author"])
+        // The same selectors and key equivalents as the Edit menu.
+        let edit = try XCTUnwrap(MainMenu.build().items.first { $0.title == "Edit" }?.submenu)
+        for (mine, theirs) in [(pasteAs, sub(edit, "Paste As")), (markAs, sub(edit, "Mark As"))] {
+            let a = mine.items.map { [String(describing: $0.action), $0.keyEquivalent, "\($0.keyEquivalentModifierMask.rawValue)"] }
+            let b = try XCTUnwrap(theirs).items.map { [String(describing: $0.action), $0.keyEquivalent, "\($0.keyEquivalentModifierMask.rawValue)"] }
+            XCTAssertEqual(a, b)
+        }
+        XCTAssertEqual(pasteAs.items[1].keyEquivalent, "v")
+    }
+
+    func testValidationFollowsTheSelectionAndThePasteboard() throws {
+        let (e, w) = editor("Hello brave new world\n")
+        e.select(3)
+        e.tv.pasteboard.clearContents()
+        var m = try menu(e, w, at: point(of: 2, e))
+        var pasteAs = try XCTUnwrap(sub(m, "Paste As")), markAs = try XCTUnwrap(sub(m, "Mark As"))
+        pasteAs.update(); markAs.update()
+        XCTAssertEqual(pasteAs.items.map(\.isEnabled), [false, false, false], "no text on the pasteboard")
+        XCTAssertEqual(markAs.items.filter { !$0.isSeparatorItem }.map(\.isEnabled), [false, false, false, false], "no selection")
+
+        e.tv.pasteboard.setString("text", forType: .string)
+        e.select(0, 5)
+        m = try menu(e, w, at: point(of: 2, e))
+        pasteAs = try XCTUnwrap(sub(m, "Paste As")); markAs = try XCTUnwrap(sub(m, "Mark As"))
+        pasteAs.update(); markAs.update()
+        XCTAssertEqual(pasteAs.items.map(\.isEnabled), [true, true, true])
+        XCTAssertEqual(markAs.items.filter { !$0.isSeparatorItem }.map(\.isEnabled), [true, true, true, true])
+        XCTAssertEqual(markAs.items.first?.state, .on, "the selection is Me")
+        XCTAssertEqual(e.tv.selectedRange(), NSRange(location: 0, length: 5), "the pointer is inside the selection: it stays")
+    }
+
+    func testMarkThisPassageMarksExactlyTheRunAndKeepsTheSelection() throws {
+        let (e, w) = editor("Hello world\n")
+        e.select(5)
+        e.paste(" brave new", as: .ai)
+        e.select(0, 2)
+        XCTAssertEqual(e.string, "Hello brave new world\n")
+        XCTAssertEqual(e.runs(), ["5,10 AI"])
+        // Outside the run: no passage item. Inside: the item, for every character of it.
+        XCTAssertNil(sub(try menu(e, w, at: point(of: 1, e)), "Mark This Passage As"))
+        XCTAssertNil(sub(try menu(e, w, at: point(of: 16, e)), "Mark This Passage As"))
+        for i in [5, 9, 14] {
+            XCTAssertNotNil(sub(try menu(e, w, at: point(of: i, e)), "Mark This Passage As"), "character \(i)")
+        }
+        e.select(0, 2)  // (AppKit selects the word it was asked about for each menu it builds)
+        let m = try menu(e, w, at: point(of: 9, e))
+        let passage = try XCTUnwrap(sub(m, "Mark This Passage As"))
+        XCTAssertEqual(passage.items.filter { !$0.isSeparatorItem }.map(\.title), ["Me", "AI", "Reference", "No Author"])
+        passage.update()
+        XCTAssertTrue(passage.items.allSatisfy { $0.isSeparatorItem || $0.isEnabled })
+
+        let reference = try XCTUnwrap(passage.items.first { $0.title == "Reference" })
+        _ = NSApp.sendAction(try XCTUnwrap(reference.action), to: reference.target, from: reference)
+        XCTAssertEqual(e.runs(), ["5,10 Reference"], "exactly the run")
+        XCTAssertEqual(e.tv.selectedRange(), NSRange(location: 0, length: 2), "the selection is as it was")
+        XCTAssertEqual(e.um.undoActionName, "Mark as Reference")
+        e.um.undo()
+        XCTAssertEqual(e.runs(), ["5,10 AI"], "one undo step")
+        e.um.redo()
+        XCTAssertEqual(e.runs(), ["5,10 Reference"])
+
+        // No Author clears it, again as one change named like Mark As.
+        let none = try XCTUnwrap(sub(try menu(e, w, at: point(of: 9, e)), "Mark This Passage As")?.items.first { $0.title == "No Author" })
+        _ = NSApp.sendAction(try XCTUnwrap(none.action), to: none.target, from: none)
+        XCTAssertEqual(e.runs(), [])
+        XCTAssertEqual(e.um.undoActionName, "Mark as No Author")
+        XCTAssertEqual(e.string, "Hello brave new world\n")
+        XCTAssertEqual(e.authorshipProblems(), [])
+    }
+
+    func testAdjacentRunsOfOneAuthorAreOnePassage() throws {
+        let (e, w) = editor("abcdefghij\n")
+        e.session.mark(NSRange(location: 2, length: 3), as: .ai)
+        e.session.mark(NSRange(location: 5, length: 3), as: .ai)
+        e.select(0)
+        let m = try menu(e, w, at: point(of: 6, e))
+        let item = try XCTUnwrap(sub(m, "Mark This Passage As")?.items.first { $0.title == "Me" })
+        XCTAssertEqual((item.representedObject as? EditorTextView.PassageTarget)?.range, NSRange(location: 2, length: 6))
+    }
+}
+
 final class AuthorshipModesTests: XCTestCase {
     func run(live: Bool, tools: Bool) {
         TestMode.focusTools = tools

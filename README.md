@@ -62,7 +62,7 @@ scripts/macos/ui-script.sh scripts/macos/ui/look.json           # the M2 look: t
 scripts/macos/ui-script.sh scripts/macos/ui/focus.json          # focus mode, sentence and paragraph, Source and Live, three themes
 scripts/macos/ui-script.sh scripts/macos/ui/code.json           # code highlighting: theme colours, the language badge and its menu, Source and Live, focus mode
 scripts/macos/ui-script.sh scripts/macos/ui/syntax.json         # parts-of-speech colours, classes switched off, with focus mode
-scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As, typing in borrowed text, undo, save and reopen; three themes
+scripts/macos/ui-script.sh scripts/macos/ui/authorship.json     # Paste As, Mark As (Edit menu and context menu, with Mark This Passage As over a run), typing in borrowed text, undo, save and reopen; three themes
 scripts/macos/ui-script.sh scripts/macos/ui/authorship-mismatch.json  # the keep-or-discard sheet for marks that may be misplaced
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big.json  # 1 MB typing timings, release build
 RELEASE=1 scripts/macos/ui-script.sh scripts/macos/ui/big-live.json   # the same in Live mode

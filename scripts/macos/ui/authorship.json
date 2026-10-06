@@ -964,6 +964,218 @@
   }
  },
  {
+  "log": "--- the context menu: Paste As and Mark As after Paste, and Mark This Passage As over an authored run (the menu is built through menu(for:) with the real right-click event and its item performed: AppKit's tracking of a popped-up menu never returns under the harness)"
+ },
+ {
+  "setting": {
+   "theme": "light"
+  }
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "I wrote this paragraph myself"
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "contextMenu": {
+   "needle": "physical structure",
+   "offset": 3,
+   "has": [
+    "Cut",
+    "Copy",
+    "Paste",
+    "Paste As",
+    "Mark As",
+    "Mark This Passage As"
+   ],
+   "choose": "Mark This Passage As > AI"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "selectedText": "I wrote this paragraph myself",
+   "authorship": {
+    "runs": [
+     [
+      "A lighthouse is a tower",
+      "ai"
+     ],
+     [
+      "lamps and lenses",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "22-context-menu-mark-passage-ai",
+  "bitmap": true
+ },
+ {
+  "undo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A lighthouse is a tower",
+      "reference"
+     ],
+     [
+      "lamps and lenses",
+      "reference"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "redo": true
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A lighthouse is a tower",
+      "ai"
+     ],
+     [
+      "lamps and lenses",
+      "ai"
+     ]
+    ]
+   }
+  }
+ },
+ {
+  "contextMenu": {
+   "needle": "physical structure",
+   "offset": 3,
+   "choose": "Mark This Passage As > Reference"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "selectedText": "I wrote this paragraph myself",
+   "authorship": {
+    "runs": [
+     [
+      "A lighthouse is a tower",
+      "reference"
+     ],
+     [
+      "lamps and lenses",
+      "reference"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "log": "outside any run: no Mark This Passage As"
+ },
+ {
+  "contextMenu": {
+   "needle": "I wrote this paragraph myself",
+   "offset": 3,
+   "has": [
+    "Paste As",
+    "Mark As"
+   ],
+   "lacks": [
+    "Mark This Passage As"
+   ]
+  }
+ },
+ {
+  "log": "Mark As from the menu acts on the selection, as the Edit menu does"
+ },
+ {
+  "selectText": "A sentence of my own"
+ },
+ {
+  "contextMenu": {
+   "needle": "A sentence of my own",
+   "offset": 3,
+   "choose": "Mark As > AI"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "A sentence of my own",
+      "ai"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "setPasteboard": "pasted from the menu"
+ },
+ {
+  "selectText": "A sentence of my own",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "contextMenu": {
+   "needle": "I wrote this paragraph myself",
+   "offset": 3,
+   "choose": "Paste As > Reference"
+  }
+ },
+ {
+  "wait": 0.3
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "pasted from the menu",
+      "reference"
+     ]
+    ]
+   },
+   "overlayConsistent": true
+  }
+ },
+ {
+  "snapshot": "23-context-menu-results",
+  "bitmap": true
+ },
+ {
   "close": true
  }
 ]

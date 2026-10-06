@@ -683,6 +683,87 @@ final class FocusCentringTests: XCTestCase {
         XCTAssertEqual(wc.editorScrollView.focusInset, 0)
     }
 
+    // A selection suspends centring (M8h).
+
+    func testASelectionGrownByKeyboardOrByRangeNeverMovesTheViewAndCollapsingResumes() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.reduceMotion = { true }
+        let tv = wc.textView
+        doc.session.setFocusEnabled(true)
+        tv.setSelectedRange(NSRange(location: location(of: 50), length: 0))
+        pump(0.2)
+        var o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+        let clip = wc.scrollView.contentView
+        let origin = clip.bounds.minY
+        let jumps = c.jumps, slides = c.slides
+
+        // Grown by the keyboard, downward and then upward past where it began (the start moves).
+        for _ in 0..<3 { tv.doCommand(by: #selector(NSResponder.moveDownAndModifySelection(_:))); pump(0.05) }
+        XCTAssertGreaterThan(tv.selectedRange().length, 0)
+        for _ in 0..<12 { tv.doCommand(by: #selector(NSResponder.moveUpAndModifySelection(_:))); pump(0.05) }
+        XCTAssertLessThan(tv.selectedRange().location, location(of: 50), "the start moved up")
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "grown by key: the view stays")
+        // And by setSelectedRange, far from where the line is centred, with the scroll request AppKit makes.
+        tv.setSelectedRange(NSRange(location: location(of: 20), length: location(of: 30) - location(of: 20)))
+        tv.scrollRangeToVisible(tv.selectedRange())
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "set by range: the view stays")
+        c.layoutChanged()
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "a layout change is ignored too")
+        XCTAssertEqual(c.jumps, jumps)
+        XCTAssertEqual(c.slides, slides)
+        XCTAssertTrue(c.isSettled)
+
+        // An arrow without shift collapses it: the caret's line is centred again.
+        tv.doCommand(by: #selector(NSResponder.moveLeft(_:)))
+        pump(0.3)
+        XCTAssertEqual(tv.selectedRange().length, 0)
+        o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2, "an arrow collapses the selection and centring resumes")
+        XCTAssertGreaterThan(abs(clip.bounds.minY - origin), 20)
+
+        // Typing over a selection: the replacement's caret is centred.
+        let origin2 = clip.bounds.minY
+        tv.setSelectedRange(NSRange(location: location(of: 90), length: 6))
+        pump(0.2)
+        XCTAssertEqual(clip.bounds.minY, origin2, accuracy: 0.01)
+        tv.insertText("x", replacementRange: tv.selectedRange())
+        pump(0.3)
+        XCTAssertEqual(tv.selectedRange().length, 0)
+        o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2, "typing replaced the selection and centring resumed")
+    }
+
+    func testTurningFocusOnWithASelectionSlidesToItsStartOnceThenHolds() throws {
+        let (doc, wc) = try open()
+        defer { doc.close() }
+        let c = wc.centring
+        c.reduceMotion = { true }
+        let tv = wc.textView
+        tv.setSelectedRange(NSRange(location: location(of: 40), length: location(of: 44) - location(of: 40)))
+        bringOffMiddle(wc)
+        pump(0.1)
+        doc.session.setFocusEnabled(true)
+        pump(0.2)
+        var o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2, "the entry centres the selection's start line")
+        let clip = wc.scrollView.contentView
+        let origin = clip.bounds.minY
+        tv.setSelectedRange(NSRange(location: location(of: 30), length: location(of: 44) - location(of: 30)))
+        tv.scrollRangeToVisible(tv.selectedRange())
+        pump(0.3)
+        XCTAssertEqual(clip.bounds.minY, origin, accuracy: 0.01, "then it holds")
+        tv.setSelectedRange(NSRange(location: location(of: 30), length: 0))
+        pump(0.2)
+        o = try offsets(wc)
+        XCTAssertEqual(o.line, o.middle, accuracy: 2)
+    }
+
     func testReduceMotionJumps() throws {
         let (doc, wc) = try open()
         defer { doc.close() }

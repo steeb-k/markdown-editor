@@ -858,6 +858,749 @@
   "bitmap": true
  },
  {
+  "log": "--- a selection suspends centring: real drags and shift-arrows"
+ },
+ {
+  "log": "--- selecting under focus: sel-source"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "sel-source-sel-0"
+ },
+ {
+  "drag": {
+   "from": "Tenth",
+   "to": "First"
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-source-sel-0",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-source-sel-1-dragged",
+  "bitmap": true
+ },
+ {
+  "log": "a click collapses the selection: the caret's line is where it was clicked, then a key centres again"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "sel-source-sel-2"
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "sel-source-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false
+  }
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-source-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-source-sel-3-shift-arrows",
+  "bitmap": true
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 123,
+   "mods": []
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "log": "--- selecting under focus: sel-live"
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "live"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "sel-live-sel-0"
+ },
+ {
+  "drag": {
+   "from": "Tenth",
+   "to": "First"
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-live-sel-0",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-live-sel-1-dragged",
+  "bitmap": true
+ },
+ {
+  "log": "a click collapses the selection: the caret's line is where it was clicked, then a key centres again"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "remember": "sel-live-sel-2"
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "sel-live-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false
+  }
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-live-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-live-sel-3-shift-arrows",
+  "bitmap": true
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 123,
+   "mods": []
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusCentred": 2
+  }
+ },
+ {
+  "log": "--- selecting under focus: sel-split"
+ },
+ {
+  "layout": "split"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "scroll": "start"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.4
+ },
+ {
+  "focus": {
+   "on": true
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "remember": "sel-split-sel-0"
+ },
+ {
+  "drag": {
+   "from": "Tenth",
+   "to": "First"
+  }
+ },
+ {
+  "wait": 0.7
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-split-sel-0",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-split-sel-1-dragged",
+  "bitmap": true
+ },
+ {
+  "log": "a click collapses the selection: the caret's line is where it was clicked, then a key centres again"
+ },
+ {
+  "selectText": "Second, also numbered",
+  "offset": 0,
+  "length": 0
+ },
+ {
+  "wait": 0.5
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "remember": "sel-split-sel-2"
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 125,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "originUnchanged": "sel-split-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "assert": {
+   "selectionEmpty": false
+  }
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 126,
+   "mods": [
+    "shift"
+   ]
+  }
+ },
+ {
+  "wait": 0.1
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "selectionEmpty": false,
+   "originUnchanged": "sel-split-sel-2",
+   "sliding": false
+  }
+ },
+ {
+  "snapshot": "sel-split-sel-3-shift-arrows",
+  "bitmap": true
+ },
+ {
+  "key": {
+   "chars": "",
+   "code": 123,
+   "mods": []
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "assert": {
+   "focusInsets": false
+  }
+ },
+ {
+  "focus": {
+   "on": false
+  }
+ },
+ {
+  "wait": 0.6
+ },
+ {
+  "layout": "editor"
+ },
+ {
+  "viewMode": "source"
+ },
+ {
+  "wait": 0.3
+ },
+ {
   "log": "--- the setting off: focus mode without centring"
  },
  {

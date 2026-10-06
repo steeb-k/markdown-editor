@@ -241,7 +241,7 @@ final class UIScriptRunner {
 
     /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
     /// forward) and full screen. A script without any never takes activation from the person at the machine.
-    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "dividerDrag", "liveResize",
+    nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "contextMenu", "dividerDrag", "liveResize",
                                                       "doubleClickTitlebar", "fullscreen", "codeBadge"]
 
     /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
@@ -673,6 +673,8 @@ final class UIScriptRunner {
             clickStep(c, then: done)
         } else if let d = step["drag"] as? [String: Any] {
             dragStep(d, then: done)
+        } else if let d = step["contextMenu"] as? [String: Any] {
+            contextMenuStep(d, then: done)
         } else if let f = num("dividerDrag") {
             dividerDragStep(f, then: done)
         } else if let d = step["scrollWheel"] as? [String: Any] {
@@ -2269,6 +2271,10 @@ final class UIScriptRunner {
         if let v = a["selection"] as? [Int], let tv = textView {
             let r = tv.selectedRange()
             check("selection \(v)", r.location == v[0] && r.length == v[1], "\(r)")
+        }
+        if let want = a["selectionEmpty"] as? Bool, let tv = textView {
+            let r = tv.selectedRange()
+            check("selectionEmpty \(want)", (r.length == 0) == want, "\(r)")
         }
         if let v = a["selectedText"] as? String, let tv = textView {
             let got = (text as NSString).substring(with: tv.selectedRange())

@@ -326,6 +326,62 @@ extension UIScriptRunner {
         }
     }
 
+    /// `{"contextMenu": {"needle": "word", "offset": 1, "select": [loc, len], "has": ["Paste As", "Mark As"], "lacks": [...],
+    /// "choose": "Mark This Passage As > Reference", "expectSelection": [loc, len]}}`: a right-click on a character. The real
+    /// `rightMouseDown` is built for the window's point, hit-tested like a click, and handed to the text view's `menu(for:)`
+    /// (what AppKit calls from `rightMouseDown`); posting it would start the menu's tracking loop, which blocks until a
+    /// mouse button the harness cannot press is released. The menu's items are validated (`update()`) and `choose` (titles
+    /// joined by `>`) performs the item's own action, as the click on it would. `has` and `lacks` name top-level items.
+    func contextMenuStep(_ d: [String: Any], then done: @escaping () -> Void) {
+        guard let wc = clickController, let w = wc.window, let (p, _, detail) = clickTarget(d) else {
+            record(["contextMenu": d, "error": "no target"], ok: false)
+            done()
+            return
+        }
+        makeKey(w) { [self] in
+            let tv = wc.textView
+            if let sel = d["select"] as? [Int], sel.count == 2 { tv.setSelectedRange(NSRange(location: sel[0], length: sel[1])) }
+            let hit = hitName(w, p)
+            guard let e = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let menu = tv.menu(for: e) else {
+                record(["contextMenu": detail, "error": "no menu"], ok: false)
+                done()
+                return
+            }
+            var ok = hit == "EditorTextView"
+            let titles = menu.items.filter { !$0.isSeparatorItem }.map(\.title)
+            for t in d["has"] as? [String] ?? [] { ok = ok && titles.contains(t) }
+            for t in d["lacks"] as? [String] ?? [] { ok = ok && !titles.contains(t) }
+            var entry: [String: Any] = ["contextMenu": detail, "hit": hit, "items": titles]
+            for item in menu.items { item.submenu?.update() }
+            if let path = d["choose"] as? String {
+                var level = menu
+                var found: NSMenuItem?
+                for title in path.components(separatedBy: ">").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+                    found = level.items.first { $0.title == title }
+                    if let sub = found?.submenu { level = sub }
+                }
+                if let found, let action = found.action {
+                    entry["chosen"] = path
+                    entry["enabled"] = found.isEnabled
+                    ok = ok && found.isEnabled
+                    if found.isEnabled { asEvent { _ = NSApp.sendAction(action, to: found.target, from: found) } }
+                } else {
+                    ok = false
+                    entry["error"] = "no item \(path)"
+                }
+            }
+            if let want = d["expectSelection"] as? [Int], want.count == 2 {
+                let r = tv.selectedRange()
+                ok = ok && r.location == want[0] && r.length == want[1]
+                entry["selection"] = [r.location, r.length]
+            }
+            record(entry, ok: ok)
+            done()
+        }
+    }
+
     /// `{"dividerDrag": 0.35}`: the split view's divider pressed and dragged to that share of the width, released.
     func dividerDragStep(_ to: Double, then done: @escaping () -> Void) {
         guard let wc = clickController, let w = wc.window, !wc.scrollView.isHidden, !wc.previewPane.isHidden else {

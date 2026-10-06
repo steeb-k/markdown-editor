@@ -126,6 +126,95 @@ extension EditorTextView {
     @objc public func markAsReference(_ sender: Any?) { session?.mark(selectedRange(), as: .reference) }
     @objc public func markAsNoAuthor(_ sender: Any?) { session?.mark(selectedRange(), as: nil, actionName: "Mark as No Author") }
 
+    /// Mark This Passage As (the context menu's): the whole run under the pointer, which the item carries, without
+    /// selecting it; the selection the reader had is put back. Tag 0 to 2 is an `AuthorChoice`, 3 is No Author.
+    @objc func markPassage(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? PassageTarget, let session else { return }
+        let range = target.range, selection = target.selection
+        let choice = AuthorChoice(rawValue: sender.tag)
+        undoManager?.beginUndoGrouping()
+        session.mark(range, as: choice, actionName: choice == nil ? "Mark as No Author" : nil)
+        undoManager?.endUndoGrouping()
+        if selectedRange() != selection { setSelectedRange(selection) }
+    }
+
+    /// The authored run holding the character at `index`: adjacent runs of one author count as one passage.
+    func authoredPassage(at index: Int) -> NSRange? {
+        guard let session, index >= 0, index < session.storage.length, session.authorship.hasMarks() else { return nil }
+        let runs = session.authorship.runs(within: nil)
+        guard let i = runs.firstIndex(where: { Int($0.range.start) <= index && index < Int($0.range.end) }) else { return nil }
+        let author = runs[i].authorIndex
+        var lo = i, hi = i
+        while lo > 0, runs[lo - 1].authorIndex == author, runs[lo - 1].range.end == runs[lo].range.start { lo -= 1 }
+        while hi + 1 < runs.count, runs[hi + 1].authorIndex == author, runs[hi + 1].range.start == runs[hi].range.end { hi += 1 }
+        return NSRange(location: Int(runs[lo].range.start), length: Int(runs[hi].range.end - runs[lo].range.start))
+    }
+
+    // MARK: context menu
+
+    /// The standard menu (Cut, Copy, Paste, spelling, Look Up, Services, as AppKit builds it) with Paste As and Mark As
+    /// after Paste, and, over a passage that carries an author, Mark This Passage As for that whole run. The pointer's
+    /// own position decides the passage; the caret moves only as AppKit moves it for a context menu.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        // What the reader had selected before AppKit makes its own choice for the click (it selects the word under
+        // the pointer for Look Up and Services): Mark This Passage As puts that back.
+        let selection = selectedRange()
+        let menu = super.menu(for: event) ?? NSMenu()
+        addAuthorshipItems(to: menu, atWindowPoint: event.locationInWindow, selection: selection)
+        return menu
+    }
+
+    func addAuthorshipItems(to menu: NSMenu, atWindowPoint p: NSPoint, selection: NSRange) {
+        var items: [NSMenuItem] = []
+        for sub in [MainMenu.pasteAsMenu(), MainMenu.markAsMenu()] {
+            for i in sub.items where !i.isSeparatorItem { i.target = self }
+            let holder = NSMenuItem(title: sub.title, action: nil, keyEquivalent: "")
+            holder.submenu = sub
+            items.append(holder)
+        }
+        if let range = passage(atWindowPoint: p) {
+            let sub = NSMenu(title: "Mark This Passage As")
+            for (title, tag) in [("Me", 0), ("AI", 1), ("Reference", 2)] { sub.addItem(passageItem(title, tag, range, selection)) }
+            sub.addItem(.separator())
+            sub.addItem(passageItem("No Author", 3, range, selection))
+            let holder = NSMenuItem(title: sub.title, action: nil, keyEquivalent: "")
+            holder.submenu = sub
+            items.append(holder)
+        }
+        if let paste = menu.items.firstIndex(where: { $0.action == #selector(NSText.paste(_:)) }) {
+            for (n, i) in items.enumerated() { menu.insertItem(i, at: paste + 1 + n) }
+        } else {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            items.forEach(menu.addItem)
+        }
+    }
+
+    /// What a Mark This Passage As item carries: the run, and the selection to leave as it was.
+    final class PassageTarget: NSObject {
+        let range: NSRange, selection: NSRange
+        init(range: NSRange, selection: NSRange) { self.range = range; self.selection = selection }
+    }
+
+    private func passageItem(_ title: String, _ tag: Int, _ range: NSRange, _ selection: NSRange) -> NSMenuItem {
+        let i = NSMenuItem(title: title, action: #selector(markPassage(_:)), keyEquivalent: "")
+        i.target = self
+        i.tag = tag
+        i.representedObject = PassageTarget(range: range, selection: selection)
+        return i
+    }
+
+    /// The authored passage under a point of the window, if the point is on text that carries one.
+    func passage(atWindowPoint p: NSPoint) -> NSRange? {
+        guard let lm = layoutManager, let tc = textContainer, session != nil else { return nil }
+        let local = convert(p, from: nil)
+        let inContainer = NSPoint(x: local.x - textContainerOrigin.x, y: local.y - textContainerOrigin.y)
+        var fraction: CGFloat = 0
+        let index = lm.characterIndex(for: inContainer, in: tc, fractionOfDistanceBetweenInsertionPoints: &fraction)
+        let glyph = lm.glyphIndexForCharacter(at: min(index, max(0, (string as NSString).length - 1)))
+        guard lm.numberOfGlyphs > 0, lm.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: tc).insetBy(dx: -1, dy: -1).contains(inContainer) else { return nil }
+        return authoredPassage(at: index)
+    }
+
     @objc public func toggleAuthorshipDisplay(_ sender: Any?) {
         guard let session else { return }
         session.setAuthorshipDisplay(!session.authorshipDisplay)
@@ -156,6 +245,8 @@ extension EditorTextView {
             return (editable && selectedRange().length > 0, selectionAuthorChoice() == .reference)
         case #selector(markAsNoAuthor(_:)):
             return (editable && selectedRange().length > 0, false)
+        case #selector(markPassage(_:)):
+            return (editable, false)
         case #selector(toggleAuthorshipDisplay(_:)):
             return (true, session?.authorshipDisplay == true)
         default:
