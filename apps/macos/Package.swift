@@ -29,7 +29,9 @@ let package = Package(
         ),
         .testTarget(
             name: "MarkdownKitTests",
-            dependencies: ["MarkdownKit", "MarkdownCore"]
+            dependencies: ["MarkdownKit", "MarkdownCore"],
+            // Sample files the tests read by path (an imported template bundle).
+            exclude: ["Fixtures"]
         ),
     ],
     swiftLanguageModes: [.v5]

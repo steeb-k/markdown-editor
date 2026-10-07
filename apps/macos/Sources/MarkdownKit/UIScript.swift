@@ -334,6 +334,8 @@ final class UIScriptRunner {
 
         if let n = step["notes"] as? [String: Any] {
             notesStep(n, then: done)
+        } else if let name = step["template"] as? String {
+            templateStep(name, then: done)
         } else if let o = step["outline"] as? [String: Any] {
             outlineStep(o, then: done)
         } else if let h = step["history"] as? [String: Any] {
@@ -1074,6 +1076,7 @@ final class UIScriptRunner {
         if let v = s["syntaxHighlight"] as? Bool { st.syntaxHighlight = v }
         if let v = s["authorshipDisplay"] as? Bool { st.authorshipDisplay = v }
         if let v = s["authorName"] as? String { st.authorNameSetting = v }
+        if let v = s["defaultTemplate"] as? String { st.defaultTemplate = v }
         if let v = s["reopenAtLaunch"] as? Bool { st.reopenAtLaunch = v }
         if let v = s["askBeforeQuitting"] as? Bool { st.askBeforeQuitting = v }
     }
@@ -2386,6 +2389,7 @@ final class UIScriptRunner {
         if let f = a["documentFile"] as? [String: Any] { fileAssertions(f) }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
+        if let t = a["template"] as? [String: Any] { templateAssertions(t) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {
@@ -2602,6 +2606,10 @@ final class UIScriptRunner {
             if let want = v["styleContains"] as? String {
                 let css = p.evaluateSync("return document.head.querySelector('style').textContent;") as? String ?? ""
                 check("preview stylesheet contains \(want.debugDescription)", css.contains(want), String(css.prefix(200)))
+            }
+            if let want = v["styleLacks"] as? String {
+                let css = p.evaluateSync("return document.head.querySelector('style').textContent;") as? String ?? ""
+                check("preview stylesheet lacks \(want.debugDescription)", !css.contains(want), String(css.prefix(200)))
             }
             if let name = v["computedStyle"] as? [String: String], let property = name["property"], let value = name["is"] {
                 let got = p.evaluateSync("return getComputedStyle(document.body)[prop];", arguments: ["prop": property]) as? String ?? ""

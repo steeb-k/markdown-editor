@@ -1,0 +1,57 @@
+# A serif page for papers: numbered headings, justified text, small footnotes and ruled tables.
+[template]
+name = "Academic"
+author = "Markdown"
+version = "1"
+description = "A serif page for papers: numbered headings, justified text, small footnotes, ruled tables."
+
+[page]
+measure_ch = 66.0
+align = "justify"
+
+[elements.body]
+font_family = "Charter, Iowan Old Style, Georgia, serif"
+line_height = 1.55
+
+[elements.h1]
+font_size = "1.9em"
+weight = 700
+align = "left"
+numbered = true
+
+[elements.h2]
+font_size = "1.45em"
+align = "left"
+numbered = true
+
+[elements.h3]
+font_size = "1.2em"
+italic = true
+align = "left"
+numbered = true
+
+[elements.h4]
+align = "left"
+italic = true
+
+[elements.paragraph]
+align = "justify"
+
+[elements.code_block]
+radius = "0px"
+
+[elements.inline_code]
+radius = "2px"
+
+[elements.block_quote]
+italic = true
+
+[elements.table]
+border = { side = "top", style = "solid", width = "2px", color = "theme:text" }
+
+[elements.table_header]
+border = { side = "bottom", style = "solid", width = "1px", color = "theme:text" }
+weight = 700
+
+[elements.footnotes]
+font_size = "0.8em"

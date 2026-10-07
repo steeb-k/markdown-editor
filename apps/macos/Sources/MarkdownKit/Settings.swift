@@ -97,6 +97,7 @@ public final class Settings: NSObject {
         static let dailyFolder = "dailyNoteFolder"
         static let dailyFormat = "dailyNoteFormat"
         static let templatesFolder = "templatesFolder"
+        static let defaultTemplate = "defaultTemplate"
         static let noteSort = "noteSort"
         static let sidebarWidth = "sidebarWidth"
         static let reopenAtLaunch = "reopenDocumentsAtLaunch"
@@ -137,6 +138,7 @@ public final class Settings: NSObject {
             Key.dailyFolder: "Daily",
             Key.dailyFormat: "YYYY-MM-DD",
             Key.templatesFolder: "Templates",
+            Key.defaultTemplate: "Default",
             Key.noteSort: NoteSort.name.rawValue,
             Key.sidebarWidth: 240.0,
             Key.reopenAtLaunch: true,
@@ -332,6 +334,13 @@ public final class Settings: NSObject {
     public var templatesFolder: String {
         get { defaults.string(forKey: Key.templatesFolder) ?? "Templates" }
         set { defaults.set(newValue, forKey: Key.templatesFolder); changed() }
+    }
+
+    /// The look documents get (preview, PDF, print, copies) when their front matter names no installed template: the name of
+    /// one of the installed templates (see `TemplateStore.resolve`). "Default" is the preview as it is.
+    public var defaultTemplate: String {
+        get { defaults.string(forKey: Key.defaultTemplate) ?? "Default" }
+        set { defaults.set(newValue, forKey: Key.defaultTemplate); changed() }
     }
 
     /// How the sidebar orders notes: remembered, not announced (the sidebar is told directly).

@@ -104,6 +104,10 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         webView.allowsBackForwardNavigationGestures = false
         webView.setAccessibilityLabel("Preview")
         applyBackground()
+        // A template edited, added or removed (in the Templates window or in Finder) restyles the page in place.
+        observers.append(NotificationCenter.default.addObserver(forName: TemplateStore.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appearanceChanged() }
+        })
     }
 
     deinit {
@@ -194,13 +198,13 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         // The body the page holds: the new one is sent as a patch against it, worked out here on
         // the analysis queue rather than on the main thread.
         let base = first ? nil : pageBody
-        session.coordinator.async({ doc -> (String, BodyPatch?) in
+        session.coordinator.async({ doc -> (String, BodyPatch?, String?) in
             // The pictures' sizes go into the page, so it reserves their room before they load.
             let html = doc.renderHtml(options: Self.withPictureSizes(options, sizes: sizes, doc: doc, documentURL: documentURL))
-            return (html, base.flatMap { BodyPatch.make(from: $0, to: html) })
+            return (html, base.flatMap { BodyPatch.make(from: $0, to: html) }, doc.frontMatterTemplate())
         }) { [weak self] rendered, processedSeq in
             guard let self else { return }
-            let (html, patch) = rendered
+            let (html, patch, templateName) = rendered
             if base == nil { rendersWithoutBase += 1 } else if patch == nil { rendersWithoutPatch += 1 }
             inFlight = false
             lastRenderTime = CFAbsoluteTimeGetCurrent() - started
@@ -213,7 +217,12 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
                 return
             }
             if !isVisible { stale = true; return }
+            // The template the front matter names is part of the page's look: a new one restyles it in place.
+            let templateChanged = !first && (!templateNameKnown || templateName != frontMatterTemplateName)
+            frontMatterTemplateName = templateName
+            templateNameKnown = true
             apply(html, patch: patch, standalone: first, seq: processedSeq)
+            if templateChanged { appearanceChanged() }
             if stale, isVisible, timer == nil { renderSoon(delay: ScrollSync.debounce(forLength: session.storage.length)) }
         }
     }
@@ -251,7 +260,8 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
             initialNavigationAllowed = false
             appliedCSS = previewCSS()
             appliedFonts = PreviewTypography.fontFaceCSS(for: session?.appearance)
-            let parts = Self.split(page: html)
+            // (The core's page has the Default's stylesheet: the template's goes in before the page loads.)
+            let parts = Self.split(page: TemplateStore.replacingStyle(inPage: html, with: appliedCSS))
             lastBodyHTML = parts.body
             pendingBody = parts.body
             applyBackground()
@@ -417,10 +427,24 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
         }
     }
 
+    /// The page's stylesheet: the document's template (see `EditorSession.resolvedTemplate`) in the editor's theme and type.
     func previewCSS() -> String {
         let style = previewStyle()
-        return previewCss(theme: style.theme, typography: style.typography)
+        if !templateNameKnown, let session {
+            frontMatterTemplateName = session.frontMatterTemplateName()
+            templateNameKnown = true
+        }
+        let name = frontMatterTemplateName
+        let resolved = TemplateStore.shared.resolve(frontMatterName: name, defaultName: session?.settings.defaultTemplate ?? Settings.shared.defaultTemplate)
+        appliedTemplate = resolved.template.id
+        return TemplateStore.shared.css(for: resolved.template, theme: style.theme, typography: style.typography)
     }
+
+    /// The `template:` of the front matter as of the last render (read with the render, on the analysis queue).
+    private var frontMatterTemplateName: String?
+    private var templateNameKnown = false
+    /// The package whose stylesheet the page last asked for (tests and the harness read it).
+    private(set) var appliedTemplate: URL?
 
     private func applyBackground() {
         if let p = session?.appearance.palette { webView.underPageBackgroundColor = p.background }

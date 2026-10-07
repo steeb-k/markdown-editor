@@ -227,9 +227,14 @@ extension MarkdownDocument {
         // With the pictures' declared sizes, as the preview has them: a retina screenshot is printed
         // at its size in points, not at twice it.
         let sizes = PictureSizes(), documentURL = fileURL
+        // The page carries the Default's stylesheet; the document's own template (its front matter's, else the app's default)
+        // replaces it, so the PDF and the print are what the preview shows.
         session.coordinator.async({ doc in
-            doc.renderHtml(options: PreviewController.withPictureSizes(options, sizes: sizes, doc: doc, documentURL: documentURL))
-        }) { html, _ in completion(html) }
+            (doc.renderHtml(options: PreviewController.withPictureSizes(options, sizes: sizes, doc: doc, documentURL: documentURL)),
+             doc.frontMatterTemplate())
+        }) { [session] rendered, _ in
+            completion(TemplateStore.replacingStyle(inPage: rendered.0, with: session.templateCSS(frontMatterName: rendered.1)))
+        }
     }
 
     /// Loads the document into an offscreen page and gives the print operation for it (nil if the

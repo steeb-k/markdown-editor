@@ -242,4 +242,37 @@ final class ReleaseTests: XCTestCase {
         // The notices of the bundled syntax definitions (two-face's own data).
         XCTAssertTrue(text.contains("## Syntax highlighting definitions") && text.contains("#### Mit"))
     }
+
+    // MARK: the built-in templates
+
+    /// The core's packages are the source of truth (its own tests parse them); the app carries copies in its resources.
+    /// A copy that drifted would ship a template the core was never tested with.
+    func testBundledTemplatesAreTheCoresOwn() throws {
+        let core = Fixtures.root.appendingPathComponent("crates/markdown-core/templates")
+        let ours = resources.appendingPathComponent("Templates")
+        let fm = FileManager.default
+        let names = try fm.contentsOfDirectory(atPath: core.path).filter { $0.hasSuffix(".mdtemplate") }.sorted()
+        XCTAssertEqual(names, ["Academic.mdtemplate", "Default.mdtemplate", "Letter.mdtemplate", "Typewriter.mdtemplate"])
+        XCTAssertEqual(names, try fm.contentsOfDirectory(atPath: ours.path).filter { $0.hasSuffix(".mdtemplate") }.sorted(), "the same packages")
+        for n in names {
+            let files = try fm.subpathsOfDirectory(atPath: core.appendingPathComponent(n).path).sorted()
+            XCTAssertEqual(files, try fm.subpathsOfDirectory(atPath: ours.appendingPathComponent(n).path).sorted(), "\(n): the same files")
+            for file in files {
+                let a = core.appendingPathComponent(n).appendingPathComponent(file), b = ours.appendingPathComponent(n).appendingPathComponent(file)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: a.path, isDirectory: &isDir)
+                if isDir.boolValue { continue }
+                XCTAssertEqual(try Data(contentsOf: a), try Data(contentsOf: b), "\(n)/\(file) differs from the core's copy: copy it again")
+            }
+        }
+    }
+
+    func testTheBundleScriptsCarryTheTemplates() throws {
+        let scripts = Fixtures.root.appendingPathComponent("scripts/macos")
+        let bundle = try String(contentsOf: scripts.appendingPathComponent("bundle.sh"), encoding: .utf8)
+        XCTAssertTrue(bundle.contains("Resources/Templates") && bundle.contains("Contents/Resources/Templates"), "bundle.sh copies the templates in")
+        let verify = try String(contentsOf: scripts.appendingPathComponent("verify-bundle.sh"), encoding: .utf8)
+        XCTAssertTrue(verify.contains("Contents/Resources/Templates/"), "verify-bundle.sh lists them")
+        for name in ["Academic", "Default", "Letter", "Typewriter"] { XCTAssertTrue(verify.contains(name), "verify-bundle.sh names \(name)") }
+    }
 }

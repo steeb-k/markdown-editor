@@ -1,0 +1,36 @@
+# A sans-serif page for letters and short documents: the first heading is a title block.
+[template]
+name = "Letter"
+author = "Markdown"
+version = "1"
+description = "Sans-serif, the first-level heading as a title block, tight smaller headings, a wide margin."
+
+[page]
+measure_ch = 64.0
+side_padding = "72px"
+
+[elements.body]
+font_family = "Helvetica Neue, Helvetica, Arial, sans-serif"
+line_height = 1.5
+
+[elements.h1]
+font_size = "2.4em"
+weight = 700
+space_above = "0em"
+space_below = "1.2em"
+line_height = 1.15
+letter_spacing = "-0.01em"
+
+[elements.h2]
+font_size = "1.25em"
+space_above = "0.9em"
+space_below = "0.3em"
+
+[elements.h3]
+font_size = "1.05em"
+space_above = "0.8em"
+space_below = "0.25em"
+
+[elements.h4]
+space_above = "0.7em"
+space_below = "0.2em"

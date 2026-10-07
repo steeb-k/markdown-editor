@@ -176,6 +176,9 @@ enum MainMenu {
             _ = item(m, "Task List", #selector(EditorTextView.toggleTaskList(_:)), "9", [.command, .shift])
             _ = item(m, "Block Quote", #selector(EditorTextView.toggleBlockQuote(_:)), ".", [.command, .shift])
             _ = item(m, "Code Block", #selector(EditorTextView.toggleCodeBlock(_:)), "k", [.command, .option])
+            m.addItem(.separator())
+            // Filled each time it opens, so a template added since appears (see `DocumentTemplateMenu`).
+            attach(m, DocumentTemplateMenu.makeMenu())
         }
 
         _ = submenu(main, "Table") { m in

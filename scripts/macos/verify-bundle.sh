@@ -41,7 +41,7 @@ fi
 [ "$(plist LSMinimumSystemVersion)" = 14.0 ] || fail "LSMinimumSystemVersion is not 14.0"
 ok "Info.plist lints; version $VERSION, build $BUILD"
 
-# The exact list of files. Fonts: the twelve faces and their license.
+# The exact list of files. Fonts: the twelve faces and their license. Templates: the four built-in packages.
 EXPECTED="$(mktemp)"; ACTUAL="$(mktemp)"
 trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
 {
@@ -53,6 +53,7 @@ trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
   echo "Contents/Resources/Markdown.icns"
   echo "Contents/Resources/Welcome.md"
   echo "Contents/Resources/Fonts/OFL-LICENSE.md"
+  for t in Academic Default Letter Typewriter; do echo "Contents/Resources/Templates/${t}.mdtemplate/template.toml"; done
   for fam in Duo Mono Quattro; do
     for face in Regular Italic Bold BoldItalic; do echo "Contents/Resources/Fonts/iAWriter${fam}S-${face}.ttf"; done
   done

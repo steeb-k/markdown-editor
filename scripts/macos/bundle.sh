@@ -125,6 +125,11 @@ if [ -d "$APP_PKG/Resources/Fonts" ]; then
 else
   echo "warning: $APP_PKG/Resources/Fonts missing; the app will use system fonts" >&2
 fi
+# The built-in templates (read-only packages; the app lists them beside the user's own). The core's copies in
+# crates/markdown-core/templates are the source of truth: ReleaseTests fails when these differ from them.
+[ -d "$APP_PKG/Resources/Templates" ] || { echo "bundle: missing $APP_PKG/Resources/Templates" >&2; exit 1; }
+mkdir -p "$APP/Contents/Resources/Templates"
+cp -R "$APP_PKG"/Resources/Templates/*.mdtemplate "$APP/Contents/Resources/Templates/"
 # Nothing may ride along that signing trips over: Finder litter, quarantine and other extended attributes.
 find "$APP" -name .DS_Store -delete
 xattr -cr "$APP"

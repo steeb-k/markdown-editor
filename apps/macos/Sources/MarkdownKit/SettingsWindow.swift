@@ -27,6 +27,7 @@ final class FontPanelTarget: NSObject {
 
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
+    @ObservedObject var templates: TemplateStore = .shared
     private var s: Settings { model.settings }
 
     var body: some View {
@@ -62,6 +63,16 @@ struct SettingsView: View {
             }
             Stepper(value: Binding(get: { s.lineWidth }, set: { s.lineWidth = $0 }), in: Settings.lineWidthRange, step: 2) {
                 Text("Line width: \(s.lineWidth) characters")
+            }
+            HStack {
+                Picker("Default template", selection: Binding(get: { s.defaultTemplate }, set: { s.defaultTemplate = $0 })) {
+                    // A default that is no longer installed stays in the list, so the picker does not lie about it.
+                    if !templates.usable.contains(where: { TemplateStore.key($0.name) == TemplateStore.key(s.defaultTemplate) }) {
+                        Text("\(s.defaultTemplate) (not installed)").tag(s.defaultTemplate)
+                    }
+                    ForEach(templates.usable) { Text($0.name).tag($0.name) }
+                }
+                Button("Manage Templates…") { TemplateStore.openManager?() }
             }
             Picker("Default layout", selection: Binding(get: { s.defaultLayout }, set: { s.defaultLayout = $0 })) {
                 ForEach(LayoutMode.allCases, id: \.self) { Text($0.title).tag($0) }

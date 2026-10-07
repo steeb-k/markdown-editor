@@ -465,8 +465,15 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         if !session.copyAs(.richText, range: copyRange, to: textView.pasteboard) { NSSound.beep() }
     }
 
+    /// Format > Template: the item's name (empty for "Default template") becomes the front matter's `template:`, as one undo step.
+    @objc func chooseLookTemplate(_ sender: Any?) {
+        guard let name = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        session.setTemplate(name: name.isEmpty ? nil : name)
+    }
+
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
+        case #selector(chooseLookTemplate(_:)): return textView.isEditable
         case #selector(showEditorLayout(_:)): item.state = session.layout == .editor ? .on : .off; return true
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
