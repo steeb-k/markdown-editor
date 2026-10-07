@@ -640,3 +640,72 @@ final class ToolbarTests: XCTestCase {
         XCTAssertNil(bar.hitTest(NSPoint(x: 5, y: 5)), "hidden chrome never eats clicks")
     }
 }
+
+final class CheckingSettingsTests: XCTestCase {
+    func testDefaultsAndRoundTrip() {
+        let name = "markdown-checking-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let a = Settings(defaults: defaults)
+        XCTAssertTrue(a.spellCheck)
+        XCTAssertFalse(a.grammarCheck)
+        XCTAssertFalse(a.autoCorrect)
+        a.grammarCheck = true; a.autoCorrect = true
+        let b = Settings(defaults: defaults)
+        XCTAssertTrue(b.grammarCheck); XCTAssertTrue(b.autoCorrect)
+    }
+
+    func testNewTextViewTakesTheFlags() {
+        let s = isolatedSettings()
+        s.grammarCheck = true; s.autoCorrect = true; s.spellCheck = false
+        let e = Editor(text: "x", settings: s)
+        XCTAssertFalse(e.tv.isContinuousSpellCheckingEnabled)
+        XCTAssertTrue(e.tv.isGrammarCheckingEnabled)
+        XCTAssertTrue(e.tv.isAutomaticSpellingCorrectionEnabled)
+        XCTAssertFalse(e.tv.isAutomaticQuoteSubstitutionEnabled)
+        XCTAssertFalse(e.tv.isAutomaticDashSubstitutionEnabled)
+        XCTAssertFalse(e.tv.isAutomaticTextReplacementEnabled)
+    }
+
+    func testExistingTextViewFollowsChanges() {
+        let s = isolatedSettings()
+        let e = Editor(text: "x", settings: s)
+        XCTAssertFalse(e.tv.isGrammarCheckingEnabled)
+        XCTAssertFalse(e.tv.isAutomaticSpellingCorrectionEnabled)
+        s.grammarCheck = true
+        XCTAssertTrue(e.tv.isGrammarCheckingEnabled)
+        s.autoCorrect = true
+        XCTAssertTrue(e.tv.isAutomaticSpellingCorrectionEnabled)
+        s.grammarCheck = false; s.autoCorrect = false
+        XCTAssertFalse(e.tv.isGrammarCheckingEnabled)
+        XCTAssertFalse(e.tv.isAutomaticSpellingCorrectionEnabled)
+    }
+
+    func testMenuActionsWriteBack() {
+        let s = isolatedSettings()
+        let e = Editor(text: "x", settings: s)
+        e.tv.toggleGrammarChecking(nil)
+        XCTAssertTrue(s.grammarCheck)
+        XCTAssertTrue(e.tv.isGrammarCheckingEnabled)
+        e.tv.toggleAutomaticSpellingCorrection(nil)
+        XCTAssertTrue(s.autoCorrect)
+        XCTAssertTrue(e.tv.isAutomaticSpellingCorrectionEnabled)
+        e.tv.toggleGrammarChecking(nil)
+        XCTAssertFalse(s.grammarCheck)
+        e.tv.toggleContinuousSpellChecking(nil)
+        XCTAssertFalse(s.spellCheck)
+    }
+
+    func testRestyleKeepsSpellingState() {
+        let e = Editor(text: "# Title\n\nsome txet here and more words", settings: isolatedSettings())
+        let lm = e.session.layoutManager
+        let r = NSRange(location: 14, length: 4)
+        lm.addTemporaryAttribute(.spellingState, value: NSAttributedString.SpellingState.spelling.rawValue, forCharacterRange: r)
+        e.edit(range: NSRange(location: 0, length: 0), with: "x")
+        XCTAssertTrue(e.session.waitUntilStyled())
+        e.session.overlay.apply()
+        let shifted = NSRange(location: 15, length: 4)
+        XCTAssertEqual(lm.temporaryAttribute(.spellingState, atCharacterIndex: shifted.location, effectiveRange: nil) as? Int,
+                       NSAttributedString.SpellingState.spelling.rawValue)
+    }
+}

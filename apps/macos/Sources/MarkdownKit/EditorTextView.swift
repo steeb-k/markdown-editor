@@ -103,10 +103,12 @@ public final class EditorTextView: NSTextView {
         isAutomaticTextReplacementEnabled = false
         isAutomaticLinkDetectionEnabled = false
         isAutomaticDataDetectionEnabled = false
-        isAutomaticSpellingCorrectionEnabled = false
+        // Auto-correct is the one substitution that is a setting: it only fixes misspelt words, where
+        // quotes, dashes and links would rewrite Markdown syntax.
+        isAutomaticSpellingCorrectionEnabled = settings.autoCorrect
         isAutomaticTextCompletionEnabled = false
         smartInsertDeleteEnabled = false
-        isGrammarCheckingEnabled = false
+        isGrammarCheckingEnabled = settings.grammarCheck
         isContinuousSpellCheckingEnabled = settings.spellCheck
         allowsUndo = true
         usesFindBar = true
@@ -243,6 +245,16 @@ public final class EditorTextView: NSTextView {
     public override func toggleContinuousSpellChecking(_ sender: Any?) {
         super.toggleContinuousSpellChecking(sender)
         session?.settings.spellCheck = isContinuousSpellCheckingEnabled
+    }
+
+    public override func toggleGrammarChecking(_ sender: Any?) {
+        super.toggleGrammarChecking(sender)
+        session?.settings.grammarCheck = isGrammarCheckingEnabled
+    }
+
+    public override func toggleAutomaticSpellingCorrection(_ sender: Any?) {
+        super.toggleAutomaticSpellingCorrection(sender)
+        session?.settings.autoCorrect = isAutomaticSpellingCorrectionEnabled
     }
 
     // MARK: keys

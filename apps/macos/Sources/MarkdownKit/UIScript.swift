@@ -1063,6 +1063,8 @@ final class UIScriptRunner {
         if let v = s["fontSize"] as? Double { st.fontSize = v }
         if let v = s["lineWidth"] as? Int { st.lineWidth = v }
         if let v = s["spellCheck"] as? Bool { st.spellCheck = v }
+        if let v = s["grammarCheck"] as? Bool { st.grammarCheck = v }
+        if let v = s["autoCorrect"] as? Bool { st.autoCorrect = v }
         if let v = s["showFormattingToolbar"] as? Bool { st.showFormattingToolbar = v }
         if let v = s["autoHideChrome"] as? Bool { st.autoHideChrome = v }
         if let v = s["chromeReturnsAfterPause"] as? Bool { st.chromeReturnsAfterPause = v }
@@ -2699,6 +2701,16 @@ final class UIScriptRunner {
             let inset = tv.textContainerInset.width
             let expected = max(EditorAppearance.minimumSideMargin, ((tv.bounds.width - s.appearance.measure) / 2).rounded(.down))
             check("column centered: \(v)", (abs(inset - expected) < 1) == v, "inset \(inset) expected \(expected) width \(tv.bounds.width)")
+        }
+        if let v = a["checking"] as? [String: Bool], let tv = textView {
+            let now = ["spelling": tv.isContinuousSpellCheckingEnabled, "grammar": tv.isGrammarCheckingEnabled,
+                       "autoCorrect": tv.isAutomaticSpellingCorrectionEnabled]
+            check("checking flags \(v)", v.allSatisfy { now[$0.key] == $0.value }, "\(now)")
+        }
+        if let v = a["checkingSettings"] as? [String: Bool] {
+            let st = Settings.shared
+            let now = ["spelling": st.spellCheck, "grammar": st.grammarCheck, "autoCorrect": st.autoCorrect]
+            check("checking settings \(v)", v.allSatisfy { now[$0.key] == $0.value }, "\(now)")
         }
         if let v = a["spellingSuppressedIn"] as? String, let tv = textView {
             let r = (text as NSString).range(of: v)

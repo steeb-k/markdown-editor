@@ -1,0 +1,191 @@
+[
+ {
+  "log": "--- text-checking settings reach the text view and the Edit menu writes back"
+ },
+ {
+  "setting": {
+   "theme": "light",
+   "fontChoice": "iaQuattro",
+   "spellCheck": true,
+   "grammarCheck": false,
+   "autoCorrect": false
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/markup.md"
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": false,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "setting": {
+   "grammarCheck": true
+  }
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "setting": {
+   "autoCorrect": true
+  }
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "setting": {
+   "spellCheck": false
+  }
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": false,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "setting": {
+   "grammarCheck": false,
+   "autoCorrect": false
+  }
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": false,
+    "grammar": false,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "setting": {
+   "spellCheck": true
+  }
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": false,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "action": "toggleGrammarChecking:",
+  "edits": false
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "assert": {
+   "checkingSettings": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "action": "toggleAutomaticSpellingCorrection:",
+  "edits": false
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "assert": {
+   "checkingSettings": {
+    "spelling": true,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "action": "toggleContinuousSpellChecking:",
+  "edits": false
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": false,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "assert": {
+   "checkingSettings": {
+    "spelling": false,
+    "grammar": true,
+    "autoCorrect": true
+   }
+  }
+ },
+ {
+  "action": "toggleGrammarChecking:",
+  "edits": false
+ },
+ {
+  "action": "toggleAutomaticSpellingCorrection:",
+  "edits": false
+ },
+ {
+  "assert": {
+   "checking": {
+    "spelling": false,
+    "grammar": false,
+    "autoCorrect": false
+   }
+  }
+ },
+ {
+  "setting": {
+   "spellCheck": true
+  }
+ },
+ {
+  "close": true
+ }
+]

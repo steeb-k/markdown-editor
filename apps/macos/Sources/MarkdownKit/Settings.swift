@@ -79,6 +79,8 @@ public final class Settings: NSObject {
         static let fontSize = "fontSize"
         static let lineWidth = "lineWidth"
         static let spellCheck = "spellCheck"
+        static let grammarCheck = "grammarCheck"
+        static let autoCorrect = "autoCorrect"
         static let showToolbar = "showFormattingToolbar"
         static let autoHide = "autoHideChrome"
         static let chromeReturns = "chromeReturnsAfterPause"
@@ -118,6 +120,8 @@ public final class Settings: NSObject {
             Key.fontSize: 17.0,
             Key.lineWidth: 72,
             Key.spellCheck: true,
+            Key.grammarCheck: false,
+            Key.autoCorrect: false,
             Key.showToolbar: true,
             Key.autoHide: true,
             Key.chromeReturns: true,
@@ -182,6 +186,16 @@ public final class Settings: NSObject {
     public var spellCheck: Bool {
         get { defaults.bool(forKey: Key.spellCheck) }
         set { defaults.set(newValue, forKey: Key.spellCheck); changed() }
+    }
+
+    public var grammarCheck: Bool {
+        get { defaults.bool(forKey: Key.grammarCheck) }
+        set { defaults.set(newValue, forKey: Key.grammarCheck); changed() }
+    }
+
+    public var autoCorrect: Bool {
+        get { defaults.bool(forKey: Key.autoCorrect) }
+        set { defaults.set(newValue, forKey: Key.autoCorrect); changed() }
     }
 
     public var showFormattingToolbar: Bool {
