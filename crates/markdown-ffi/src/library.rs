@@ -48,6 +48,7 @@ pub struct NoteInfo {
     pub note: NoteRef,
     pub title: String,
     pub tags: Vec<String>,
+    pub aliases: Vec<String>,
     pub word_count: u32,
     pub modified: i64,
 }
@@ -130,6 +131,19 @@ pub struct NoteBacklink {
     pub context: String,
 }
 
+/// A place another note names a note without linking it (see `Library::mentions`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NoteMention {
+    /// The note that is mentioned.
+    pub to: NoteRef,
+    pub from: NoteRef,
+    pub from_title: String,
+    pub range: Utf16Range,
+    pub context: String,
+    /// The title, file stem or alias that matched.
+    pub name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LibraryEdit {
     pub note: NoteRef,
@@ -183,7 +197,7 @@ impl From<NoteInput> for cl::NoteInput {
 }
 impl From<cl::NoteInfo> for NoteInfo {
     fn from(n: cl::NoteInfo) -> Self {
-        NoteInfo { note: n.note.into(), title: n.title, tags: n.tags, word_count: n.word_count, modified: n.modified }
+        NoteInfo { note: n.note.into(), title: n.title, tags: n.tags, aliases: n.aliases, word_count: n.word_count, modified: n.modified }
     }
 }
 impl From<cl::NoteMeta> for NoteMeta {
@@ -248,6 +262,30 @@ impl From<cl::Match> for QuickOpenMatch {
 impl From<cl::Backlink> for NoteBacklink {
     fn from(b: cl::Backlink) -> Self {
         NoteBacklink { from: b.from.into(), from_title: b.from_title, range: b.range.into(), context: b.context }
+    }
+}
+impl From<cl::Mention> for NoteMention {
+    fn from(m: cl::Mention) -> Self {
+        NoteMention {
+            to: m.to.into(),
+            from: m.from.into(),
+            from_title: m.from_title,
+            range: m.range.into(),
+            context: m.context,
+            name: m.name,
+        }
+    }
+}
+impl From<NoteMention> for cl::Mention {
+    fn from(m: NoteMention) -> Self {
+        cl::Mention {
+            to: m.to.into(),
+            from: m.from.into(),
+            from_title: m.from_title,
+            range: m.range.into(),
+            context: m.context,
+            name: m.name,
+        }
     }
 }
 impl From<cl::Edit> for LibraryEdit {
@@ -341,6 +379,16 @@ impl Library {
 
     pub fn backlinks(&self, note: NoteRef) -> Vec<NoteBacklink> {
         self.with(|l| l.backlinks(&note.into()).into_iter().map(Into::into).collect())
+    }
+
+    /// The notes that name `note` (by title, file stem or alias) without linking it.
+    pub fn mentions(&self, note: NoteRef) -> Vec<NoteMention> {
+        self.with(|l| l.mentions(&note.into()).into_iter().map(Into::into).collect())
+    }
+
+    /// The edit that wraps a mention in a wikilink; `None` when the text has changed since.
+    pub fn link_mention_edit(&self, mention: NoteMention) -> Option<LibraryEdit> {
+        self.with(|l| l.link_mention_edit(&mention.into()).map(Into::into))
     }
 
     pub fn rename_targets(&self, old_title: String, new_title: String) -> Vec<LibraryEdit> {

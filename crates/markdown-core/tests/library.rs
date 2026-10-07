@@ -1181,3 +1181,285 @@ fn five_thousand_notes_fifty_megabytes() {
     assert!(upsert < 5.0, "upsert took {upsert:.2} ms");
     assert!(worst < 20.0, "search took {worst:.2} ms");
 }
+
+// ----- unlinked mentions ----------------------------------------------------------------------------
+
+/// What the mentions of `target` in these notes say: (mentioning path, matched text), in the order given.
+fn mention_view(notes: &[(&str, &str)], target: &str) -> Vec<(String, String)> {
+    let lib = lib_of(notes);
+    lib.mentions(&r("main", target))
+        .into_iter()
+        .map(|m| {
+            let text = notes.iter().find(|(p, _)| *p == m.from.path).unwrap().1;
+            (m.from.path.clone(), slice_units(text, ENC, m.range))
+        })
+        .collect()
+}
+
+fn pair(a: &str, b: &str) -> (String, String) {
+    (a.to_owned(), b.to_owned())
+}
+
+#[test]
+fn aliases_are_read_from_front_matter_in_each_list_form() {
+    let lib = lib_of(&[
+        ("A.md", "---\naliases: [Alpha, \"The A\", 'Aye']\n---\n"),
+        ("B.md", "---\nalias: Bee, Bea\n---\n"),
+        ("C.md", "---\ntitle: x\naliases:\n  - Sea\n  - \"See Note\"\n---\n"),
+        ("D.md", "---\naliases: >\n  folded\n---\n"),
+        ("E.md", "aliases: [not, front matter]\n"),
+        ("F.md", "---\nAliases: [Eff]\ntags: [t]\n---\n"),
+    ]);
+    let aliases = |p: &str| lib.note(&r("main", p)).unwrap().info.aliases;
+    assert_eq!(aliases("A.md"), ["Alpha", "The A", "Aye"]);
+    assert_eq!(aliases("B.md"), ["Bee", "Bea"]);
+    assert_eq!(aliases("C.md"), ["Sea", "See Note"]);
+    assert!(aliases("D.md").is_empty());
+    assert!(aliases("E.md").is_empty());
+    assert_eq!(aliases("F.md"), ["Eff"]);
+    // The notes list carries them too, and the tags stay apart.
+    let listed = lib.notes(&Filter::default(), Sort::NameAscending);
+    assert_eq!(listed[0].aliases, ["Alpha", "The A", "Aye"]);
+    assert_eq!(lib.note(&r("main", "F.md")).unwrap().info.tags, ["t"]);
+}
+
+#[test]
+fn a_note_is_mentioned_by_its_title_its_stem_and_its_aliases() {
+    let notes = [
+        ("proj-x.md", "---\naliases: [Codename Ten]\n---\n# Project Ten\n"),
+        ("a.md", "We talk about Project Ten today.\n"),
+        ("b.md", "The file proj-x is the one.\n"),
+        ("c.md", "Ask about codename ten on Monday.\n"),
+        ("d.md", "Nothing here.\n"),
+    ];
+    assert_eq!(
+        mention_view(&notes, "proj-x.md"),
+        [pair("a.md", "Project Ten"), pair("b.md", "proj-x"), pair("c.md", "codename ten")]
+    );
+    let lib = lib_of(&notes);
+    let names: Vec<String> = lib.mentions(&r("main", "proj-x.md")).into_iter().map(|m| m.name).collect();
+    assert_eq!(names, ["Project Ten", "proj-x", "Codename Ten"]);
+    let m = &lib.mentions(&r("main", "proj-x.md"))[0];
+    assert_eq!((m.from_title.as_str(), m.context.as_str(), m.to.path.as_str()), ("a", "We talk about Project Ten today.", "proj-x.md"));
+    assert_eq!(m.range, TextRange::new(14, 25));
+    // A note that is not there has none.
+    assert!(lib.mentions(&r("main", "nope.md")).is_empty());
+}
+
+#[test]
+fn mentions_ignore_case_and_unicode_form_and_follow_the_encoding() {
+    let nfc = "Caf\u{e9} Noir";
+    let nfd = "Cafe\u{301} Noir";
+    // NFC name, NFD text, and the reverse; any case.
+    for (name, text) in [(nfc, nfd), (nfd, nfc), (nfc, "CAF\u{c9} NOIR"), (nfd, "caf\u{e9} noir")] {
+        let notes = [("Target.md", &format!("# {name}\n")), ("From.md", &format!("Meet at {text}, ok.\n"))];
+        let notes: Vec<(&str, &str)> = notes.iter().map(|(p, t)| (*p, t.as_str())).collect();
+        assert_eq!(mention_view(&notes, "Target.md"), [pair("From.md", text)], "{name:?} in {text:?}");
+    }
+    // A file name in one form, text in the other.
+    let notes = [(format!("{nfd}.md"), "x".to_owned()), ("From.md".to_owned(), format!("a {nfc} b"))];
+    let notes: Vec<(&str, &str)> = notes.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+    let lib = lib_of(&notes);
+    let found = lib.mentions(&r("main", &format!("{nfd}.md")));
+    assert_eq!(found.len(), 1);
+    // The range is in UTF-16 units of the mentioning note's text.
+    assert_eq!(found[0].range, TextRange::new(2, 11));
+    // Wide characters before the match move it in UTF-16 but not in UTF-32.
+    let text = "\u{1F389}\u{1F389} Alpha beta";
+    let mut lib32 = Library::new(OffsetEncoding::Utf32);
+    lib32.add_root("main", "/n");
+    lib32.upsert(&r("main", "Alpha beta.md"), "x", 0).unwrap();
+    lib32.upsert(&r("main", "From.md"), text, 0).unwrap();
+    assert_eq!(lib32.mentions(&r("main", "Alpha beta.md"))[0].range, TextRange::new(3, 13));
+    let lib16 = lib_of(&[("Alpha beta.md", "x"), ("From.md", text)]);
+    assert_eq!(lib16.mentions(&r("main", "Alpha beta.md"))[0].range, TextRange::new(5, 15));
+}
+
+#[test]
+fn a_mention_is_a_whole_word() {
+    let notes = [
+        ("caf\u{e9}.md", "x"),
+        ("a.md", "Les caf\u{e9}s sont l\u{e0}.\n"),
+        ("b.md", "decaf\u{e9} and caf\u{e9}2 and caf\u{e9}_x\n"),
+        ("c.md", "Cafe\u{301} counts: (caf\u{e9}) and caf\u{e9}.\n"),
+        ("d.md", "caf\u{e9}\u{301} has one more accent\n"),
+    ];
+    assert_eq!(mention_view(&notes, "caf\u{e9}.md"), [pair("b.md", "caf\u{e9}"), pair("c.md", "Cafe\u{301}"), pair("c.md", "caf\u{e9}"), pair("c.md", "caf\u{e9}")]);
+}
+
+#[test]
+fn a_name_is_not_mentioned_where_something_already_is() {
+    let doc = "# Heading\n\
+        Plain: Zeta.\n\
+        Code `Zeta` span.\n\
+        A [link to Zeta](http://x.y/Zeta) and [Zeta][ref] and ![Zeta](img.png) here.\n\
+        A [[Zeta]] and [[Other|Zeta]] and [[Zeta|shown]] wikilink, <http://x.y/Zeta> and http://x.y/Zeta bare.\n\
+        <span title=\"Zeta\">Zeta</span> inline html (its text is prose, its attributes are not), and #Zeta a tag.\n\
+        \n\
+        ```\n\
+        Zeta fenced\n\
+        ```\n\
+        \n\
+        \x20   Zeta indented\n\
+        \n\
+        <div>\nZeta block\n</div>\n\
+        \n\
+        [ref]: http://x.y/ref\n\
+        Zeta again.\n";
+    let front = format!("---\ntitle: Zeta\nnote: Zeta\n---\n{doc}");
+    let notes = [("Zeta.md", "x"), ("From.md", &front)];
+    let found = mention_view(&notes, "Zeta.md");
+    // Only the plain ones: the second line, the text between inline tags, and the last.
+    assert_eq!(found, [pair("From.md", "Zeta"), pair("From.md", "Zeta"), pair("From.md", "Zeta")]);
+    let lib = lib_of(&notes);
+    let contexts: Vec<String> = lib.mentions(&r("main", "Zeta.md")).into_iter().map(|m| m.context).collect();
+    assert_eq!(contexts[0], "Plain: Zeta.");
+    assert!(contexts[1].starts_with("<span"));
+    assert_eq!(contexts[2], "Zeta again.");
+    // A name that spans the edge of a link is not a mention either.
+    let notes = [("Foo Bar.md", "x"), ("From.md", "see Foo [Bar](u) and [Foo](u) Bar\n")];
+    assert!(mention_view(&notes, "Foo Bar.md").is_empty());
+}
+
+#[test]
+fn a_note_does_not_mention_itself_and_a_linked_note_lists_only_the_unlinked_places() {
+    let notes = [
+        ("Target.md", "Target is about Target, and Target again.\n"),
+        ("From.md", "[[Target]] first, then Target in prose, and `Target` in code.\n"),
+        ("Other.md", "[[Target|the target]] and nothing else\n"),
+    ];
+    assert_eq!(mention_view(&notes, "Target.md"), [pair("From.md", "Target")]);
+    let lib = lib_of(&notes);
+    assert_eq!(lib.backlinks(&r("main", "Target.md")).len(), 2);
+    // Its own title and stem do not make the note a mention of itself even in a note of the same name elsewhere.
+    assert!(lib.mentions(&r("main", "Other.md")).is_empty());
+}
+
+#[test]
+fn names_shorter_than_two_characters_never_match() {
+    let notes = [("A.md", "x"), ("\u{65E5}.md", "x"), ("From.md", "A a A \u{65E5} and \u{65E5}\u{672C}\n"), ("\u{65E5}\u{672C}.md", "x")];
+    assert!(mention_view(&notes, "A.md").is_empty());
+    assert!(mention_view(&notes, "\u{65E5}.md").is_empty());
+    // Two ideographs are a name, found inside a run of them (they have no spaces to bound a word).
+    assert_eq!(mention_view(&notes, "\u{65E5}\u{672C}.md"), [pair("From.md", "\u{65E5}\u{672C}")]);
+    // A one-character title or alias is dropped, the stem still counts.
+    let notes = [("Longer.md", "---\naliases: [x, Ab]\n---\n# Q\n"), ("From.md", "x and q and Ab and Longer\n")];
+    assert_eq!(mention_view(&notes, "Longer.md"), [pair("From.md", "Ab"), pair("From.md", "Longer")]);
+}
+
+#[test]
+fn overlapping_names_keep_the_longest_and_one_text_is_one_mention() {
+    let notes = [
+        ("Plan.md", "---\naliases: [Plan Alpha]\n---\n# Plan Alpha Roadmap\n"),
+        ("From.md", "The Plan Alpha Roadmap, the Plan Alpha, the plan.\n"),
+    ];
+    assert_eq!(mention_view(&notes, "Plan.md"), [pair("From.md", "Plan Alpha Roadmap"), pair("From.md", "Plan Alpha"), pair("From.md", "plan")]);
+    // A title that equals the stem is one name.
+    let lib = lib_of(&[("Same.md", "# Same\n"), ("From.md", "same\n")]);
+    assert_eq!(lib.mentions(&r("main", "Same.md")).len(), 1);
+}
+
+#[test]
+fn mentions_are_sorted_by_root_then_path_then_position_and_follow_the_texts() {
+    let mut lib = Library::new(ENC);
+    lib.add_root("main", "/n");
+    lib.add_root("work", "/w");
+    lib.upsert(&r("main", "Topic.md"), "x", 0).unwrap();
+    lib.upsert(&r("work", "A.md"), "topic", 0).unwrap();
+    lib.upsert(&r("main", "Z.md"), "topic, TOPIC", 0).unwrap();
+    lib.upsert(&r("main", "B.md"), "a topic", 0).unwrap();
+    let order: Vec<(String, String, u32)> = lib.mentions(&r("main", "Topic.md")).into_iter().map(|m| (m.from.root, m.from.path, m.range.start)).collect();
+    assert_eq!(
+        order,
+        [("main".to_owned(), "B.md".to_owned(), 2), ("main".to_owned(), "Z.md".to_owned(), 0), ("main".to_owned(), "Z.md".to_owned(), 7), ("work".to_owned(), "A.md".to_owned(), 0)]
+    );
+    // Editing a note changes what it mentions at once; removing it takes its mentions away.
+    lib.upsert(&r("main", "B.md"), "a [[Topic]]", 1).unwrap();
+    lib.remove(&r("work", "A.md"));
+    assert_eq!(lib.mentions(&r("main", "Topic.md")).len(), 2);
+}
+
+/// The text of `from` after the edit `lib` gives for the first mention of `to` in it.
+fn linked(notes: &[(&str, &str)], to: &str, from: &str) -> Option<String> {
+    let lib = lib_of(notes);
+    let m = lib.mentions(&r("main", to)).into_iter().find(|m| m.from.path == from)?;
+    let e = lib.link_mention_edit(&m)?;
+    assert_eq!((e.note.path.as_str(), e.range), (from, m.range));
+    let text = notes.iter().find(|(p, _)| *p == from).unwrap().1;
+    let (s, t) = (utf16_to_byte(text, e.range.start), utf16_to_byte(text, e.range.end));
+    let mut out = text.to_owned();
+    out.replace_range(s..t, &e.replacement);
+    Some(out)
+}
+
+#[test]
+fn linking_a_mention_wraps_the_stem_or_labels_the_title() {
+    let notes = [
+        ("Ideas.md", "---\naliases: [Brainstorm]\n---\n# Big Ideas\n"),
+        ("a.md", "My ideas are here.\n"),
+        ("b.md", "The big ideas list.\n"),
+        ("c.md", "Our BRAINSTORM notes.\n"),
+        ("d.md", "Our IDEAS, written in capitals.\n"),
+    ];
+    // The stem in any case keeps the written case.
+    assert_eq!(linked(&notes, "Ideas.md", "a.md").unwrap(), "My [[ideas]] are here.\n");
+    assert_eq!(linked(&notes, "Ideas.md", "d.md").unwrap(), "Our [[IDEAS]], written in capitals.\n");
+    // The title and an alias are labels over the stem.
+    assert_eq!(linked(&notes, "Ideas.md", "b.md").unwrap(), "The [[Ideas|big ideas]] list.\n");
+    assert_eq!(linked(&notes, "Ideas.md", "c.md").unwrap(), "Our [[Ideas|BRAINSTORM]] notes.\n");
+    // Applied, the mention is a backlink and no longer a mention.
+    let mut lib = lib_of(&notes);
+    let m = lib.mentions(&r("main", "Ideas.md")).into_iter().find(|m| m.from.path == "b.md").unwrap();
+    let e = lib.link_mention_edit(&m).unwrap();
+    lib.upsert(&r("main", "b.md"), &linked(&notes, "Ideas.md", "b.md").unwrap(), 9).unwrap();
+    assert_eq!(e.replacement, "[[Ideas|big ideas]]");
+    assert!(lib.backlinks(&r("main", "Ideas.md")).iter().any(|b| b.from.path == "b.md"));
+    assert!(lib.mentions(&r("main", "Ideas.md")).iter().all(|m| m.from.path != "b.md"));
+}
+
+#[test]
+fn linking_a_mention_uses_a_folder_when_another_note_has_the_stem() {
+    let notes = [
+        ("Work/Plan.md", "x"),
+        ("Home/Plan.md", "x"),
+        ("Home/Note.md", "The plan is simple.\n"),
+        ("Other/Note.md", "The plan is simple.\n"),
+        ("Loose.md", "The plan is simple.\n"),
+    ];
+    let lib = lib_of(&notes);
+    // From the same folder the bare stem is nearest; from elsewhere, where the nearest is the other one, the folder is named.
+    let edit = |to: &str, from: &str| {
+        let m = lib.mentions(&r("main", to)).into_iter().find(|m| m.from.path == from).unwrap();
+        lib.link_mention_edit(&m).unwrap().replacement
+    };
+    assert_eq!(edit("Home/Plan.md", "Home/Note.md"), "[[plan]]");
+    assert_eq!(edit("Work/Plan.md", "Home/Note.md"), "[[Work/Plan|plan]]");
+    // Whatever it names, the link lands on the mentioned note.
+    for (to, from) in [("Home/Plan.md", "Other/Note.md"), ("Work/Plan.md", "Other/Note.md"), ("Work/Plan.md", "Loose.md"), ("Home/Plan.md", "Loose.md")] {
+        let e = edit(to, from);
+        let target = e.trim_start_matches("[[").split(['|', ']']).next().unwrap();
+        assert_eq!(lib.resolve_wikilink(&r("main", from), target), Some(r("main", to)), "{e} from {from}");
+    }
+}
+
+#[test]
+fn linking_a_stale_mention_gives_nothing() {
+    let mut lib = lib_of(&[("Topic.md", "x"), ("From.md", "see Topic here\n"), ("Other.md", "unrelated\n")]);
+    let m = lib.mentions(&r("main", "Topic.md")).remove(0);
+    assert!(lib.link_mention_edit(&m).is_some());
+    // The text moved, so the range holds something else.
+    lib.upsert(&r("main", "From.md"), "now see Topic here\n", 1).unwrap();
+    assert!(lib.link_mention_edit(&m).is_none());
+    // The text is the same word again, but in a link or code now.
+    lib.upsert(&r("main", "From.md"), "see `Topic` here\n", 2).unwrap();
+    assert!(lib.link_mention_edit(&m).is_none());
+    lib.upsert(&r("main", "From.md"), "see Topical here\n", 3).unwrap();
+    assert!(lib.link_mention_edit(&m).is_none());
+    // The mentioning or the mentioned note is gone, or the mention is made up.
+    lib.upsert(&r("main", "From.md"), "see Topic here\n", 4).unwrap();
+    assert!(lib.link_mention_edit(&m).is_some());
+    let wrong_name = Mention { name: "Other".to_owned(), ..m.clone() };
+    assert!(lib.link_mention_edit(&wrong_name).is_none());
+    lib.remove(&r("main", "Topic.md"));
+    assert!(lib.link_mention_edit(&m).is_none());
+}

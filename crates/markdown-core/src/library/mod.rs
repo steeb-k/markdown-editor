@@ -18,6 +18,8 @@
 //!   the longest shared folder prefix, then the shallowest), then a file stem over a title,
 //!   then root order and path, so the result never depends on the order notes were added in.
 //!   `[[#Heading]]` is the note itself. Nothing found is `None`: the shell offers to create it.
+//! * **Mentions** are the unlinked counterpart of backlinks: the places other notes write a note's title, file
+//!   stem or an alias (front matter `aliases:`) as plain text. See [`Library::mentions`].
 //! * **Tags** are lower case without the `#`; front matter and inline tags are merged.
 //!   `a/b` is under `a`: a filter for `a` takes `a/b` too.
 //! * **Search** is a small inverted index of case-folded words (every ideographic character
@@ -100,6 +102,8 @@ pub struct NoteInfo {
     pub title: String,
     /// Front matter and inline tags together, sorted, without duplicates.
     pub tags: Vec<String>,
+    /// The front matter `aliases:`, as written.
+    pub aliases: Vec<String>,
     pub word_count: u32,
     pub modified: i64,
 }
@@ -201,7 +205,23 @@ pub struct Backlink {
     pub context: String,
 }
 
-/// A change the shell applies when a note is renamed.
+/// A place where a note is named in another note's text without being linked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mention {
+    /// The note that is mentioned.
+    pub to: NoteRef,
+    /// The note whose text holds the mention.
+    pub from: NoteRef,
+    pub from_title: String,
+    /// The matched text in the mentioning note.
+    pub range: TextRange,
+    /// The sentence the match is in.
+    pub context: String,
+    /// The name that matched, as written (the title, the file stem or an alias).
+    pub name: String,
+}
+
+/// A change the shell applies when a note is renamed, or a mention is linked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edit {
     pub note: NoteRef,
@@ -238,6 +258,7 @@ struct Heading {
 struct Parsed {
     h1: Option<String>,
     front_tags: Vec<String>,
+    aliases: Vec<String>,
     inline_tags: Vec<String>,
     links: Vec<Link>,
     headings: Vec<Heading>,
@@ -245,6 +266,8 @@ struct Parsed {
     terms: Vec<(String, u32)>,
     /// Where the text after the front matter starts.
     body_start: usize,
+    /// Byte ranges no mention is taken from (links, images, code, HTML, front matter, tags), sorted and disjoint.
+    skip: Vec<(usize, usize)>,
 }
 
 #[derive(Debug, Clone)]
@@ -257,6 +280,7 @@ struct Note {
     stem: String,
     h1: Option<String>,
     front_tags: Vec<String>,
+    aliases: Vec<String>,
     inline_tags: Vec<String>,
     tags: Vec<String>,
     links: Vec<Link>,
@@ -265,6 +289,7 @@ struct Note {
     headings: Vec<Heading>,
     words: u32,
     body_start: usize,
+    skip: Vec<(usize, usize)>,
     /// Terms in the inverted index.
     term_ids: Vec<u32>,
     /// Case-folded stem and title: what links name the note by.
@@ -338,16 +363,36 @@ fn parse(text: &str) -> Parsed {
     let a = analyze(text);
     let mut h1 = None;
     let mut front_tags = Vec::new();
+    let mut aliases = Vec::new();
+    let mut skip: Vec<(usize, usize)> = Vec::new();
     let mut inline_tags = Vec::new();
     let mut links = Vec::new();
     let mut headings = Vec::new();
     let mut body_start = 0;
     let spans = &a.spans;
     for (i, sp) in spans.iter().enumerate() {
+        // Where a name is not a mention: whatever already links, shows an image, is code, HTML, a tag or front matter.
+        // Wikilinks, bare URLs and autolinks are spans of their own, so the same walk finds them; the destination and title
+        // of a link reference definition (which has no `Link` around it) is a `LinkDestination`.
+        if matches!(
+            sp.kind,
+            SpanKind::Link
+                | SpanKind::LinkDestination
+                | SpanKind::Image
+                | SpanKind::Wikilink
+                | SpanKind::InlineCode
+                | SpanKind::CodeBlock
+                | SpanKind::Html
+                | SpanKind::FrontMatter
+                | SpanKind::Tag
+        ) {
+            skip.push((sp.start, sp.end));
+        }
         match sp.kind {
             SpanKind::FrontMatter if sp.start == 0 => {
                 body_start = sp.end;
                 front_tags = text::front_matter_tags(&text[sp.start..sp.end]);
+                aliases = text::front_matter_aliases(&text[sp.start..sp.end]);
             }
             SpanKind::Heading { level } => {
                 // The text, minus the markup nested in it (`#`, emphasis marks, backticks).
@@ -390,10 +435,19 @@ fn parse(text: &str) -> Parsed {
     front_tags.dedup();
     inline_tags.sort();
     inline_tags.dedup();
+    skip.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(skip.len());
+    for (s, e) in skip {
+        match merged.last_mut() {
+            Some(last) if s <= last.1 => last.1 = last.1.max(e),
+            _ => merged.push((s, e)),
+        }
+    }
+    let skip = merged;
     let (terms, _) = text::term_counts(text);
     let mut words = 0u32;
     text::for_each_word(&text[body_start..], |_, _, _| words = words.saturating_add(1));
-    Parsed { h1, front_tags, inline_tags, links, headings, words, terms, body_start }
+    Parsed { h1, front_tags, aliases, inline_tags, links, headings, words, terms, body_start, skip }
 }
 
 impl Library {
@@ -544,7 +598,7 @@ impl Library {
             },
         };
         let stem = stem_of(&r.path).to_owned();
-        let Parsed { h1, front_tags, inline_tags, links, headings, words, terms, body_start } = parsed;
+        let Parsed { h1, front_tags, aliases, inline_tags, links, headings, words, terms, body_start, skip } = parsed;
         let mut tags: Vec<String> = front_tags.iter().chain(&inline_tags).cloned().collect();
         tags.sort();
         tags.dedup();
@@ -564,6 +618,7 @@ impl Library {
             stem,
             h1,
             front_tags,
+            aliases,
             inline_tags,
             tags,
             links,
@@ -571,6 +626,7 @@ impl Library {
             headings,
             words,
             body_start,
+            skip,
             term_ids,
             names,
         };
@@ -714,7 +770,14 @@ impl Library {
     }
 
     fn info(&self, n: &Note) -> NoteInfo {
-        NoteInfo { note: n.r.clone(), title: n.title().to_owned(), tags: n.tags.clone(), word_count: n.words, modified: n.modified }
+        NoteInfo {
+            note: n.r.clone(),
+            title: n.title().to_owned(),
+            tags: n.tags.clone(),
+            aliases: n.aliases.clone(),
+            word_count: n.words,
+            modified: n.modified,
+        }
     }
 
     fn range(&self, n: &Note, start: usize, end: usize) -> TextRange {
@@ -934,6 +997,115 @@ impl Library {
         out
     }
 
+    /// The places other notes name `note` without linking it: its title, its file stem or one of its aliases (names
+    /// shorter than two characters are dropped) written as a whole word, case-insensitively and whatever the Unicode
+    /// normalisation form (`text::key`), outside links, images, wikilinks, bare URLs, code, HTML, tags and front
+    /// matter. A note does not mention itself. Where two names match overlapping text (a title and an alias that
+    /// starts it) the longer one is kept. Sorted by mentioning note, then position.
+    ///
+    /// How: the inverted index narrows the notes to those with a word starting like a name's first word. Each of
+    /// those is folded once into a copy of its text (every cluster of a letter and its combining marks normalised and
+    /// lower-cased, with a table from the copy's offsets back to the text's), the names are found in the copy with a
+    /// plain substring search, and each hit that falls on cluster boundaries is checked again with `text::key` on the
+    /// original slice, so a hit is never wrong; the fold only decides what is looked at. The cost is the index lookup
+    /// per name plus a linear pass over the text of the candidate notes, and nothing for the other notes.
+    pub fn mentions(&self, note: &NoteRef) -> Vec<Mention> {
+        let Some(&slot) = self.by_ref.get(note) else { return Vec::new() };
+        let names = mention_names(self.slot(slot));
+        let mut wanted: HashMap<u32, Vec<usize>> = HashMap::new();
+        for (i, name) in names.iter().enumerate() {
+            let Some(first) = text::words_of(&name.key).into_iter().next() else { continue };
+            if first.len() > text::MAX_TERM_BYTES {
+                // Too long to be in the index: every note is a candidate.
+                for (s, _) in self.live() {
+                    wanted.entry(s).or_default().push(i);
+                }
+            } else {
+                for f in self.index.query(&[first], self.notes.len()) {
+                    wanted.entry(f.slot).or_default().push(i);
+                }
+            }
+        }
+        wanted.remove(&slot);
+        let mut from: Vec<u32> = wanted.keys().copied().collect();
+        from.sort_by_key(|&s| (self.root_rank(&self.slot(s).r.root), self.slot(s).r.path.clone()));
+        let mut out = Vec::new();
+        for s in from {
+            let n = self.slot(s);
+            let folded = text::Folded::new(&n.text);
+            let mut found: Vec<(usize, usize, usize)> = Vec::new();
+            for &i in &wanted[&s] {
+                folded.find_all(&n.text, &names[i].fold, &names[i].key, |start, end| {
+                    if text::at_word_boundaries(&n.text, start, end) && !text::overlaps(&n.skip, start, end) {
+                        found.push((start, end, i));
+                    }
+                });
+            }
+            found.sort_by_key(|&(start, end, _)| (start, Reverse(end)));
+            let mut upto = 0;
+            for (start, end, i) in found {
+                if start < upto {
+                    continue;
+                }
+                upto = end;
+                out.push(Mention {
+                    to: note.clone(),
+                    from: n.r.clone(),
+                    from_title: n.title().to_owned(),
+                    range: self.range(n, start, end),
+                    context: text::context(&n.text, start, end, 240),
+                    name: names[i].written.clone(),
+                });
+            }
+        }
+        out
+    }
+
+    /// The edit that links a mention: its matched text becomes `[[matched]]` when that is the note's file stem in
+    /// other letters, else `[[stem|matched]]`, so the text shown does not change. The target is the shortest form
+    /// (stem, `folder/stem`, ...) that resolves to the mentioned note from the mentioning one, which matters when
+    /// another note of the same stem is nearer. `None` when the mention is out of date (the text at its range is not
+    /// the name any more, or sits in a link or code now), when no way of writing the link reaches the note, or when
+    /// the text cannot be a link label or follows a backslash.
+    pub fn link_mention_edit(&self, mention: &Mention) -> Option<Edit> {
+        let &from_slot = self.by_ref.get(&mention.from)?;
+        let &to_slot = self.by_ref.get(&mention.to)?;
+        if from_slot == to_slot {
+            return None;
+        }
+        let (n, target) = (self.slot(from_slot), self.slot(to_slot));
+        let wanted = text::key(&mention.name);
+        if !mention_names(target).iter().any(|name| name.key == wanted) {
+            return None;
+        }
+        let (start, exact_start) = n.map.locate_unit(&n.text, mention.range.start as usize)?;
+        let (end, exact_end) = n.map.locate_unit(&n.text, mention.range.end as usize)?;
+        if !exact_start || !exact_end || start >= end {
+            return None;
+        }
+        let matched = &n.text[start..end];
+        if text::key(matched) != wanted
+            || !text::at_word_boundaries(&n.text, start, end)
+            || text::overlaps(&n.skip, start, end)
+            || matched.contains(['[', ']', '|', '\n', '\r'])
+            // Next to these the brackets would not make a wikilink: an escaped `[`, a link that takes `[[a]]` as its text
+            // (`[[a]](url)`, `[[a]][ref]`) or is taken for a reference by it.
+            || n.text[..start].ends_with(['\\', ']'])
+            || n.text[end..].starts_with(['(', '['])
+        {
+            return None;
+        }
+        // The stem, then the path from the nearest folder outwards, until a form resolves to the note.
+        let path = without_extension(&target.r.path);
+        let starts = path.rmatch_indices('/').map(|(i, _)| i + 1).chain(std::iter::once(0));
+        let form = starts
+            .map(|i| &path[i..])
+            .filter(|f| !f.contains(['[', ']', '|', '#']))
+            .find(|f| self.resolve(&n.r, &link_key(f)) == Some(to_slot))?;
+        let replacement = if text::key(matched) == text::key(form) { format!("[[{matched}]]") } else { format!("[[{form}|{matched}]]") };
+        Some(Edit { note: n.r.clone(), range: mention.range, replacement })
+    }
+
     /// The edits that make every link naming `old_title` (or a file stem, written without its
     /// extension) name `new_title` instead: the link's target is replaced, a label and a
     /// heading stay. Sorted by note, then position.
@@ -994,6 +1166,30 @@ impl Library {
         }
         out
     }
+}
+
+/// What a note is looked for by: the name as written, its key and its folded form (see `text::Folded`).
+struct MentionName {
+    written: String,
+    key: String,
+    fold: String,
+}
+
+/// The names that count as mentioning a note: its title, file stem and aliases, without those of fewer than two
+/// characters, those that cannot be a link label, and repeats by key.
+fn mention_names(n: &Note) -> Vec<MentionName> {
+    let mut out: Vec<MentionName> = Vec::new();
+    for name in [n.title(), n.stem.as_str()].into_iter().chain(n.aliases.iter().map(String::as_str)) {
+        let name = name.trim();
+        if name.chars().count() < 2 || name.contains(['[', ']', '|', '\n', '\r']) {
+            continue;
+        }
+        let key = text::key(name);
+        if !out.iter().any(|m| m.key == key) {
+            out.push(MentionName { written: name.to_owned(), key, fold: text::Folded::new(name).text });
+        }
+    }
+    out
 }
 
 /// Matched character indices of `s` as runs of ranges in the encoding's unit.

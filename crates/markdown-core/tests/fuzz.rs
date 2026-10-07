@@ -424,7 +424,7 @@ fn root(second: bool) -> &'static str {
 fn lib_snapshot(lib: &Library) -> String {
     let mut out = String::new();
     for info in lib.notes(&library::Filter::default(), library::Sort::NameAscending) {
-        out.push_str(&format!("{:?}\n  backlinks {:?}\n", lib.note(&info.note).unwrap(), lib.backlinks(&info.note)));
+        out.push_str(&format!("{:?}\n  backlinks {:?}\n  mentions {:?}\n", lib.note(&info.note).unwrap(), lib.backlinks(&info.note), lib.mentions(&info.note)));
     }
     out.push_str(&format!("tags {:?}\n", lib.tags()));
     for q in ["a", "e", "\u{e9}", "x", "ss", "word", ""] {
@@ -551,6 +551,123 @@ proptest! {
             prop_assert_eq!(hits(&a), hits(&b), "search {}", q);
         }
     }
+}
+
+// ----- unlinked mentions --------------------------------------------------------------------------------
+
+const MENTION_NOTES: [&str; 5] = ["Alpha.md", "x/Beta Gamma.md", "y/Alpha.md", "Caf\u{e9}.md", "Other.md"];
+const MENTION_ALIASES: [&str; 5] = ["aliases: [Ay, \"Beta\"]\n", "aliases:\n  - Gamma Ray\n", "alias: cafe\u{301}\n", "aliases: [al]\n", ""];
+
+fn mention_text() -> impl Strategy<Value = String> {
+    (
+        0usize..5,
+        prop::collection::vec(
+            prop::sample::select(vec![
+                "Alpha ", "alpha ", "ALPHA", "Alphabet ", "(alpha)", "Beta Gamma ", "beta gamma, ", "Beta ", "Gamma Ray ", "Ay ", "caf\u{e9} ", "Cafe\u{301} ", "caf\u{e9}s ", "Cafe\u{301}\u{301} ",
+                "[Alpha](u) ", "[x][r] ", "![Alpha](i) ", "[[Alpha]] ", "[[Alpha|beta gamma]] ", "`alpha` ", "<b>alpha</b> ", "<i x=\"Alpha\">", "http://a.b/Alpha ", "<http://a.b/Alpha> ", "#alpha ",
+                "\n", "\n\n", "\n```\nAlpha\n```\n", "\n    Alpha\n", "# Alpha\n", "> alpha ", "- alpha ", "| alpha | Beta Gamma |\n", "[r]: /u\n", "*alpha* ", "\\", "[", "]", "[[", "\u{1F389} ", "\u{3b1}\u{3c2} ",
+            ]),
+            0..14,
+        )
+        .prop_map(|v| v.concat()),
+    )
+        .prop_map(|(front, body)| if front < 4 { format!("---\n{}---\n{body}", MENTION_ALIASES[front]) } else { body })
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(cases(300)))]
+
+    /// Every mention is a real, whole-word occurrence of a name of the mentioned note, outside what the parse calls a link,
+    /// code, HTML, front matter or a tag; linking it (when the edit exists) turns it into a backlink and nothing else.
+    #[test]
+    fn mentions_are_real_occurrences_and_linking_them_makes_backlinks(
+        texts in prop::collection::vec((0usize..5, any::<bool>(), mention_text()), 1..7),
+        enc_i in 0usize..3,
+    ) {
+        use unicode_normalization::UnicodeNormalization;
+        let enc = ENCODINGS[enc_i];
+        let fold = |s: &str| s.nfc().collect::<String>().to_lowercase();
+        let mut lib = Library::new(enc);
+        lib.add_root("r", "/r");
+        lib.add_root("s", "/s");
+        let mut model: BTreeMap<NoteRef, String> = BTreeMap::new();
+        for (i, (p, second, text)) in texts.iter().enumerate() {
+            let n = NoteRef::new(root(*second), MENTION_NOTES[*p]);
+            lib.upsert(&n, text, i as i64).unwrap();
+            model.insert(n, text.clone());
+        }
+        for to in model.keys() {
+            let meta = lib.note(to).unwrap();
+            let mut names: Vec<String> = vec![meta.info.title.clone()];
+            names.push(to.path.rsplit('/').next().unwrap().trim_end_matches(".md").to_owned());
+            names.extend(meta.info.aliases.iter().cloned());
+            let found = lib.mentions(to);
+            let mut last: Option<(usize, usize, u32)> = None;
+            for m in &found {
+                prop_assert!(m.from != *to && m.to == *to);
+                let text = &model[&m.from];
+                let matched = slice_units(text, enc, m.range);
+                prop_assert!(!matched.is_empty());
+                prop_assert!(names.iter().any(|n| fold(n) == fold(&matched)), "{matched:?} is not a name of {to:?}: {names:?}");
+                prop_assert!(names.iter().any(|n| *n == m.name && fold(n) == fold(&matched)), "name {:?}", m.name);
+                // Whole word: the units around the range are not letters or marks.
+                let before = slice_units(text, enc, TextRange::new(0, m.range.start));
+                let after = slice_units(text, enc, TextRange::new(m.range.end, u32::MAX));
+                let word = |c: char| c.is_alphanumeric() || ('\u{300}'..='\u{36f}').contains(&c);
+                prop_assert!(!before.chars().next_back().is_some_and(word), "before {matched:?} in {text:?}");
+                prop_assert!(!after.chars().next().is_some_and(word), "after {matched:?} in {text:?}");
+                // Outside everything the parse reports as a link or code.
+                let doc = Document::new(text, enc);
+                for sp in doc.spans(None) {
+                    if matches!(sp.kind, SpanKind::Link | SpanKind::LinkDestination | SpanKind::Image | SpanKind::Wikilink | SpanKind::InlineCode | SpanKind::CodeBlock | SpanKind::Html | SpanKind::FrontMatter | SpanKind::Tag) {
+                        prop_assert!(m.range.end <= sp.range.start || sp.range.end <= m.range.start, "{matched:?} in {:?} {:?} of {text:?}", sp.kind, sp.range);
+                    }
+                }
+                // Sorted, and not overlapping.
+                if let Some((_, _, end)) = last.filter(|l| l.0 == root_rank(&m.from.root) && l.1 == path_id(&m.from)) {
+                    prop_assert!(end <= m.range.start, "overlap in {text:?}");
+                }
+                last = Some((root_rank(&m.from.root), path_id(&m.from), m.range.end));
+                // Linking: the mention becomes a backlink and the others stay.
+                let Some(edit) = lib.link_mention_edit(m) else { continue };
+                prop_assert_eq!((&edit.note, edit.range), (&m.from, m.range));
+                let (s, e) = (units_to_byte(text, enc, edit.range.start), units_to_byte(text, enc, edit.range.end));
+                let mut changed = text.clone();
+                changed.replace_range(s..e, &edit.replacement);
+                let mut after_lib = lib.clone();
+                after_lib.upsert(&m.from, &changed, 99).unwrap();
+                let count = |l: &Library| l.backlinks(to).iter().filter(|b| b.from == m.from).count();
+                prop_assert_eq!(count(&after_lib), count(&lib) + 1, "{} in {:?}", edit.replacement, text);
+                let left = |l: &Library| l.mentions(to).iter().filter(|x| x.from == m.from).count();
+                // (Not exactly one fewer: the link can turn the text after it into a tag, `ALPHA#alpha`.)
+                prop_assert!(left(&after_lib) < left(&lib), "{} in {:?}", edit.replacement, text);
+            }
+        }
+    }
+}
+
+fn root_rank(root: &str) -> usize {
+    usize::from(root == "s")
+}
+
+fn path_id(n: &NoteRef) -> usize {
+    MENTION_NOTES.iter().position(|p| *p == n.path).unwrap()
+}
+
+/// The byte offset of a unit offset in `text`.
+fn units_to_byte(text: &str, enc: OffsetEncoding, unit: u32) -> usize {
+    let mut u = 0;
+    for (i, c) in text.char_indices() {
+        if u >= unit {
+            return i;
+        }
+        u += match enc {
+            OffsetEncoding::Utf8 => c.len_utf8() as u32,
+            OffsetEncoding::Utf16 => c.len_utf16() as u32,
+            OffsetEncoding::Utf32 => 1,
+        };
+    }
+    text.len()
 }
 
 // ----- the history against a model, and damaged indexes ----------------------------------------------------
