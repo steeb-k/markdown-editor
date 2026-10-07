@@ -419,6 +419,14 @@ public final class LibraryController {
         }
     }
 
+    /// The front matter edits that make the notes naming template `old` name `new` (a template was renamed).
+    public func templateEdits(from old: String, to new: String, completion: @escaping ([LibraryEdit]) -> Void) {
+        submit { [self] in
+            let r = library.templateEdits(old: old, new: new)
+            deliver { completion(r) }
+        }
+    }
+
     /// Every note in a folder (or below it), for the links a folder's rename would change.
     public func notes(under folder: String, root: String, completion: @escaping ([NoteRef]) -> Void) {
         submit { [self] in

@@ -26,6 +26,10 @@ The body text sets the voice of a document. A paragraph holds *emphasis*, **stro
 2. Another one
 3. And a third
 
++ A loose list item, its text in a paragraph of its own
+
++ And another, set apart by a blank line
+
 - [ ] A task still to do
 - [x] A task done
 

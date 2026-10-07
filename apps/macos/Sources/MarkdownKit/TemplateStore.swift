@@ -113,14 +113,24 @@ public final class TemplateStore: ObservableObject {
     /// The built-in templates, then the user's.
     public var builtIn: [InstalledTemplate] { templates.filter(\.isBuiltIn) }
     public var yours: [InstalledTemplate] { templates.filter { !$0.isBuiltIn } }
-    /// The templates a document can use, in name order (a template that does not parse is not one of them).
+    /// The templates a document can use, in name order, one for each name: where one of yours and a built-in share a name,
+    /// yours is the template (a template that does not parse is not one of them).
     public var usable: [InstalledTemplate] {
-        templates.filter(\.isUsable).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        var seen = Set<String>()
+        return (yours + builtIn).filter { $0.isUsable && seen.insert(Self.key($0.name)).inserted }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// What a name means: yours before the built-ins, so a template of yours takes the place of a built-in of the same name.
     public func template(named name: String) -> InstalledTemplate? {
         let key = Self.key(name)
-        return templates.first { $0.isUsable && Self.key($0.name) == key }
+        let named = { (t: InstalledTemplate) in t.isUsable && Self.key(t.name) == key }
+        return yours.first(where: named) ?? builtIn.first(where: named)
+    }
+
+    /// Whether a built-in is out of use because one of yours has its name (the Templates window still lists it).
+    public func isHidden(_ t: InstalledTemplate) -> Bool {
+        t.isBuiltIn && yours.contains { $0.isUsable && Self.key($0.name) == Self.key(t.name) }
     }
 
     static func key(_ name: String) -> String {
@@ -185,7 +195,13 @@ public final class TemplateStore: ObservableObject {
         var meta = TemplateMeta(name: folderName, author: "", version: "", description: "")
         var spec = emptySpec
         var problem: String?
+        let hasTOML = fm.fileExists(atPath: toml.path)
         do {
+            // A package with only a stylesheet is a template of no structured styles; the first save writes the TOML.
+            if !hasTOML {
+                if customCSS == nil { problem = "no template.toml or custom.css" }
+                return InstalledTemplate(url: url, name: folderName, meta: meta, spec: spec, isBuiltIn: builtIn, customCSS: customCSS, error: problem, modified: modified)
+            }
             let text = try String(contentsOf: toml, encoding: .utf8)
             let parsed = try parseTemplate(toml: text)
             meta = parsed.meta
@@ -236,11 +252,12 @@ public final class TemplateStore: ObservableObject {
 
     // MARK: names
 
-    /// `base` when no template has that name, else `base 2`, `base 3`, … (case-insensitively unique).
+    /// `base` when none of yours has that name, else `base 2`, `base 3`, … (case-insensitively unique). A built-in's name
+    /// is free: a template of yours by that name takes its place.
     public func uniqueName(_ base: String = "Untitled") -> String {
         let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
         let root = trimmed.isEmpty ? "Untitled" : trimmed
-        let taken = Set(templates.map { Self.key($0.name) })
+        let taken = Set(yours.map { Self.key($0.name) })
         if !taken.contains(Self.key(root)) { return root }
         var n = 2
         while taken.contains(Self.key("\(root) \(n)")) { n += 1 }

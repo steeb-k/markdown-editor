@@ -184,7 +184,9 @@ struct TemplatesInspector: View {
             if editor.isReadOnly, let t = editor.working {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                    Text("\u{201C}\(t.name)\u{201D} is built in.").foregroundStyle(.secondary)
+                    Text("\u{201C}\(t.name)\u{201D} is built in\(editor.store.isHidden(t) ? " and hidden by your template of the same name" : "").")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("Duplicate to edit") { editor.duplicateSelected() }
                 }

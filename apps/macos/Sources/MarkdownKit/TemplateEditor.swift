@@ -119,6 +119,8 @@ final class TemplateEditor: ObservableObject {
 
     let store: TemplateStore
     let undoManager = UndoManager()
+    /// The window the questions of a rename are asked on (a sheet).
+    weak var hostWindow: NSWindow?
 
     @Published private(set) var templates: [InstalledTemplate] = []
     @Published private(set) var selectedID: URL?
@@ -416,7 +418,18 @@ final class TemplateEditor: ObservableObject {
 
     func rename(to name: String) {
         guard let t = working, !t.isBuiltIn else { return }
-        perform { try store.rename(templates.first { $0.id == t.id } ?? t, to: name) }
+        let old = t.name
+        var renamed: String?
+        perform {
+            let r = try store.rename(templates.first { $0.id == t.id } ?? t, to: name)
+            renamed = r.name
+            return r
+        }
+        guard let new = renamed, TemplateStore.key(new) != TemplateStore.key(old) else { return }
+        // The setting follows without asking; the documents are asked about.
+        let settings = Settings.shared
+        if TemplateStore.key(settings.defaultTemplate) == TemplateStore.key(old) { settings.defaultTemplate = new }
+        offerTemplateUpdate(from: old, to: new)
     }
 
     func deleteSelected() {
@@ -425,6 +438,11 @@ final class TemplateEditor: ObservableObject {
         saveTimer?.invalidate()
         perform {
             try store.delete(t)
+            // A setting that named it goes back to Default, unless a built-in of that name is there again to be meant.
+            let settings = Settings.shared
+            if TemplateStore.key(settings.defaultTemplate) == TemplateStore.key(t.name), store.template(named: t.name) == nil {
+                settings.defaultTemplate = TemplateStore.defaultName
+            }
             return store.builtInDefault
         }
     }

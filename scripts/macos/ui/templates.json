@@ -88,6 +88,8 @@
  {"assert": {"templates": {"element": "code_block", "outline": "pre"}}},
  {"templates": {"clickSample": "link"}},
  {"assert": {"templates": {"element": "link", "outline": "a"}}},
+ {"templates": {"clickSample": "block_quote"}},
+ {"assert": {"templates": {"element": "block_quote", "outline": "blockquote"}}},
  {"snapshot": "templates-click", "window": "templates"},
 
  {"templates": {"element": "h1"}},

@@ -16,6 +16,9 @@ private struct TemplateRow: View {
         HStack(spacing: 6) {
             if template.isBuiltIn {
                 Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary).help("Built in: duplicate it to edit")
+                if editor.store.isHidden(template) {
+                    Image(systemName: "eye.slash").font(.caption).foregroundStyle(.secondary).help("Hidden by your template of the same name")
+                }
             } else if !template.isUsable {
                 Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange).help(template.error ?? "")
             }
@@ -152,6 +155,7 @@ public final class TemplatesWindowController: NSWindowController, NSWindowDelega
         window.setFrameAutosaveName("MarkdownTemplates")
         super.init(window: window)
         window.delegate = self
+        editor.hostWindow = window
         let host = NSHostingController(rootView: TemplatesRoot(editor: editor, sample: sample, actions: self))
         // The hosting controller sizes the window by its content's ideal size; the saved frame and the minimum are ours.
         host.sizingOptions = [.minSize]

@@ -13,6 +13,8 @@ public enum LinkUpdateAnswer { case update, leave, cancel }
 /// through the hooks.
 public enum WorkspacePrompts {
     nonisolated(unsafe) public static var linkUpdateOverride: ((String) -> LinkUpdateAnswer)?
+    /// Answers the question of a template rename (true: update the documents), with the question as asked.
+    nonisolated(unsafe) public static var templateUpdateOverride: ((String) -> Bool)?
     nonisolated(unsafe) public static var trashEditedOverride: ((String) -> Bool)?
     nonisolated(unsafe) public static var reportOverride: ((Error) -> Void)?
 
@@ -27,6 +29,17 @@ public enum WorkspacePrompts {
         present(alert, on: window) { r in
             completion(r == .alertFirstButtonReturn ? .update : r == .alertThirdButtonReturn ? .leave : .cancel)
         }
+    }
+
+    /// Whether to change the documents that name a template that was renamed to `newName`.
+    static func confirmTemplateUpdate(question: String, newName: String, window: NSWindow?, completion: @escaping (Bool) -> Void) {
+        if let hook = templateUpdateOverride { completion(hook(question)); return }
+        let alert = NSAlert()
+        alert.messageText = question
+        alert.informativeText = "Their front matter will name \u{201C}\(newName)\u{201D} instead. Documents that are not open and not in your library stay as they are."
+        alert.addButton(withTitle: "Update Documents")
+        alert.addButton(withTitle: "Leave")
+        present(alert, on: window) { completion($0 == .alertFirstButtonReturn) }
     }
 
     static func confirmTrashEdited(_ names: String, window: NSWindow?, completion: @escaping (Bool) -> Void) {

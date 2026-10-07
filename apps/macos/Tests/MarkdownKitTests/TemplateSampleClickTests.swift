@@ -37,8 +37,9 @@ final class TemplateSampleClickTests: XCTestCase {
             ("#t-h2a", "link"), ("#t-h2", "h2"), ("#t-qc", "inline_code"), ("#t-tag", "tag"), ("#t-li", "bullet_list"),
             ("img", "image"), ("th", "table_header"), ("td", "table"), ("pre code span", "code_block"),
             ("li.task-list-item input", "task_item"), ("sup a", "link"), ("hr", "rule"), ("p em", "emphasis"),
-            // A quote's or a footnote's own text is a paragraph inside it: Paragraph, by the rule (see PLAN, the Opus pass).
-            ("blockquote p", "paragraph"), (".footnotes p", "paragraph"),
+            // A paragraph inside a quote, a loose list item or the footnotes names the container (PLAN 3.22); one in the body is a paragraph.
+            ("blockquote p", "block_quote"), ("li > p", "bullet_list"), (".footnotes p", "footnotes"), ("#t-qp", "block_quote"),
+            ("#md > p", "paragraph"),
         ]
         for (selector, kind) in want { XCTAssertEqual(sample.kind(atSelector: selector), kind, selector) }
         // What the page reports for a click is what the inspector shows, and the outline follows.

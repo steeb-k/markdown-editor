@@ -640,6 +640,21 @@ enum PreviewScripts {
           if (!m) continue;
           if (!best || best.el === m || best.el.contains(m)) best = { key, el: m };
         }
+        if (best && best.key === 'paragraph') {
+          // A paragraph inside a quote, a list item or the footnotes is that container's text: the click names the container
+          // (the footnotes first, whose paragraphs sit in a list of their own).
+          const sel = {};
+          for (const [key, selector] of clickKinds) sel[key] = selector;
+          const parent = best.el.parentElement;
+          if (parent && sel.footnotes && parent.closest(sel.footnotes)) return 'footnotes';
+          let near = null;
+          for (const key of ['block_quote', 'bullet_list', 'numbered_list']) {
+            if (!sel[key] || !parent) continue;
+            const m = parent.closest(sel[key]);
+            if (m && (!near || near.el.contains(m))) near = { key, el: m };
+          }
+          if (near) return near.key;
+        }
         return best ? best.key : null;
       }
 

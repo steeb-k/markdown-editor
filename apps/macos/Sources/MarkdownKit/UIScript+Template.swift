@@ -127,6 +127,10 @@ extension UIScriptRunner {
             clickSample(key, entry, then: done)
             return
         }
+        if let answer = t["answerUpdate"] as? String {
+            answerUpdate(answer, entry, then: done)
+            return
+        }
         if let name = t["renameInline"] as? String {
             renameInline(name, t, then: done)
             return
@@ -248,6 +252,46 @@ extension UIScriptRunner {
         }
     }
 
+    /// The sheet a rename asks on the Templates window ("Update N documents that use ..."), answered through its buttons:
+    /// `update` presses Update Documents, `leave` Leave, `none` checks that nothing is asked. `expect` is the question it
+    /// must read. After Update the step waits for the documents to be written (the sheet's completion is what writes).
+    private func answerUpdate(_ answer: String, _ entry: [String: Any], then done: @escaping () -> Void) {
+        var entry = entry
+        guard let w = templatesController.window else { record(["templates": entry, "error": "no window"], ok: false); done(); return }
+        if answer == "none" {
+            waitFor(1, { w.attachedSheet != nil }) { found in
+                self.record(["templates": entry], ok: !found)
+                done()
+            }
+            return
+        }
+        waitFor(5, { w.attachedSheet != nil }) { found in
+            guard found, let sheet = w.attachedSheet else {
+                self.record(["templates": entry, "error": "no question sheet"], ok: false)
+                done()
+                return
+            }
+            func all<V: NSView>(_ type: V.Type, in view: NSView?) -> [V] {
+                guard let view else { return [] }
+                return (view as? V).map { [$0] } ?? [] + view.subviews.flatMap { all(type, in: $0) }
+            }
+            let texts = all(NSTextField.self, in: sheet.contentView).map(\.stringValue).filter { !$0.isEmpty }
+            entry["sheet"] = texts
+            let wanted = answer == "update" ? "Update Documents" : "Leave"
+            let button = all(NSButton.self, in: sheet.contentView).first { $0.title == wanted }
+            var ok = button != nil
+            if let want = entry["expect"] as? String { ok = ok && texts.first == want }
+            button?.performClick(nil)
+            // The sheet ends, and the edits are written off the main thread: a moment for them before the next step.
+            self.waitFor(5, { w.attachedSheet == nil }) { closed in
+                later(answer == "update" ? 0.8 : 0.2) {
+                    self.record(["templates": entry], ok: ok && closed)
+                    done()
+                }
+            }
+        }
+    }
+
     /// The sidebar's rename in place, as a person does it: a real double-click (posted mouse events) on the selected
     /// template's row, the text in the field that comes up replaced by `name` typed as key events, then Return (or
     /// `"end": "escape"`, which keeps the old name). `expect` is the name the template must have afterwards (the typed one
@@ -332,6 +376,7 @@ extension UIScriptRunner {
         if let want = t["selected"] as? String { check("templates selected \(want)", editor.working?.name == want, editor.working?.name ?? "none") }
         if let want = t["element"] as? String { check("templates element \(want)", editor.targetKey == want, editor.targetKey) }
         if let want = t["list"] as? [String] { check("templates list \(want)", editor.templates.map(\.name) == want, "\(editor.templates.map(\.name))") }
+        if let want = t["defaultTemplate"] as? String { check("default template \(want)", Settings.shared.defaultTemplate == want, Settings.shared.defaultTemplate) }
         if let want = t["readOnly"] as? Bool { check("templates read-only \(want)", editor.isReadOnly == want) }
         if let want = t["theme"] as? String { check("templates sample theme \(want)", editor.sampleTheme.id == want, editor.sampleTheme.id) }
         if let want = t["outline"] as? String { let got = sample.pageOutline(); check("templates outline \(want)", got == want, got ?? "none") }

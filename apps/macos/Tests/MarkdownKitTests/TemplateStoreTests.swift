@@ -63,8 +63,86 @@ final class TemplateStoreTests: XCTestCase {
         XCTAssertEqual(try s.create().name, "Untitled")
         XCTAssertEqual(try s.create().name, "Untitled 2")
         XCTAssertEqual(try s.create("untitled").name, "untitled 3")
-        XCTAssertEqual(s.uniqueName("ACADEMIC"), "ACADEMIC 2", "a built-in's name is taken too")
+        XCTAssertEqual(s.uniqueName("ACADEMIC"), "ACADEMIC", "a built-in's name is free: yours takes its place")
         XCTAssertEqual(s.uniqueName("  "), "Untitled 4")
+    }
+
+    // MARK: yours overrides a built-in of the same name (PLAN 3.22)
+
+    func testYoursTakesTheNameOfABuiltIn() throws {
+        let s = store()
+        let builtInAcademic = try XCTUnwrap(s.template(named: "Academic"))
+        XCTAssertTrue(builtInAcademic.isBuiltIn)
+        let copy = try s.duplicate(builtInAcademic, as: "Academic")
+        XCTAssertEqual(copy.name, "Academic", "unique among yours only")
+        XCTAssertFalse(copy.isBuiltIn)
+        XCTAssertEqual(try XCTUnwrap(s.template(named: "academic")).url, copy.url, "yours is what the name means")
+        XCTAssertEqual(s.usable.filter { $0.name == "Academic" }.map(\.isBuiltIn), [false], "listed once, as yours")
+        XCTAssertEqual(s.usable.map(\.name), ["Academic", "Default", "Letter", "Typewriter"])
+        XCTAssertEqual(s.resolve(frontMatterName: "ACADEMIC", defaultName: "Default").template.url, copy.url)
+        // The built-in is still in the list, hidden.
+        XCTAssertEqual(s.builtIn.map(\.name).sorted(), ["Academic", "Default", "Letter", "Typewriter"])
+        XCTAssertTrue(s.isHidden(builtInAcademic))
+        XCTAssertFalse(s.isHidden(try XCTUnwrap(s.template(named: "Letter"))))
+        XCTAssertFalse(s.isHidden(copy))
+        // A second of yours by that name is still made unique.
+        XCTAssertEqual(try s.duplicate(builtInAcademic, as: "Academic").name, "Academic 2")
+        // Deleting yours brings the built-in back.
+        try s.delete(copy)
+        try s.delete(try XCTUnwrap(s.yours.first))
+        XCTAssertTrue(try XCTUnwrap(s.template(named: "Academic")).isBuiltIn)
+        XCTAssertFalse(s.isHidden(builtInAcademic))
+    }
+
+    func testRenamingToABuiltInsNameTakesItsPlaceAndTheBuiltInDefaultCanBeOverridden() throws {
+        let s = store()
+        let mine = try s.create("Mine")
+        let renamed = try s.rename(mine, to: "Default")
+        XCTAssertEqual(renamed.name, "Default")
+        XCTAssertFalse(try XCTUnwrap(s.template(named: "Default")).isBuiltIn)
+        XCTAssertTrue(s.builtInDefault.isBuiltIn, "the bundle's Default is still the built-in default")
+        XCTAssertEqual(s.usable.filter { $0.name == "Default" }.count, 1)
+    }
+
+    func testAnImportNamedLikeABuiltInTakesItsPlace() throws {
+        let s = store()
+        let css = tmp.appendingPathComponent("Letter.css")
+        try "body { color: red; }".write(to: css, atomically: true, encoding: .utf8)
+        let imported = try s.importTemplate(at: css)
+        XCTAssertEqual(imported.name, "Letter")
+        XCTAssertEqual(try XCTUnwrap(s.template(named: "Letter")).url, imported.url)
+    }
+
+    // MARK: packages with a stylesheet only
+
+    func testAPackageWithOnlyCustomCSSIsATemplateUnderItsFolderName() throws {
+        let package = yours.appendingPathComponent("Sheet Only.mdtemplate")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        try "body { color: blue; }".write(to: package.appendingPathComponent("custom.css"), atomically: true, encoding: .utf8)
+        let s = store()
+        let t = try XCTUnwrap(s.template(named: "Sheet Only"))
+        XCTAssertTrue(t.isUsable)
+        XCTAssertNil(t.error)
+        XCTAssertEqual(t.spec, TemplateStore.emptySpec)
+        XCTAssertEqual(t.customCSS, "body { color: blue; }")
+        XCTAssertTrue(s.usable.contains { $0.name == "Sheet Only" })
+        // Editable: the first save writes the TOML; the CSS is left.
+        try s.save(t)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: package.appendingPathComponent("template.toml").path))
+        XCTAssertEqual(try String(contentsOf: package.appendingPathComponent("custom.css"), encoding: .utf8), "body { color: blue; }")
+        // Exportable.
+        let out = tmp.appendingPathComponent("out.mdtemplate")
+        try s.export(t, to: out, zipped: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("custom.css").path))
+    }
+
+    func testAPackageWithNeitherFileIsUnreadable() throws {
+        let package = yours.appendingPathComponent("Empty.mdtemplate")
+        try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)
+        let s = store()
+        let t = try XCTUnwrap(s.yours.first { $0.name == "Empty" })
+        XCTAssertEqual(t.error, "no template.toml or custom.css")
+        XCTAssertNil(s.template(named: "Empty"))
     }
 
     func testDuplicateRenameSaveDeleteRoundTrip() throws {

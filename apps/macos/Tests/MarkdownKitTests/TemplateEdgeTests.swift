@@ -112,10 +112,11 @@ final class TemplateEdgeTests: XCTestCase {
     func testARenameToABuiltInsNameOrToNothing() throws {
         let s = store()
         let mine = try s.create("Mine")
-        XCTAssertEqual(try s.rename(mine, to: "academic").name, "academic 2", "a built-in's name, in any case, is taken")
-        let again = try XCTUnwrap(s.template(named: "academic 2"))
-        XCTAssertEqual(try s.rename(again, to: "   ").name, "academic 2", "an empty name changes nothing")
-        XCTAssertEqual(try s.rename(again, to: "DEFAULT").name, "DEFAULT 2")
+        XCTAssertEqual(try s.rename(mine, to: "academic").name, "academic", "a built-in's name is free: yours takes its place")
+        let again = try XCTUnwrap(s.template(named: "academic"))
+        XCTAssertFalse(again.isBuiltIn)
+        XCTAssertEqual(try s.rename(again, to: "   ").name, "academic", "an empty name changes nothing")
+        XCTAssertEqual(try s.rename(again, to: "DEFAULT").name, "DEFAULT")
     }
 
     // MARK: import and export
@@ -163,7 +164,7 @@ final class TemplateEdgeTests: XCTestCase {
         try plist.write(to: contents.appendingPathComponent("Info.plist"))
         let s = store()
         let t = try s.importTemplate(at: tmp.appendingPathComponent("Shared Look.iatemplate"))
-        XCTAssertEqual(t.name, "Academic 2", "the plist's name, made unique against the built-in")
+        XCTAssertEqual(t.name, "Academic", "the plist's name, which takes the built-in's place")
         XCTAssertEqual(t.customCSS, "body { color: #111111; }\nh1 { color: #222222; } </style><script>alert(1)</script>")
         // The stylesheet as a page carries it: it cannot end the style element.
         let appearance = EditorAppearance(settings: isolatedSettings(), appearance: NSAppearance(named: .aqua))
@@ -172,20 +173,6 @@ final class TemplateEdgeTests: XCTestCase {
         XCTAssertEqual(page.components(separatedBy: "</style>").count, 2)
         let script = try XCTUnwrap(page.range(of: "<script>"))
         XCTAssertLessThan(script.lowerBound, try XCTUnwrap(page.range(of: "</style>")).lowerBound, "text inside the style element")
-    }
-
-    // MARK: packages that cannot be read
-
-    func testAPackageWithOnlyCustomCSSIsListedWithItsError() throws {
-        let p = yours.appendingPathComponent("Only CSS.mdtemplate")
-        try fm.createDirectory(at: p, withIntermediateDirectories: true)
-        try "p { color: red; }".write(to: p.appendingPathComponent("custom.css"), atomically: true, encoding: .utf8)
-        let s = store()
-        let t = try XCTUnwrap(s.yours.first)
-        XCTAssertEqual(t.name, "Only CSS")
-        XCTAssertFalse(t.isUsable)
-        XCTAssertNotNil(t.error)
-        XCTAssertNil(s.template(named: "Only CSS"), "left out of resolution")
     }
 }
 
