@@ -1,0 +1,6 @@
+# The look the preview has without a template: no styles of its own.
+[template]
+name = "Default"
+author = "Markdown"
+version = "1"
+description = "The preview as it is."

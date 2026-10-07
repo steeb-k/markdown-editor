@@ -11,8 +11,10 @@ mod authorship;
 pub use authorship::*;
 mod history;
 mod library;
+mod template;
 pub use history::*;
 pub use library::*;
+pub use template::*;
 
 // ----- records and enums ------------------------------------------------------------------
 
@@ -1053,6 +1055,17 @@ impl Document {
     /// The known languages of the fenced blocks meeting `within`.
     pub fn code_languages(&self, within: Option<Utf16Range>) -> Vec<CodeLanguage> {
         self.with(|d| d.code_languages(within.map(Into::into)).into_iter().map(CodeLanguage::from).collect())
+    }
+
+    /// The `template:` named in the front matter block at the start of the text, if any.
+    pub fn front_matter_template(&self) -> Option<String> {
+        self.with(|d| d.front_matter_template())
+    }
+
+    /// The edit that makes `name` the front matter's `template:` (adding the line, or a block, as needed), or removes the
+    /// key and a block it leaves empty when `name` is `None` or blank. `None` when nothing would change.
+    pub fn set_front_matter_template(&self, name: Option<String>) -> Option<TextEdit> {
+        self.with(|d| d.set_front_matter_template(name.as_deref()).map(TextEdit::from))
     }
 
     /// The edit that makes the fenced block `block` `token`'s language, keeping its other attributes.

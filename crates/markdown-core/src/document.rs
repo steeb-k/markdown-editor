@@ -292,6 +292,24 @@ impl Document {
         crate::conceal::wikilink_at(self, offset)
     }
 
+    // ----- the template named in the front matter ---------------------------------------------
+
+    /// The `template:` of the YAML front matter block at the start of the text (as `title:` is read), if any.
+    pub fn front_matter_template(&self) -> Option<String> {
+        crate::front_matter::front_matter_template(&self.text)
+    }
+
+    /// The edit that makes `name` the front matter's `template:` (a line added or rewritten, a block made when there is
+    /// none), or removes the key and a block it leaves empty when `name` is `None` or blank. `None` when nothing would
+    /// change. The edit applies cleanly with [`Document::replace`]; its `selection` is the caret just after the new text,
+    /// which a shell that keeps its own selection ignores.
+    pub fn set_front_matter_template(&self, name: Option<&str>) -> Option<TextEdit> {
+        let (from, to, replacement) = crate::front_matter::set_front_matter_template(&self.text, name)?;
+        let start = self.to_unit(from);
+        let caret = start + self.units_in(&replacement);
+        Some(TextEdit { range: TextRange::new(start, self.to_unit(to)), replacement, selection: TextRange::new(caret, caret) })
+    }
+
     // ----- editing commands (implemented in `crate::edit`) --------------------------------
 
     /// Apply a formatting command to `selection`. `None` means nothing to do. The edit

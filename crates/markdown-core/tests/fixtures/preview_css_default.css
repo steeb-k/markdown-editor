@@ -1,0 +1,136 @@
+:root {
+  color-scheme: light;
+  --bg: #FBFBF9; --text: #26282B; --heading: #111214; --link: #1859C9;
+  --code-text: #5B3A8C; --code-bg: #F0F0EC; --quote: #585D66;
+  --rule: #D9DADD; --border: #C9CBCF; --markup: #A3A5A9; --selection: #CCE0FF;
+  --tok-comment: #5C6470; --tok-keyword: #7E3494; --tok-string: #24692E; --tok-number: #9A4213;
+  --tok-function: #1D5AAB; --tok-type: #76530A; --tok-tag: #A02350; --tok-variable: #92301F;
+  --chrome-top: 0px; --chrome-bottom: 0px;
+}
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size: 17px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%;
+  font-kerning: normal; text-rendering: optimizeLegibility;
+}
+.md {
+  box-sizing: content-box; max-width: 72ch; margin: 0 auto;
+  padding: calc(var(--chrome-top) + 52px) 28px calc(var(--chrome-bottom) + 96px);
+  overflow-wrap: break-word;
+}
+::selection { background: var(--selection); }
+.md > :first-child { margin-top: 0; }
+p, ul, ol, dl, pre, blockquote, table { margin: 0 0 1em; }
+h1, h2, h3, h4, h5, h6 {
+  color: var(--heading); font-weight: 700; line-height: 1.3; margin: 0.35em 0 0.6em;
+  scroll-margin-top: calc(var(--chrome-top) + 16px);
+}
+h1 { font-size: 1.7em; margin-top: 0.55em; }
+h2 { font-size: 1.4em; margin-top: 0.55em; }
+h3 { font-size: 1.2em; margin-top: 0.55em; }
+h4 { font-size: 1.1em; }
+h5, h6 { font-size: 1em; }
+h6 { color: var(--quote); }
+a { color: var(--link); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent); }
+a:hover { text-decoration-color: var(--link); }
+strong { font-weight: 700; }
+del { text-decoration-thickness: 1px; }
+ul { padding-left: 1.7em; }
+ol { padding-left: 2em; }
+li { margin: 0.15em 0; }
+li > p { margin-bottom: 0.5em; }
+li > ul, li > ol { margin: 0.15em 0 0.15em; }
+li.task-list-item { list-style: none; }
+li.task-list-item > input[type=checkbox], li.task-list-item > p:first-child > input[type=checkbox] {
+  margin: 0 0.5em 0.1em -1.35em; vertical-align: middle; accent-color: var(--link);
+}
+blockquote { padding: 0 0 0 1.1em; border-left: 3px solid var(--rule); color: var(--quote); }
+blockquote > :last-child { margin-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }
+img { max-width: 100%; height: auto; border-radius: 4px; }
+/* A picture that is a paragraph of its own has room around it, as in the editor (where it is a line of its own between blank ones); inside a sentence it stays in the line. */
+p.picture > img { display: block; margin: 1.8em 0; }
+/* Raw frames and forms are blocked by the page's policy and would leave an empty box. */
+iframe, form, object, embed { display: none; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+:not(pre) > code { background: var(--code-bg); color: var(--code-text); padding: 0.1em 0.35em; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 0.85em 1.1em; border-radius: 6px; overflow-x: auto; line-height: 1.4; tab-size: 4; }
+/* The language's name at the block's top right, as the editor's badge: a pill of the panel's colour in the quote colour, over the first line's end as in the editor, with no change to the block's padding. */
+pre[data-lang] { position: relative; }
+pre[data-lang]::before { content: attr(data-lang); position: absolute; top: 0.35em; right: 0.5em; padding: 0.05em 0.6em; border-radius: 0.9em;
+  background: var(--code-bg); color: var(--quote); font: 500 0.72rem/1.3 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  letter-spacing: 0; user-select: none; -webkit-user-select: none; pointer-events: none; }
+pre code { background: none; padding: 0; color: var(--text); font-size: 1em; }
+table { border-collapse: collapse; max-width: 100%; }
+th, td { border: 1px solid var(--border); padding: 0.4em 0.8em; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 700; text-align: left; }
+.footnotes { margin-top: 3em; padding-top: 0.5em; border-top: 1px solid var(--rule); font-size: 0.9em; color: var(--quote); }
+/* Wide enough for the number: it sits inside the column, where the editor's `[^n]:` does. */
+.footnotes ol { padding-left: 2.2em; }
+.footnotes li { scroll-margin-top: calc(var(--chrome-top) + 16px); }
+.footnotes p { margin-bottom: 0.4em; }
+.footnote-ref { font-size: 0.75em; line-height: 0; }
+.footnote-ref a, .footnote-backref { text-decoration: none; }
+.tag { color: var(--quote); }
+.unparsed { white-space: pre-wrap; }
+li.task-list-item input[type=checkbox] {
+  -webkit-appearance: none; appearance: none; box-sizing: border-box; width: 0.9em; height: 0.9em;
+  border: 1.5px solid var(--markup); border-radius: 0.22em; background: transparent; vertical-align: -0.08em; opacity: 1;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+li.task-list-item input[type=checkbox]:checked {
+  border-color: var(--link); background: var(--link) center / 80% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6.3l2.3 2.3 4.6-5.1' fill='none' stroke='white' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* code tokens */
+.md pre code .s-keyword, .md pre code .s-storage { color: var(--tok-keyword); }
+.md pre code .s-string { color: var(--tok-string); }
+.md pre code .s-constant { color: var(--tok-number); }
+.md pre code .s-entity.s-name { color: var(--tok-function); }
+.md pre code .s-entity.s-name.s-type, .md pre code .s-entity.s-name.s-class, .md pre code .s-entity.s-name.s-struct,
+.md pre code .s-entity.s-name.s-enum, .md pre code .s-entity.s-name.s-interface, .md pre code .s-entity.s-name.s-namespace,
+.md pre code .s-support.s-type, .md pre code .s-support.s-class, .md pre code .s-entity.s-other.s-inherited-class,
+.md pre code .s-entity.s-other.s-attribute-name { color: var(--tok-type); }
+.md pre code .s-entity.s-name.s-tag, .md pre code .s-markup.s-deleted, .md pre code .s-invalid { color: var(--tok-tag); }
+.md pre code .s-support.s-function, .md pre code .s-support.s-constant.s-property-name, .md pre code .s-meta.s-function-call .s-support { color: var(--tok-function); }
+.md pre code .s-variable.s-parameter, .md pre code .s-variable.s-other.s-readwrite, .md pre code .s-variable.s-other.s-member { color: var(--tok-variable); }
+.md pre code .s-variable.s-language, .md pre code .s-keyword.s-operator.s-word { color: var(--tok-keyword); }
+.md pre code .s-markup.s-inserted { color: var(--tok-string); }
+.md pre code .s-markup.s-heading, .md pre code .s-markup.s-bold { font-weight: 700; }
+.md pre code .s-markup.s-italic { font-style: italic; }
+.md pre code .s-comment, .md pre code .s-comment [class] { color: var(--tok-comment); }
+.md pre code .s-comment { font-style: italic; }
+@page { margin: 18mm 16mm; }
+@media print {
+  :root {
+    color-scheme: light;
+    --bg: #FFFFFF; --text: #000000; --heading: #000000; --link: #1A4F9C;
+    --code-text: #4A2F7A; --code-bg: #F3F3F1; --quote: #3A3F47; --rule: #BDBFC3; --border: #9A9CA1; --markup: #777777;
+    --selection: #CCE0FF; --chrome-top: 0px; --chrome-bottom: 0px;
+    --tok-comment: #5C6470; --tok-keyword: #7E3494; --tok-string: #24692E; --tok-number: #9A4213;
+    --tok-function: #1D5AAB; --tok-type: #76530A; --tok-tag: #A02350; --tok-variable: #92301F;
+  }
+  html, body { background: #FFFFFF !important; color: #000000 !important; }
+  body { font-size: 11pt; line-height: 1.5; }
+  .md { max-width: none; margin: 0; padding: 0; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
+  /* WebKit's print pagination ignores break-after: avoid. A heading carries an invisible tail as
+     tall as three lines of text (its own bottom padding), which it may not be split from, and
+     gives the room back below (a negative margin): a heading that would end a page moves to the
+     next one with the lines that follow it. (WebKit leaves an invisible, clipped copy of a block
+     it moves to the next page in the foot margin of the page before: the PDF's text layer holds
+     such a heading twice.) */
+  h1, h2, h3, h4, h5, h6 { padding-bottom: 50pt; margin-bottom: calc(0.4em - 50pt); }
+  p, li, blockquote { orphans: 3; widows: 3; }
+  pre, table, img, tr, blockquote, .footnotes li { break-inside: avoid; page-break-inside: avoid; }
+  pre { white-space: pre-wrap; word-break: break-word; overflow: visible; }
+  /* Printed code wraps, so a long first line would run under the language's label and be hidden there: the label
+     floats at the top right instead, and the first line wraps short of it. */
+  pre[data-lang]::before { position: static; float: right; margin: -0.5em -0.6em 0.3em 0.8em; }
+  thead { display: table-header-group; }
+  img { max-width: 100%; }
+  a { color: inherit; text-decoration: underline; }
+  a[href]::after { content: none !important; }
+  pre, code, th, :not(pre) > code { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .footnotes { break-before: avoid; }
+}

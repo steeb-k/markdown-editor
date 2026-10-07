@@ -51,15 +51,19 @@ impl Default for PreviewStyle {
     }
 }
 
-/// The preview's stylesheet for `theme` set in `typography`.
+/// The preview's stylesheet for `theme` set in `typography`: the Default template, that is a template with no styles of
+/// its own (see [`crate::template::template_css`], which adds a template's rules between the base and the print block).
 pub fn preview_css(theme: &Theme, typography: &Typography) -> String {
+    crate::template::template_css(&crate::template::TemplateSpec::default(), theme, typography)
+}
+
+/// The stylesheet up to the print block: the theme's variables, the document's elements, the task boxes and the code
+/// tokens. A template's rules go after it, so they win by the cascade.
+pub(crate) fn write_base(w: &mut String, theme: &Theme, typography: &Typography) {
     let c = &theme.colors;
     let t = typography;
     let pal = theme.syntax;
-    let light = syntax_palette(false);
     let mono_scale = if t.font_family == t.mono_family { 1.0 } else { 0.92 };
-    let mut css = String::with_capacity(9000);
-    let w = &mut css;
     let _ = write!(
         w,
         ":root {{
@@ -204,7 +208,11 @@ li.task-list-item input[type=checkbox]:checked {
 .md pre code .s-comment { font-style: italic; }
 ",
     );
-    // Print: light, whatever the theme; pagination rules.
+}
+
+/// The print block: light, whatever the theme, with the pagination rules. It comes last, after a template's rules.
+pub(crate) fn write_print(w: &mut String, t: &Typography) {
+    let light = syntax_palette(false);
     let _ = write!(
         w,
         "@page {{ margin: 18mm 16mm; }}
@@ -253,7 +261,6 @@ li.task-list-item input[type=checkbox]:checked {
         lh = fmt_num(t.line_height),
         keep = fmt_num((3.0 * t.line_height * PRINT_FONT_PT).round()),
     );
-    css
 }
 
 /// The body text size in print.
@@ -262,13 +269,13 @@ const PRINT_FONT_PT: f64 = 11.0;
 /// A `font-family` value as given (a stack of quoted names and generic families), minus anything
 /// that could end the declaration, the rule or the `<style>` element it is written into: an
 /// installed font's name is not trusted to be tidy.
-fn font_stack(stack: &str) -> String {
+pub(crate) fn font_stack(stack: &str) -> String {
     let clean: String = stack.chars().filter(|c| !matches!(c, '{' | '}' | ';' | '<' | '>' | '\\' | '@') && !c.is_control()).collect();
     if clean.trim().is_empty() { "sans-serif".to_owned() } else { clean }
 }
 
 /// A number as short CSS text: `17`, `1.5`, `0.92`.
-fn fmt_num(v: f64) -> String {
+pub(crate) fn fmt_num(v: f64) -> String {
     let s = format!("{v:.3}");
     s.trim_end_matches('0').trim_end_matches('.').to_owned()
 }

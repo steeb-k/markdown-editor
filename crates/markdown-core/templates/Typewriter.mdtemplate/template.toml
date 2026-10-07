@@ -1,0 +1,52 @@
+# Monospace throughout, generous leading, dashed rules, square corners.
+[template]
+name = "Typewriter"
+author = "Markdown"
+version = "1"
+description = "Monospace throughout, 1.6 leading, dashed rules, no rounded corners."
+
+[elements.body]
+font_family = "mono"
+line_height = 1.6
+
+[elements.h1]
+font_family = "mono"
+font_size = "1.5em"
+
+[elements.h2]
+font_family = "mono"
+font_size = "1.25em"
+
+[elements.h3]
+font_family = "mono"
+font_size = "1.1em"
+
+[elements.h4]
+font_family = "mono"
+
+[elements.h5]
+font_family = "mono"
+
+[elements.h6]
+font_family = "mono"
+
+[elements.paragraph]
+font_family = "mono"
+
+[elements.inline_code]
+radius = "0px"
+
+[elements.code_block]
+radius = "0px"
+
+[elements.image]
+radius = "0px"
+
+[elements.block_quote]
+border = { side = "left", style = "dashed", width = "2px", color = "theme:rule" }
+
+[elements.table]
+font_family = "mono"
+
+[elements.rule]
+border = { side = "top", style = "dashed", width = "1px", color = "theme:rule" }
