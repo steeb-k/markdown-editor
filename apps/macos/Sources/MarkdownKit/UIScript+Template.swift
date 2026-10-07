@@ -273,7 +273,8 @@ extension UIScriptRunner {
             }
             func all<V: NSView>(_ type: V.Type, in view: NSView?) -> [V] {
                 guard let view else { return [] }
-                return (view as? V).map { [$0] } ?? [] + view.subviews.flatMap { all(type, in: $0) }
+                // `??` binds looser than `+`: without the parentheses a matching view hides what is inside it.
+                return ((view as? V).map { [$0] } ?? []) + view.subviews.flatMap { all(type, in: $0) }
             }
             let texts = all(NSTextField.self, in: sheet.contentView).map(\.stringValue).filter { !$0.isEmpty }
             entry["sheet"] = texts
@@ -332,6 +333,9 @@ extension UIScriptRunner {
             self.waitFor(3, { (w.firstResponder as? NSTextView)?.isFieldEditor == true }) { editing in
                 entry["fieldEditing"] = editing
                 guard editing, let fieldEditor = w.firstResponder as? NSTextView else {
+                    // What the double-click met, for the log.
+                    entry["responder"] = w.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"
+                    entry["hit"] = w.contentView?.hitTest(p).map { String(describing: type(of: $0)) } ?? "nil"
                     self.record(["templates": entry, "error": "no field came up for the name"], ok: false)
                     done()
                     return
@@ -351,7 +355,10 @@ extension UIScriptRunner {
                 for c in name { key(String(c), c == " " ? 49 : 0) }
                 if escape { key("\u{1B}", 53) } else { key("\r", 36) }
                 let want = escape ? before : expected
-                self.waitFor(3, { editor.working?.name == want && (w.firstResponder as? NSTextView)?.isFieldEditor != true }) { renamed in
+                // The field editor resigns a render pass before the row takes its text field down; a double-click posted
+                // in between lands on the field, not the row, so the step ends once the field is gone too.
+                func fieldShown() -> Bool { Self.editableFields(in: table).contains { $0.window != nil } }
+                self.waitFor(3, { editor.working?.name == want && (w.firstResponder as? NSTextView)?.isFieldEditor != true && !fieldShown() }) { renamed in
                     entry["name"] = editor.working?.name ?? ""
                     entry["onDisk"] = editor.working.map { TemplateStore.readPackage($0.url, builtIn: false)?.name ?? "missing" } ?? "none"
                     self.record(["templates": entry], ok: renamed && entry["onDisk"] as? String == want)
@@ -359,6 +366,12 @@ extension UIScriptRunner {
                 }
             }
         }
+    }
+
+    /// The text fields a row's inline rename puts up (a row's label is not one).
+    nonisolated private static func editableFields(in view: NSView) -> [NSTextField] {
+        let own: [NSTextField] = (view as? NSTextField).flatMap { $0.isEditable ? [$0] : nil } ?? []
+        return own + view.subviews.flatMap(editableFields)
     }
 
     private static func firstTable(in view: NSView?) -> NSTableView? {

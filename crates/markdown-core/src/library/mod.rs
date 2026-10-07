@@ -1184,8 +1184,8 @@ impl Library {
 
     /// The edits that make every note whose front matter `template:` names `old` (compared by `text::key`, so
     /// case-insensitively) name `new` instead, for the shell to apply when a template is renamed: the value is
-    /// replaced the way `set_front_matter_template` writes it, so quoting and the line ending are kept. Sorted by
-    /// note.
+    /// replaced the way `set_front_matter_template` writes it (quoted only when the name needs it, with the file's line
+    /// ending). Sorted by note.
     pub fn template_edits(&self, old: &str, new: &str) -> Vec<Edit> {
         let old = text::key(old.trim());
         if old.is_empty() {
