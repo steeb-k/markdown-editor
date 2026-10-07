@@ -640,14 +640,18 @@ enum PreviewScripts {
           if (!m) continue;
           if (!best || best.el === m || best.el.contains(m)) best = { key, el: m };
         }
-        if (best && best.key === 'paragraph') {
-          // A paragraph inside a quote, a list item or the footnotes is that container's text: the click names the container
-          // (the footnotes first, whose paragraphs sit in a list of their own). A loose task item's text is in a paragraph
-          // too, and names the task item, as a tight one's does, not the list around it.
-          const sel = {};
-          for (const [key, selector] of clickKinds) sel[key] = selector;
+        if (!best) return null;
+        const sel = {};
+        for (const [key, selector] of clickKinds) sel[key] = selector;
+        // The footnotes are styled as one: their list, its items and their paragraphs are the section, and only an
+        // inline element in them (a link, the back link, code) is its own kind.
+        const inline = ['link', 'emphasis', 'strong', 'inline_code', 'image', 'tag'];
+        if (best.key !== 'footnotes' && !inline.includes(best.key) && sel.footnotes && best.el.parentElement
+            && best.el.parentElement.closest(sel.footnotes)) return 'footnotes';
+        if (best.key === 'paragraph') {
+          // A paragraph inside a quote or a list item is that container's text: the click names the container. A loose
+          // task item's text is in a paragraph too, and names the task item, as a tight one's does, not the list around it.
           const parent = best.el.parentElement;
-          if (parent && sel.footnotes && parent.closest(sel.footnotes)) return 'footnotes';
           let near = null;
           for (const key of ['block_quote', 'bullet_list', 'numbered_list', 'task_item']) {
             if (!sel[key] || !parent) continue;
@@ -656,7 +660,7 @@ enum PreviewScripts {
           }
           if (near) return near.key;
         }
-        return best ? best.key : null;
+        return best.key;
       }
 
       window.__md = {

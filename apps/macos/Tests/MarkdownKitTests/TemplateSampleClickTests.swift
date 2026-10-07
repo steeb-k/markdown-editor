@@ -69,7 +69,8 @@ final class TemplateSampleClickTests: XCTestCase {
             ("#t-qlp", "numbered_list"), ("#t-qla", "link"),
             ("#t-tp", "task_item"), ("#t-tp input", "task_item"),
             ("#t-qh", "h3"), ("#t-qpre", "code_block"), ("#t-q", "block_quote"),
-            (".footnotes ol", "numbered_list"), (".footnotes li", "numbered_list"), (".footnote-backref", "link"),
+            // The footnotes' list and items are the section; an inline element in them is its own kind.
+            (".footnotes ol", "footnotes"), (".footnotes li", "footnotes"), (".footnote-backref", "link"),
             (".footnotes", "footnotes"),
         ]
         for (selector, kind) in want { XCTAssertEqual(sample.kind(atSelector: selector), kind, selector) }
