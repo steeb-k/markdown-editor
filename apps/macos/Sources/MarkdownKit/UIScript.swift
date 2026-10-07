@@ -212,8 +212,10 @@ final class UIScriptRunner {
 
     private init(script: URL) {
         scriptURL = script
-        outDir = UIScriptRunner.outPath.map { URL(fileURLWithPath: $0) }
-            ?? script.deletingLastPathComponent().appendingPathComponent("out")
+        // Absolute: a relative `--ui-out` keeps its base in the URL, and a file URL written to a pasteboard from it
+        // (`dropFile` with `out:`) loses that base, so the drop found no file.
+        outDir = (UIScriptRunner.outPath.map { URL(fileURLWithPath: $0) }
+            ?? script.deletingLastPathComponent().appendingPathComponent("out")).absoluteURL.standardizedFileURL
     }
 
     var controller: EditorWindowController? { document?.windowControllers.first as? EditorWindowController }
