@@ -165,6 +165,9 @@ final class TemplateEditor: ObservableObject {
     var builtIn: [InstalledTemplate] { templates.filter(\.isBuiltIn) }
     var yours: [InstalledTemplate] { templates.filter { !$0.isBuiltIn } }
     var isReadOnly: Bool { working?.isBuiltIn ?? true }
+    /// Whether the inspector can change the selected template: not a built-in one, and not one whose `template.toml` could
+    /// not be read (it is shown with its error, to be mended in the file or deleted).
+    var isEditable: Bool { !isReadOnly && working?.isUsable == true }
 
     private func storeChanged() {
         guard !quiet else { return }
@@ -263,14 +266,25 @@ final class TemplateEditor: ObservableObject {
 
     /// Applies a change to the selected template (never a built-in one): the stylesheet, the write, the undo step.
     /// Changes with the same `key` close together are one step.
+    ///
+    /// A template whose `template.toml` could not be read is not changed: its styles here are empty, and the first save
+    /// would have replaced the file (perhaps one typo away from right) with them. A change that would not read back is
+    /// refused: the number fields take `nan`, `∞` and `1e400`, and a length written as `infem` makes the core refuse the
+    /// whole file the next time it is read.
     func change(key: String, actionName: String, _ body: (inout Template) -> Void) {
-        guard let current = working, !current.isBuiltIn else { return }
+        guard let current = working, !current.isBuiltIn, current.isUsable else { return }
         let before = current.template
         var after = before
         body(&after)
-        guard after != before else { return }
+        guard after != before, Self.readsBack(after) else { return }
         register(undoTo: before, key: key, actionName: actionName, id: current.id)
         assign(after)
+    }
+
+    /// Whether `template` is written and read back as itself (so every number in it is finite: NaN is not even equal to
+    /// itself).
+    static func readsBack(_ template: Template) -> Bool {
+        (try? parseTemplate(toml: templateToml(template: template))) == template
     }
 
     private func assign(_ template: Template) {

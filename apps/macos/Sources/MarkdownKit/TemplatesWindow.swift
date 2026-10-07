@@ -221,7 +221,7 @@ public final class TemplatesWindowController: NSWindowController, NSWindowDelega
     func importTemplate() {
         guard let window else { return }
         let panel = NSOpenPanel()
-        panel.message = "Choose a template (a .mdtemplate folder, a .iatemplate bundle or a .css file)."
+        panel.message = "Choose a template (a .mdtemplate folder, a .iatemplate bundle, a .css file, or a zip archive of one)."
         panel.prompt = "Import"
         panel.canChooseFiles = true
         panel.canChooseDirectories = true

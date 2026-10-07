@@ -65,7 +65,10 @@ struct SettingsView: View {
                 Text("Line width: \(s.lineWidth) characters")
             }
             HStack {
-                Picker("Default template", selection: Binding(get: { s.defaultTemplate }, set: { s.defaultTemplate = $0 })) {
+                // (The installed spelling: names match in any case, the popup's tags only exactly, so a default written
+                // `academic`, or one renamed in capitals only, showed nothing chosen.)
+                Picker("Default template", selection: Binding(get: { templates.template(named: s.defaultTemplate)?.name ?? s.defaultTemplate },
+                                                              set: { s.defaultTemplate = $0 })) {
                     // A default that is no longer installed stays in the list, so the picker does not lie about it.
                     if !templates.usable.contains(where: { TemplateStore.key($0.name) == TemplateStore.key(s.defaultTemplate) }) {
                         Text("\(s.defaultTemplate) (not installed)").tag(s.defaultTemplate)

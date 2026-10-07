@@ -127,6 +127,27 @@ extension UIScriptRunner {
             clickSample(key, entry, then: done)
             return
         }
+        if let name = t["renameInline"] as? String {
+            renameInline(name, t, then: done)
+            return
+        }
+        // Import and Export as their panels' completions do it (the panels themselves are the system's, out of process).
+        // A path starting `out:` is in the output folder.
+        func url(_ path: String) -> URL { path.hasPrefix("out:") ? outDir.appendingPathComponent(String(path.dropFirst(4))) : resolve(path) }
+        if let path = t["import"] as? String {
+            let count = editor.templates.count
+            editor.importTemplate(at: url(path))
+            entry["selected"] = editor.working?.name ?? ""
+            if let problem = editor.problem { entry["problem"] = problem; editor.problem = nil }
+            ok = ok && editor.templates.count == count + 1 && entry["problem"] == nil
+        }
+        if let path = t["export"] as? String {
+            let destination = url(path)
+            try? FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            editor.export(to: destination, zipped: t["zipped"] as? Bool == true)
+            if let problem = editor.problem { entry["problem"] = problem; editor.problem = nil }
+            ok = ok && entry["problem"] == nil && FileManager.default.fileExists(atPath: destination.path)
+        }
         // (A change of template or of a field reaches the page by the run loop: given a turn before the next step.)
         templatesController.sample.waitUntilSettled()
         record(["templates": entry], ok: ok)
@@ -148,7 +169,9 @@ extension UIScriptRunner {
         }
         let parsed: Template
         do { parsed = try parseTemplate(toml: lines.joined(separator: "\n") + "\n") } catch { return "\(error)" }
-        for key in cleared + values.keys.filter({ !(values[$0] is NSNull) }) {
+        // In key order: each field is an undo step of its own, and a script's undo assertions need the steps in an
+        // order that does not change from one process to the next (a dictionary's does).
+        for key in cleared + values.keys.filter({ !(values[$0] is NSNull) }).sorted() {
             let clearing = cleared.contains(key)
             if editor.isPage {
                 guard let field = TemplatePageField(rawValue: key) else { return "no page field \(key)" }
@@ -223,6 +246,82 @@ extension UIScriptRunner {
                 done()
             }
         }
+    }
+
+    /// The sidebar's rename in place, as a person does it: a real double-click (posted mouse events) on the selected
+    /// template's row, the text in the field that comes up replaced by `name` typed as key events, then Return (or
+    /// `"end": "escape"`, which keeps the old name). `expect` is the name the template must have afterwards (the typed one
+    /// by default; a clash is made unique, an empty name changes nothing).
+    private func renameInline(_ name: String, _ t: [String: Any], then done: @escaping () -> Void) {
+        var entry = t
+        let editor = templateEditor
+        guard let w = templatesController.window, let current = editor.working,
+              let table = Self.firstTable(in: w.contentView) else {
+            record(["templates": entry, "error": "no window, template or list"], ok: false)
+            done()
+            return
+        }
+        // The list's rows: the "Built in" header, the built-in ones, the "Yours" header, yours.
+        let rows = [nil] + editor.builtIn.map(\.id) + [nil] + editor.yours.map(\.id)
+        entry["rows"] = table.numberOfRows
+        guard table.numberOfRows == rows.count, let row = rows.firstIndex(of: current.id) else {
+            record(["templates": entry, "error": "the list does not have the expected rows"], ok: false)
+            done()
+            return
+        }
+        let r = table.rect(ofRow: row)
+        let p = table.convert(NSPoint(x: r.minX + min(60, r.width / 2), y: r.midY), to: nil)
+        let before = current.name
+        let expected = t["expect"] as? String ?? name
+        let escape = t["end"] as? String == "escape"
+        makeKey(w) {
+            for count in [1, 2] {
+                for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                    if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: count,
+                                                  pressure: type == .leftMouseUp ? 0 : 1) {
+                        NSApp.postEvent(e, atStart: false)
+                    }
+                }
+            }
+            // The field takes the keyboard (its field editor is the window's first responder).
+            self.waitFor(3, { (w.firstResponder as? NSTextView)?.isFieldEditor == true }) { editing in
+                entry["fieldEditing"] = editing
+                guard editing, let fieldEditor = w.firstResponder as? NSTextView else {
+                    self.record(["templates": entry, "error": "no field came up for the name"], ok: false)
+                    done()
+                    return
+                }
+                entry["fieldText"] = fieldEditor.string
+                fieldEditor.selectAll(nil)
+                func key(_ chars: String, _ code: UInt16) {
+                    for type in [NSEvent.EventType.keyDown, .keyUp] {
+                        if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                                    isARepeat: false, keyCode: code) {
+                            w.sendEvent(e)
+                        }
+                    }
+                }
+                if name.isEmpty { key("\u{7F}", 51) }
+                for c in name { key(String(c), c == " " ? 49 : 0) }
+                if escape { key("\u{1B}", 53) } else { key("\r", 36) }
+                let want = escape ? before : expected
+                self.waitFor(3, { editor.working?.name == want && (w.firstResponder as? NSTextView)?.isFieldEditor != true }) { renamed in
+                    entry["name"] = editor.working?.name ?? ""
+                    entry["onDisk"] = editor.working.map { TemplateStore.readPackage($0.url, builtIn: false)?.name ?? "missing" } ?? "none"
+                    self.record(["templates": entry], ok: renamed && entry["onDisk"] as? String == want)
+                    done()
+                }
+            }
+        }
+    }
+
+    private static func firstTable(in view: NSView?) -> NSTableView? {
+        guard let view else { return nil }
+        if let t = view as? NSTableView { return t }
+        for sub in view.subviews { if let t = firstTable(in: sub) { return t } }
+        return nil
     }
 
     func templatesAssertions(_ t: [String: Any]) {

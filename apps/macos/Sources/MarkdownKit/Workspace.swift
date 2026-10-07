@@ -46,6 +46,8 @@ public final class Workspace {
     public var pendingRename: String?
     /// A note to open the folders above when the library's snapshot has it.
     var pendingReveal: String?
+    /// The notes a Link of the Mentions section is being written into (see `linkMention`).
+    var linkingMentions: Set<NoteRef> = []
 
     private struct Observer {
         weak var owner: AnyObject?

@@ -251,14 +251,25 @@ extension Workspace {
     /// on the main thread once the library knows the new text; false when the edit was stale (the note
     /// changed since the mention was found) or did not fit.
     public func linkMention(_ mention: NoteMention, window: NSWindow?, done: @escaping (Bool) -> Void) {
+        // One link at a time per note: a second press (a double click) before the library has read the first one back
+        // would be worked out from the text it still has, and its range applied to the file the first had rewritten.
+        guard linkingMentions.insert(mention.from).inserted else { return }
         let texts = flushOpenDocuments()
         library.linkMentionEdit(mention) { [self] edit in
-            guard let edit else { done(false); return }
+            guard let edit else {
+                // Out of date (the panel refreshes), or a name the brackets cannot make a link of (`__init__`).
+                linkingMentions.remove(mention.from)
+                NSSound.beep()
+                done(false)
+                return
+            }
             applyEdits([edit], texts: texts, window: window, actionName: "Link Mention") { [self] touched in
                 // Open notes tell the library their new text now rather than after the push delay, so the
                 // refresh that follows sees the link.
                 flushOpenDocuments()
                 library.refresh(touched)
+                // Free for another link once the library has the new text (its queue runs in order).
+                library.linkMentionEdit(mention) { [self] _ in linkingMentions.remove(mention.from) }
                 done(true)
             }
         }
@@ -329,6 +340,9 @@ extension Workspace {
             var changed: [URL] = []
             var failedClosed: [String] = []
             for (url, list, was) in closed {
+                // A file that may not be written is left as it is: the write replaces the file through its folder,
+                // which a read-only file's own permissions do not stop.
+                guard FileManager.default.isWritableFile(atPath: url.path) else { failedClosed.append(url.lastPathComponent); continue }
                 do {
                     let data = try DocumentFileAccess.readCoordinated(url)
                     // A note that was open when the edits were worked out, on its unsaved text, and was closed

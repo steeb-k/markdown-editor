@@ -76,9 +76,7 @@ public final class TemplateStore: ObservableObject {
     /// the tests get a folder of their own: nothing but the real app touches the user's.
     static var defaultUserDirectory: URL {
         #if DEBUG || UI_SCRIPT
-        if UIScriptRunner.isRequested, let record = UIScriptRunner.recordURL {
-            return record.deletingLastPathComponent().appendingPathComponent("Templates", isDirectory: true)
-        }
+        if let scripted = UIScriptRunner.templatesDirectory { return scripted }
         #endif
         if NSClassFromString("XCTestCase") != nil {
             return FileManager.default.temporaryDirectory.appendingPathComponent("Markdown-test-templates-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
@@ -249,11 +247,31 @@ public final class TemplateStore: ObservableObject {
         return "\(root) \(n)"
     }
 
-    /// The package folder for a name: the name with the characters a file name cannot hold replaced.
-    private func packageURL(for name: String) -> URL {
-        let safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+    /// The longest folder name a package gets before its extension, in UTF-16 units of its decomposed form (Foundation
+    /// hands names to the file system decomposed, so `é` counts twice): a file name holds 255, and the extension, a " 99"
+    /// to tell it apart and room to spare must fit too.
+    static let maxFolderLength = 200
+
+    /// The package folder for a name: the name with the characters a file name cannot hold replaced, cut to fit, and
+    /// numbered when another package already has that folder (`current`, the template's own, does not count). Names are
+    /// unique but folders are not by themselves: `A/B` and `A-B` make the same one, and a package's folder need not
+    /// match the name in its `template.toml`, so writing to the folder a name gives could have replaced another template.
+    func packageURL(for name: String, current: URL? = nil) -> URL {
+        var safe = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            .filter { !$0.isNewline && !($0.unicodeScalars.first.map(CharacterSet.controlCharacters.contains) ?? false) }
             .trimmingCharacters(in: CharacterSet(charactersIn: ".").union(.whitespaces))
-        return userDirectory.appendingPathComponent("\(safe.isEmpty ? "Untitled" : safe).\(Self.packageExtension)", isDirectory: true)
+        while safe.decomposedStringWithCanonicalMapping.utf16.count > Self.maxFolderLength { safe.removeLast() }
+        safe = safe.trimmingCharacters(in: CharacterSet(charactersIn: ".").union(.whitespaces))
+        if safe.isEmpty { safe = "Untitled" }
+        let fm = FileManager.default
+        let own = current?.standardizedFileURL.path.lowercased()
+        func url(_ base: String) -> URL { userDirectory.appendingPathComponent("\(base).\(Self.packageExtension)", isDirectory: true) }
+        // The volume may be case-insensitive: a folder that differs only in capitals is the same folder.
+        func free(_ u: URL) -> Bool { u.standardizedFileURL.path.lowercased() == own || !fm.fileExists(atPath: u.path) }
+        if free(url(safe)) { return url(safe) }
+        var n = 2
+        while !free(url("\(safe) \(n)")) { n += 1 }
+        return url("\(safe) \(n)")
     }
 
     // MARK: writing (yours only)
@@ -306,13 +324,19 @@ public final class TemplateStore: ObservableObject {
         let name: String = caseOnly ? trimmed : uniqueName(trimmed)
         var meta = t.meta
         meta.name = name
-        let target = packageURL(for: name)
+        let target = packageURL(for: name, current: t.url)
         let fm = FileManager.default
         if target.standardizedFileURL != t.url.standardizedFileURL {
             // Through a temporary name: a rename of capitals only is the same file to a case-insensitive volume.
             let temp = userDirectory.appendingPathComponent(".rename-\(UUID().uuidString)")
             try fm.moveItem(at: t.url, to: temp)
-            try fm.moveItem(at: temp, to: target)
+            do {
+                try fm.moveItem(at: temp, to: target)
+            } catch {
+                // The temporary name is hidden and has no extension: left there, the template would vanish.
+                try? fm.moveItem(at: temp, to: t.url)
+                throw error
+            }
         }
         if t.isUsable { try write(Template(meta: meta, spec: t.spec), to: target) }
         reload()
@@ -341,6 +365,7 @@ public final class TemplateStore: ObservableObject {
     @discardableResult
     public func importTemplate(at url: URL) throws -> InstalledTemplate {
         let ext = url.pathExtension.lowercased()
+        if ext == "zip" { return try importZip(at: url) }
         if ext == Self.packageExtension {
             guard let source = Self.readPackage(url, builtIn: false) else { throw TemplateStoreError.nothingToImport(url.lastPathComponent) }
             return try duplicate(source, as: source.name)
@@ -368,10 +393,42 @@ public final class TemplateStore: ObservableObject {
         return template(named: unique)!
     }
 
+    /// A zip archive holding a template, as Export writes one (`Name.mdtemplate.zip`) or as one is passed around: unpacked
+    /// into a folder of its own, and the first package, bundle or stylesheet at its top imported as that would be.
+    private func importZip(at url: URL) throws -> InstalledTemplate {
+        let fm = FileManager.default
+        let unpacked = fm.temporaryDirectory.appendingPathComponent("template-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: unpacked) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-x", "-k", url.path, unpacked.path]
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        let items = ((try? fm.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)) ?? [])
+            .filter { !$0.lastPathComponent.hasPrefix(".") && $0.lastPathComponent != "__MACOSX" }
+        let kinds = [Self.packageExtension, "iatemplate", "css"]
+        guard process.terminationStatus == 0,
+              let inner = kinds.lazy.compactMap({ kind in items.first { $0.pathExtension.lowercased() == kind } }).first
+        else { throw TemplateStoreError.nothingToImport(url.lastPathComponent) }
+        return try importTemplate(at: inner)
+    }
+
     /// Copies the package to `destination` (a folder named `Name.mdtemplate`), or zips it there (`Name.mdtemplate.zip`).
     /// Whatever is at `destination` is replaced (the save panel has already asked).
     public func export(_ t: InstalledTemplate, to destination: URL, zipped: Bool) throws {
         let fm = FileManager.default
+        // Replacing the package with itself would remove it first and then have nothing to copy.
+        // (Through the parent: a path that does not exist yet keeps its symbolic links, `/var` for `/private/var`.)
+        func canonical(_ u: URL) -> String {
+            let u = u.standardizedFileURL
+            return u.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(u.lastPathComponent).path.lowercased()
+        }
+        let packagePath = canonical(t.url)
+        let destinationPath = canonical(destination)
+        if destinationPath == packagePath || destinationPath.hasPrefix(packagePath + "/") {
+            throw TemplateStoreError.exportFailed("a template cannot be exported into its own package.")
+        }
         if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
         if !zipped {
             try fm.copyItem(at: t.url, to: destination)

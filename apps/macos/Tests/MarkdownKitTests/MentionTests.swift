@@ -160,4 +160,60 @@ final class MentionTests: XCTestCase {
         XCTAssertTrue(waitUntil { panel.mentions.count == 1 })
         XCTAssertEqual(lib.read("Closed.md"), "# Closed Note\n\nNothing to see here, move along.\n")
     }
+
+    // MARK: the Opus pass, 7 October
+
+    func testLinkPressedTwiceQuicklyLinksOnce() throws {
+        let (_, wc) = try open("Target.md")
+        ws.setBacklinksShown(true)
+        let panel = try XCTUnwrap(wc.sidebar?.view.backlinks)
+        XCTAssertTrue(waitUntil { panel.mentions.count == 2 })
+        let m = try XCTUnwrap(panel.mentions.first { $0.fromTitle == "Closed Note" })
+        // A double click on the button: the second press's edit was worked out from the text the library still had,
+        // and its range applied to the file the first press had rewritten.
+        wc.linkMention(m)
+        wc.linkMention(m)
+        XCTAssertTrue(waitUntil { panel.links.map(\.fromTitle).contains("Closed Note") && panel.mentions.count == 1 })
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+        XCTAssertEqual(lib.read("Closed.md"), "# Closed Note\n\nSee [[target]] for details.\n")
+    }
+
+    func testLinkInAReadOnlyNoteSaysSoAndLeavesIt() throws {
+        let (_, wc) = try open("Target.md")
+        ws.setBacklinksShown(true)
+        let panel = try XCTUnwrap(wc.sidebar?.view.backlinks)
+        XCTAssertTrue(waitUntil { panel.mentions.count == 2 })
+        let url = lib.url.appendingPathComponent("Closed.md")
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path) }
+        var reported: [Error] = []
+        WorkspacePrompts.reportOverride = { reported.append($0) }
+        defer { WorkspacePrompts.reportOverride = nil }
+        let m = try XCTUnwrap(panel.mentions.first { $0.fromTitle == "Closed Note" })
+        wc.linkMention(m)
+        XCTAssertTrue(waitUntil { !reported.isEmpty })
+        XCTAssertEqual(lib.read("Closed.md"), "# Closed Note\n\nSee target for details.\n")
+        XCTAssertEqual(panel.mentions.count, 2, "still a mention")
+    }
+
+    func testLinkInANoteOpenWithUnsavedChangesGoesThroughItsText() throws {
+        let (_, wc) = try open("Target.md")
+        let (other, _) = try open("Open.md")
+        ws.setBacklinksShown(true)
+        let panel = try XCTUnwrap(wc.sidebar?.view.backlinks)
+        XCTAssertTrue(waitUntil { panel.mentions.count == 2 })
+        // Typed in the other window and not saved: the text moves the mention along.
+        other.session.textView?.insertText("Before. ", replacementRange: NSRange(location: 13, length: 0))
+        XCTAssertNotEqual(other.session.text, lib.read("Open.md"), "not written yet")
+        XCTAssertTrue(waitUntil {
+            wc.refreshBacklinks()
+            return panel.mentions.first { $0.fromTitle == "Open Note" }?.range.start == 41
+        })
+        let m = try XCTUnwrap(panel.mentions.first { $0.fromTitle == "Open Note" })
+        wc.linkMention(m)
+        XCTAssertTrue(waitUntil { other.session.text.contains("[[Target|quantum garden]]") })
+        XCTAssertEqual(other.session.text, "# Open Note\n\nBefore. We talked about the [[Target|quantum garden]] yesterday.\n")
+        other.undoManager?.undo()
+        XCTAssertEqual(other.session.text, "# Open Note\n\nBefore. We talked about the quantum garden yesterday.\n")
+    }
 }

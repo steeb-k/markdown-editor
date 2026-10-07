@@ -1,0 +1,38 @@
+[
+ {"log": "--- auto-correct on: Markdown typed stays as typed (only spelling is corrected, never quotes, dashes or symbols)"},
+ {"setting": {"theme": "light", "fontChoice": "iaQuattro", "spellCheck": true, "grammarCheck": true, "autoCorrect": true}},
+ {"makeFile": {"name": "typing.md", "text": ""}},
+ {"waitStyled": 20},
+ {"assert": {"checking": {"spelling": true, "grammar": true, "autoCorrect": true}}},
+ {"type": "# Notes -- a draft (c) 2026 \n", "interval": 0.02},
+ {"type": "Half is 1/2 and \"quoted\" and 'single' and it's done... ok \n", "interval": 0.02},
+ {"type": "    code -- \"x\" \n\n", "interval": 0.02},
+ {"type": "- [ ] task -> next => then <- back (tm) (r) ", "interval": 0.02},
+ {"wait": 1.5},
+ {"assert": {"textEquals": "# Notes -- a draft (c) 2026 \nHalf is 1/2 and \"quoted\" and 'single' and it's done... ok \n    code -- \"x\" \n\n- [ ] task -> next => then <- back (tm) (r) "}},
+ {"close": true},
+
+ {"log": "--- a window opened after the settings changed has them"},
+ {"setting": {"spellCheck": false, "grammarCheck": true, "autoCorrect": false}},
+ {"open": "scripts/macos/ui/fixtures/markup.md"},
+ {"waitStyled": 20},
+ {"assert": {"checking": {"spelling": false, "grammar": true, "autoCorrect": false}}},
+ {"close": true},
+
+ {"log": "--- with no document open the Edit menu's toggles have no target: the settings stay"},
+ {"assert": {"checkingSettings": {"spelling": false, "grammar": true, "autoCorrect": false}}},
+
+ {"log": "--- grammar checking on a document of about 100,000 words: typing stays quick"},
+ {"setting": {"spellCheck": true, "grammarCheck": true, "autoCorrect": false}},
+ {"openGenerated": {"from": "scripts/macos/ui/fixtures/tour.md", "minLength": 640000}},
+ {"waitStyled": 60},
+ {"assert": {"checking": {"spelling": true, "grammar": true}}},
+ {"selectText": "A tour of the editor", "offset": 2, "length": 0},
+ {"wait": 3},
+ {"measureTyping": {"count": 80, "interval": 0.06, "maxMs": 60}},
+ {"setting": {"grammarCheck": false}},
+ {"wait": 1},
+ {"measureTyping": {"count": 80, "interval": 0.06, "maxMs": 60}},
+ {"setting": {"grammarCheck": false, "autoCorrect": false}},
+ {"close": true}
+]

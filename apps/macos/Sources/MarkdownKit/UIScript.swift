@@ -63,6 +63,21 @@ final class UIScriptRunner {
         return ProcessInfo.processInfo.environment["MARKDOWN_UI_SCRIPT"]
     }
 
+    /// Where the template store keeps "yours" while a script runs: beside the session record (so a relaunch finds them
+    /// again), else in the output folder. From the arguments alone: `recordURL` is nil for a script without a `relaunch`
+    /// or `session` step, and the store then used the user's own folder (`templates-window.json` left its imports there).
+    nonisolated static var templatesDirectory: URL? {
+        guard isRequested else { return nil }
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "--ui-record"), i + 1 < args.count {
+            return URL(fileURLWithPath: args[i + 1]).deletingLastPathComponent().appendingPathComponent("Templates", isDirectory: true)
+        }
+        if let i = args.firstIndex(of: "--ui-out"), i + 1 < args.count {
+            return URL(fileURLWithPath: args[i + 1]).appendingPathComponent("Templates", isDirectory: true)
+        }
+        return FileManager.default.temporaryDirectory.appendingPathComponent("Markdown-ui-templates-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    }
+
     private static var outPath: String? {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "--ui-out"), i + 1 < args.count { return args[i + 1] }

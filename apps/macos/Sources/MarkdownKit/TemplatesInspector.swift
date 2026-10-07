@@ -32,18 +32,20 @@ struct OptionalRow<Value, Control: View>: View {
     }
 }
 
-/// A number and its unit (em, px, pt).
+/// A number and its unit (em, px, pt). `title` names both for VoiceOver (the row's label is not theirs).
 struct LengthControl: View {
+    var title = "Length"
     @Binding var length: TemplateLength
 
     var body: some View {
         HStack(spacing: 4) {
             TextField("", value: Binding(get: { length.value }, set: { length.value = $0 }),
                       format: .number.precision(.fractionLength(0...3)))
+                .accessibilityLabel(title)
                 .multilineTextAlignment(.trailing)
                 .frame(width: 56)
                 .labelsHidden()
-            Picker("Unit", selection: $length.unit) {
+            Picker("\(title) unit", selection: $length.unit) {
                 Text("em").tag(TemplateUnit.em)
                 Text("px").tag(TemplateUnit.px)
                 Text("pt").tag(TemplateUnit.pt)
@@ -56,6 +58,7 @@ struct LengthControl: View {
 
 /// A colour: one of the theme's (which follows light and dark) or a fixed one (the same in both, and in print).
 struct ColorControl: View {
+    var title = "Colour"
     @Binding var color: TemplateColor
     let editor: TemplateEditor
 
@@ -88,7 +91,7 @@ struct ColorControl: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Picker("Colour", selection: source) {
+            Picker(title, selection: source) {
                 Text("Fixed").tag(Source.fixed)
                 Divider()
                 ForEach(TemplateEditor.themeColors, id: \.1) { Text("Theme: \($0.1)").tag(Source.theme($0.0)) }
@@ -96,7 +99,7 @@ struct ColorControl: View {
             .labelsHidden()
             .frame(width: 150)
             if case .fixed = color {
-                ColorPicker("Colour", selection: well, supportsOpacity: false).labelsHidden()
+                ColorPicker(title, selection: well, supportsOpacity: false).labelsHidden()
             }
         }
     }
@@ -187,17 +190,29 @@ struct TemplatesInspector: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
+            } else if let t = editor.working, let error = t.error {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text("\u{201C}\(t.name)\u{201D} could not be read: \(error)")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .accessibilityElement(children: .combine)
             }
 
             Form {
                 Section(editor.isPage ? "Page" : (editor.targetKind.flatMap { k in TemplateEditor.kinds.first { $0.kind == k }?.name } ?? "")) {
                     if editor.isPage { pageRows } else if let kind = editor.targetKind { elementRows(kind) }
                 }
-                .disabled(editor.isReadOnly)
+                .disabled(!editor.isEditable)
                 Section("Template") {
                     TextField("Description", text: editor.descriptionBinding, axis: .vertical)
                         .lineLimit(1...4)
-                        .disabled(editor.isReadOnly)
+                        .disabled(!editor.isEditable)
                     LabeledContent("Custom CSS") {
                         HStack(spacing: 8) {
                             Text(editor.working?.hasCustomCSS == true ? "present" : "none").foregroundStyle(.secondary)
@@ -222,15 +237,15 @@ struct TemplatesInspector: View {
     @ViewBuilder private var pageRows: some View {
         OptionalRow(title: "Column width", value: editor.pageBinding(.measureCh, "Column Width", \.measureCh), initial: 66) { v in
             HStack(spacing: 4) {
-                TextField("", value: v, format: .number.precision(.fractionLength(0...1))).multilineTextAlignment(.trailing).frame(width: 56).labelsHidden()
+                TextField("", value: v, format: .number.precision(.fractionLength(0...1))).accessibilityLabel("Column width").multilineTextAlignment(.trailing).frame(width: 56).labelsHidden()
                 Text("ch").foregroundStyle(.secondary)
             }
         }
         OptionalRow(title: "Side padding", value: editor.pageBinding(.sidePadding, "Side Padding", \.sidePadding), initial: TemplateLength(value: 1.5, unit: .em)) {
-            LengthControl(length: $0)
+            LengthControl(title: "Side padding", length: $0)
         }
         OptionalRow(title: "Background", value: editor.pageBinding(.background, "Background", \.background), initial: .theme(name: .background)) {
-            ColorControl(color: $0, editor: editor)
+            ColorControl(title: "Page background", color: $0, editor: editor)
         }
         OptionalRow(title: "Align", value: editor.pageBinding(.align, "Align", \.align), initial: .left) { alignControl($0) }
     }
@@ -249,12 +264,12 @@ struct TemplatesInspector: View {
 
     private func length(_ kind: TemplateElementKind, _ field: TemplateField, _ path: WritableKeyPath<TemplateElementStyle, TemplateLength?>,
                         initial: TemplateLength) -> some View {
-        OptionalRow(title: field.title, value: editor.binding(kind, field, path), initial: initial) { LengthControl(length: $0) }
+        OptionalRow(title: field.title, value: editor.binding(kind, field, path), initial: initial) { LengthControl(title: field.title, length: $0) }
     }
 
     private func colour(_ kind: TemplateElementKind, _ field: TemplateField, _ path: WritableKeyPath<TemplateElementStyle, TemplateColor?>,
                         initial: TemplateThemeColor) -> some View {
-        OptionalRow(title: field.title, value: editor.binding(kind, field, path), initial: .theme(name: initial)) { ColorControl(color: $0, editor: editor) }
+        OptionalRow(title: field.title, value: editor.binding(kind, field, path), initial: .theme(name: initial)) { ColorControl(title: field.title, color: $0, editor: editor) }
     }
 
     @ViewBuilder private func row(_ kind: TemplateElementKind, _ field: TemplateField) -> some View {
@@ -275,7 +290,7 @@ struct TemplatesInspector: View {
         case .spaceBelow: length(kind, field, \.spaceBelow, initial: one)
         case .lineHeight:
             OptionalRow(title: field.title, value: editor.binding(kind, field, \.lineHeight), initial: 1.5) { b in
-                TextField("", value: b, format: .number.precision(.fractionLength(0...2))).multilineTextAlignment(.trailing).frame(width: 56).labelsHidden()
+                TextField("", value: b, format: .number.precision(.fractionLength(0...2))).accessibilityLabel(field.title).multilineTextAlignment(.trailing).frame(width: 56).labelsHidden()
             }
         case .align:
             OptionalRow(title: field.title, value: editor.binding(kind, field, \.align), initial: .left) { alignControl($0) }
@@ -294,11 +309,11 @@ struct TemplatesInspector: View {
                         initial: TemplateBorder(side: .bottom, style: .solid, width: TemplateLength(value: 1, unit: .px), color: .theme(name: .border))) { b in
                 VStack(alignment: .trailing, spacing: 6) {
                     HStack(spacing: 6) {
-                        ChoiceControl(title: "Side", options: [("Top", .top), ("Right", .right), ("Bottom", .bottom), ("Left", .left)], value: b.side)
-                        ChoiceControl(title: "Style", options: [("Solid", .solid), ("Dashed", .dashed), ("Dotted", .dotted)], value: b.style)
+                        ChoiceControl(title: "Border side", options: [("Top", .top), ("Right", .right), ("Bottom", .bottom), ("Left", .left)], value: b.side)
+                        ChoiceControl(title: "Border style", options: [("Solid", .solid), ("Dashed", .dashed), ("Dotted", .dotted)], value: b.style)
                     }
-                    LengthControl(length: b.width)
-                    ColorControl(color: b.color, editor: editor)
+                    LengthControl(title: "Border width", length: b.width)
+                    ColorControl(title: "Border colour", color: b.color, editor: editor)
                 }
             }
         case .radius: length(kind, field, \.radius, initial: TemplateLength(value: 0.25, unit: .em))
