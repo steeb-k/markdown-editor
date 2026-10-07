@@ -357,14 +357,33 @@ final class EmptyLibraryView: NSView {
     }
 }
 
-/// The notes that link to the front document, each with the sentence around the link.
+/// The notes that link to the front document, each with the sentence around the link; under them, when
+/// there are any, the notes that name it without linking, each with a "Link" button. One table holds both
+/// (the second section's header is a group row) so the panel scrolls as one.
 final class BacklinksPanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
+    /// What a row of the table shows.
+    private enum Row {
+        case empty
+        case backlink(Int)
+        case mentionsHeader
+        case mention(Int)
+    }
+
     let header = NSTextField(labelWithString: "Backlinks")
     let scroll = NSScrollView()
     let table = NSTableView()
     private(set) var links: [NoteBacklink] = []
+    private(set) var mentions: [NoteMention] = []
     var onOpen: ((NoteBacklink) -> Void)?
+    var onOpenMention: ((NoteMention) -> Void)?
+    var onLinkMention: ((NoteMention) -> Void)?
     var style: SidebarStyle? { didSet { recolour() } }
+
+    private var rows: [Row] {
+        var r: [Row] = links.isEmpty ? [.empty] : links.indices.map { .backlink($0) }
+        if !mentions.isEmpty { r.append(.mentionsHeader); r.append(contentsOf: mentions.indices.map { .mention($0) }) }
+        return r
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -377,6 +396,8 @@ final class BacklinksPanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.backgroundColor = .clear
         table.rowSizeStyle = .custom
         table.usesAutomaticRowHeights = false
+        // The Mentions header scrolls with the rows rather than pinning over them.
+        table.floatsGroupRows = false
         table.dataSource = self
         table.delegate = self
         table.target = self
@@ -401,11 +422,20 @@ final class BacklinksPanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
         table.reloadData()
     }
 
-    func setLinks(_ new: [NoteBacklink]) {
-        guard new != links else { return }
+    func setLinks(_ new: [NoteBacklink]) { setLinks(new, mentions: []) }
+
+    func setLinks(_ new: [NoteBacklink], mentions newMentions: [NoteMention]) {
+        guard new != links || newMentions != mentions else { return }
         links = new
+        mentions = newMentions
         header.stringValue = new.isEmpty ? "Backlinks" : "Backlinks (\(new.count))"
         table.reloadData()
+    }
+
+    /// The Link button of the n-th mention row, for the harness and tests.
+    func linkButton(at n: Int) -> NSButton? {
+        guard let row = rows.firstIndex(where: { if case .mention(n) = $0 { return true } else { return false } }) else { return nil }
+        return (table.view(atColumn: 0, row: row, makeIfNecessary: true) as? MentionCell)?.link
     }
 
     override func layout() {
@@ -414,31 +444,88 @@ final class BacklinksPanel: NSView, NSTableViewDataSource, NSTableViewDelegate {
         scroll.frame = NSRect(x: 0, y: 26, width: bounds.width, height: max(0, bounds.height - 26))
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { links.isEmpty ? 1 : links.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { links.isEmpty ? 28 : 56 }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        switch rows[row] {
+        case .empty, .mentionsHeader: 28
+        case .backlink, .mention: 56
+        }
+    }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { !links.isEmpty }
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
+        if case .mentionsHeader = rows[row] { return true }
+        return false
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        switch rows[row] {
+        case .backlink, .mention: true
+        case .empty, .mentionsHeader: false
+        }
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = (tableView.makeView(withIdentifier: NSUserInterfaceItemIdentifier("backlinkCell"), owner: nil) as? BacklinkCell) ?? BacklinkCell()
-        cell.identifier = NSUserInterfaceItemIdentifier("backlinkCell")
-        if links.isEmpty {
-            cell.configure(title: "No notes link here", context: nil, style: style)
-        } else {
-            cell.configure(title: links[row].fromTitle, context: links[row].context, style: style)
+        switch rows[row] {
+        case .mentionsHeader:
+            let cell = (tableView.makeView(withIdentifier: NSUserInterfaceItemIdentifier("mentionsHeader"), owner: nil) as? MentionsHeaderCell) ?? MentionsHeaderCell()
+            cell.identifier = NSUserInterfaceItemIdentifier("mentionsHeader")
+            cell.label.textColor = style?.secondary
+            return cell
+        case .mention(let i):
+            let cell = (tableView.makeView(withIdentifier: NSUserInterfaceItemIdentifier("mentionCell"), owner: nil) as? MentionCell) ?? MentionCell()
+            cell.identifier = NSUserInterfaceItemIdentifier("mentionCell")
+            let m = mentions[i]
+            cell.configure(title: m.fromTitle, context: m.context, style: style)
+            cell.link.setAccessibilityLabel("Link mention in \(m.fromTitle)")
+            cell.onLink = { [weak self] in self?.onLinkMention?(m) }
+            return cell
+        case .empty, .backlink:
+            let cell = (tableView.makeView(withIdentifier: NSUserInterfaceItemIdentifier("backlinkCell"), owner: nil) as? BacklinkCell) ?? BacklinkCell()
+            cell.identifier = NSUserInterfaceItemIdentifier("backlinkCell")
+            if case .backlink(let i) = rows[row] {
+                cell.configure(title: links[i].fromTitle, context: links[i].context, style: style)
+            } else {
+                cell.configure(title: "No notes link here", context: nil, style: style)
+            }
+            return cell
         }
-        return cell
     }
 
     @objc private func clicked(_ sender: Any?) {
         let row = table.clickedRow
-        guard row >= 0, row < links.count else { return }
-        onOpen?(links[row])
+        guard row >= 0, row < rows.count else { return }
+        switch rows[row] {
+        case .backlink(let i): onOpen?(links[i])
+        case .mention(let i): onOpenMention?(mentions[i])
+        case .empty, .mentionsHeader: break
+        }
     }
 }
 
-final class BacklinkCell: NSTableCellView {
+/// The "Mentions" heading between the backlinks and the notes that name this one without linking it.
+final class MentionsHeaderCell: NSTableCellView {
+    let label = NSTextField(labelWithString: "Mentions")
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        label.font = .systemFont(ofSize: 11, weight: .semibold)
+        addSubview(label)
+        setAccessibilityLabel("Mentions")
+        setAccessibilityRole(.staticText)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        label.frame = NSRect(x: 4, y: 10, width: max(0, bounds.width - 8), height: 14)
+    }
+}
+
+class BacklinkCell: NSTableCellView {
     let title = NSTextField(labelWithString: "")
     let context = NSTextField(wrappingLabelWithString: "")
 
@@ -471,5 +558,34 @@ final class BacklinkCell: NSTableCellView {
         super.layout()
         title.frame = NSRect(x: 4, y: 4, width: max(0, bounds.width - 8), height: 16)
         context.frame = NSRect(x: 4, y: 21, width: max(0, bounds.width - 8), height: max(0, bounds.height - 23))
+    }
+}
+
+/// A backlink-like row for a note that names this one without linking it: the same title and context,
+/// and a small "Link" button at the trailing edge of the title line.
+final class MentionCell: BacklinkCell {
+    let link = NSButton(title: "Link", target: nil, action: nil)
+    var onLink: (() -> Void)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        link.bezelStyle = .inline
+        link.controlSize = .small
+        link.font = .systemFont(ofSize: 11)
+        link.target = self
+        link.action = #selector(pressed(_:))
+        addSubview(link)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not supported") }
+
+    @objc private func pressed(_ sender: Any?) { onLink?() }
+
+    override func layout() {
+        super.layout()
+        let size = link.fittingSize
+        let w = max(36, size.width)
+        link.frame = NSRect(x: max(0, bounds.width - w - 4), y: 3, width: w, height: 18)
+        title.frame.size.width = max(0, link.frame.minX - 8 - title.frame.minX)
     }
 }

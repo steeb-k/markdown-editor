@@ -374,6 +374,22 @@ public final class LibraryController {
         }
     }
 
+    /// The notes that name `note` without linking it.
+    public func mentions(of note: NoteRef, completion: @escaping ([NoteMention]) -> Void) {
+        submit { [self] in
+            let r = library.mentions(note: note)
+            deliver { completion(r) }
+        }
+    }
+
+    /// The edit that turns a mention into a wikilink; nil when the text it was found in has moved on.
+    public func linkMentionEdit(_ mention: NoteMention, completion: @escaping (LibraryEdit?) -> Void) {
+        submit { [self] in
+            let r = library.linkMentionEdit(mention: mention)
+            deliver { completion(r) }
+        }
+    }
+
     public func quickOpen(_ query: String, limit: Int = 12, completion: @escaping ([QuickOpenMatch]) -> Void) {
         submit { [self] in
             let r = library.quickOpen(query: query, limit: UInt32(limit))

@@ -191,6 +191,39 @@ extension UIScriptRunner {
                     done()
                 }
             }
+        } else if let i = n["openMention"] as? Int {
+            // A click on a row of the Mentions section: the note opens with the matched text selected.
+            guard let c = notesController, let panel = c.sidebar?.view.backlinks, panel.mentions.indices.contains(i),
+                  let url = c.workspace?.library.url(for: panel.mentions[i].from) else {
+                record(["notes openMention": i, "error": "no such row"], ok: false)
+                done()
+                return
+            }
+            panel.onOpenMention?(panel.mentions[i])
+            waitFor(5, { self.notesController?.markdownDocument?.fileURL.map { DocumentFileAccess.canonical($0) == DocumentFileAccess.canonical(url) } ?? false }) { ok in
+                later(0.3) {
+                    self.followFront()
+                    self.record(["notes openMention": i, "selectedText": self.textView.map { ((self.session?.text ?? "") as NSString).substring(with: $0.selectedRange()) } ?? ""], ok: ok)
+                    done()
+                }
+            }
+        } else if let i = n["linkMention"] as? Int {
+            // The Link button of the n-th mention row, pressed through its own action; then the panel's rows
+            // change (the row moves to Backlinks) or two seconds pass.
+            guard let c = notesController, let panel = c.sidebar?.view.backlinks, let button = panel.linkButton(at: i) else {
+                record(["notes linkMention": i, "error": "no such row"], ok: false)
+                done()
+                return
+            }
+            let before = panel.mentions
+            button.performClick(nil)
+            waitFor(2, { panel.mentions != before }) { ok in
+                later(0.3) {
+                    self.followFront()
+                    self.record(["notes linkMention": i, "mentionsLeft": panel.mentions.count, "backlinks": panel.links.map(\.fromTitle)], ok: ok)
+                    done()
+                }
+            }
         } else if n["newFolder"] != nil {
             let ws = workspaceNow
             let before = ws?.snapshot.noteCount
@@ -551,6 +584,10 @@ extension UIScriptRunner {
         if let titles = a["backlinks"] as? [String] {
             let got = c?.sidebar?.view.backlinks.links.map(\.fromTitle) ?? []
             check("backlinks \(titles)", got == titles, "\(got)")
+        }
+        if let rows = a["mentions"] as? [[String: String]] {
+            let got = c?.sidebar?.view.backlinks.mentions.map { ["title": $0.fromTitle, "name": $0.name] } ?? []
+            check("mentions \(rows)", got == rows, "\(got)")
         }
         if let titles = a["backlinksContain"] as? [String] {
             let got = c?.sidebar?.view.backlinks.links.map(\.fromTitle) ?? []

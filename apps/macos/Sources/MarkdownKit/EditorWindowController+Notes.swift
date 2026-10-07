@@ -167,10 +167,32 @@ extension EditorWindowController {
     func refreshBacklinks() {
         guard let panel = sidebar?.view.backlinks, let ws = workspace else { return }
         guard ws.backlinksShown, let url = fileURL, let ref = ws.library.ref(for: url) else {
-            panel.setLinks([])
+            panel.setLinks([], mentions: [])
             return
         }
-        ws.library.backlinks(of: ref) { [weak self] links in self?.sidebar?.view.backlinks.setLinks(links) }
+        // Both answers arrive before the panel changes, and only if this is still the note in front, so it never
+        // shows mentions of one note under the backlinks of another.
+        ws.library.backlinks(of: ref) { [weak self] links in
+            ws.library.mentions(of: ref) { [weak self] mentions in
+                guard let self, let now = fileURL, ws.library.ref(for: now) == ref else { return }
+                sidebar?.view.backlinks.setLinks(links, mentions: mentions)
+            }
+        }
+    }
+
+    /// A click on a mention row: the note opens with the matched text selected.
+    func openMention(_ mention: NoteMention, newWindow: Bool = false) {
+        guard let url = workspace?.library.url(for: mention.from) else { return }
+        openNote(NoteOpenRequest(url: url), newWindow: newWindow,
+                 range: NSRange(location: Int(mention.range.start), length: Int(mention.range.end - mention.range.start)))
+    }
+
+    /// The Link button of a mention row: the matched text becomes a wikilink in the other note (see
+    /// `Workspace.linkMention`), and the panel refreshes so the row moves from Mentions to Backlinks. A stale
+    /// mention only refreshes.
+    func linkMention(_ mention: NoteMention) {
+        guard let ws = workspace else { return }
+        ws.linkMention(mention, window: window) { [weak self] _ in self?.refreshBacklinks() }
     }
 
     func focusEditor() {

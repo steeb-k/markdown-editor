@@ -246,6 +246,24 @@ extension Workspace {
         }
     }
 
+    /// Wraps a mention in a wikilink: through the open document's storage as one undo step when the note
+    /// is open, else through a coordinated write to its file, which the library then re-indexes. `done` runs
+    /// on the main thread once the library knows the new text; false when the edit was stale (the note
+    /// changed since the mention was found) or did not fit.
+    public func linkMention(_ mention: NoteMention, window: NSWindow?, done: @escaping (Bool) -> Void) {
+        let texts = flushOpenDocuments()
+        library.linkMentionEdit(mention) { [self] edit in
+            guard let edit else { done(false); return }
+            applyEdits([edit], texts: texts, window: window, actionName: "Link Mention") { [self] touched in
+                // Open notes tell the library their new text now rather than after the push delay, so the
+                // refresh that follows sees the link.
+                flushOpenDocuments()
+                library.refresh(touched)
+                done(true)
+            }
+        }
+    }
+
     /// The URL of something that may not exist yet, with symbolic links in its folder resolved.
     static func canonicalPlace(_ url: URL) -> URL {
         DocumentFileAccess.canonical(url.deletingLastPathComponent()).appendingPathComponent(url.lastPathComponent)
@@ -284,7 +302,8 @@ extension Workspace {
     /// through file coordination on a utility queue (a rename can touch hundreds of notes: written on the main
     /// thread, 500 of them held it for 1.4 s). `done` gets, on the main thread, the files of the closed notes it
     /// changed.
-    private func applyEdits(_ edits: [LibraryEdit], texts: [String: String], window: NSWindow?, done: @escaping ([URL]) -> Void) {
+    func applyEdits(_ edits: [LibraryEdit], texts: [String: String], window: NSWindow?, actionName: String = "Update Links",
+                    done: @escaping ([URL]) -> Void) {
         guard !edits.isEmpty else { done([]); return }
         var order: [NoteRef] = []
         var byNote: [NoteRef: [LibraryEdit]] = [:]
@@ -300,7 +319,7 @@ extension Workspace {
             guard let url = library.url(for: note), let list = byNote[note] else { continue }
             let key = flushedNames.contains(url.lastPathComponent) ? DocumentFileAccess.canonical(url).path : ""
             if let doc = NSDocumentController.shared.document(for: url) as? MarkdownDocument {
-                if let was = texts[key], was == doc.session.text, doc.session.applyLinkEdits(list) { continue }
+                if let was = texts[key], was == doc.session.text, doc.session.applyLinkEdits(list, actionName: actionName) { continue }
                 failed.append(url.lastPathComponent)
                 continue
             }

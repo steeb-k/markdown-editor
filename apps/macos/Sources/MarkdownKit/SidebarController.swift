@@ -52,6 +52,10 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         view.backlinks.onOpen = { [weak self] link in
             self?.controller?.openBacklink(link, newWindow: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
         }
+        view.backlinks.onOpenMention = { [weak self] mention in
+            self?.controller?.openMention(mention, newWindow: NSApp.currentEvent?.modifierFlags.contains(.command) == true)
+        }
+        view.backlinks.onLinkMention = { [weak self] mention in self?.controller?.linkMention(mention) }
         let clip = view.scroll.contentView
         clip.postsBoundsChangedNotifications = true
         scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: .main) { [weak self] _ in
