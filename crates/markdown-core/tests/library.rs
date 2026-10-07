@@ -1463,3 +1463,63 @@ fn linking_a_stale_mention_gives_nothing() {
     lib.remove(&r("main", "Topic.md"));
     assert!(lib.link_mention_edit(&m).is_none());
 }
+
+// ----- the Opus pass, 7 October -------------------------------------------------------------------------------------
+
+#[test]
+fn a_name_the_brackets_cannot_make_a_link_of_gets_no_edit() {
+    // `[[__init__]]` is bold text in brackets to the parser: no link, so the mention stayed and Link pressed again
+    // wrapped it again (`[[[[__init__]]]]`).
+    for name in ["__init__", "_under_", "*star*", "**bold**", "~~gone~~"] {
+        let target = format!("{name}.md");
+        let notes = [(target.as_str(), "x"), ("From.md", "See it: NAME here.\n")];
+        let text = notes[1].1.replace("NAME", name);
+        let notes = [notes[0], ("From.md", text.as_str())];
+        let lib = lib_of(&notes);
+        let m = lib.mentions(&r("main", &target));
+        assert_eq!(m.len(), 1, "{name}: the mention is still listed");
+        assert_eq!(lib.link_mention_edit(&m[0]), None, "{name}");
+    }
+    // Names with other punctuation link, and the link is a backlink once written.
+    for name in ["C++ Notes", "a*b", "(paren)", "a.b", "Dollar $5", "_index", "a_b_c", "50% off", "back`tick", "emoji \u{1F389}"] {
+        let target = format!("{name}.md");
+        let text = format!("See {name} here.\n");
+        let linked_text = linked(&[(target.as_str(), "x"), ("From.md", text.as_str())], &target, "From.md").unwrap_or_else(|| panic!("{name}"));
+        let lib = lib_of(&[(target.as_str(), "x"), ("From.md", linked_text.as_str())]);
+        assert_eq!(lib.backlinks(&r("main", &target)).len(), 1, "{name}: {linked_text}");
+        assert!(lib.mentions(&r("main", &target)).is_empty(), "{name}");
+    }
+}
+
+#[test]
+fn mentions_at_the_edges_of_odd_texts() {
+    let notes = [
+        ("Edge.md", "---\naliases: [Rim, rim, '', ' ', \"\", Edge]\n---\nx"),
+        // At the very start and end, with no line ending; lines ended by a lone CR; a front matter title.
+        ("A.md", "Edge first and last Edge"),
+        ("B.md", "line\rRim\rend"),
+        ("C.md", "---\ntitle: Edge\n---\nbody"),
+    ];
+    assert_eq!(mention_view(&notes, "Edge.md"), [pair("A.md", "Edge"), pair("A.md", "Edge"), pair("B.md", "Rim")]);
+    let lib = lib_of(&notes);
+    let names: Vec<String> = lib.mentions(&r("main", "Edge.md")).into_iter().map(|m| m.name).collect();
+    assert_eq!(names, ["Edge", "Edge", "Rim"]);
+    let cr = lib.mentions(&r("main", "Edge.md")).into_iter().find(|m| m.from.path == "B.md").unwrap();
+    assert_eq!(cr.context, "Rim");
+    assert_eq!(linked(&notes, "Edge.md", "A.md").unwrap(), "[[Edge]] first and last Edge");
+}
+
+#[test]
+fn two_thousand_notes_mentioning_one_are_found_quickly() {
+    let mut owned: Vec<(String, String)> = vec![("Hub.md".into(), "# Hub\n".into())];
+    for i in 0..2000 {
+        owned.push((format!("n{i}.md"), format!("Note {i} talks about the hub and Hub again, then more words.\n")));
+    }
+    let notes: Vec<(&str, &str)> = owned.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let lib = lib_of(&notes);
+    let t = std::time::Instant::now();
+    assert_eq!(lib.mentions(&r("main", "Hub.md")).len(), 4000);
+    let ms = t.elapsed().as_secs_f64() * 1000.0;
+    // 53 ms in a debug build on the machine of the 7 October pass.
+    assert!(ms < 1000.0, "{ms:.0} ms");
+}

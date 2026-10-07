@@ -75,7 +75,8 @@ fn add_to_a_block_is_the_last_line() {
         set("---\ntitle: T\ntags: [a]\n---\nBody\n", Some("Letter")).as_deref(),
         Some("---\ntitle: T\ntags: [a]\ntemplate: Letter\n---\nBody\n")
     );
-    assert_eq!(set("---\n---\nBody\n", Some("Letter")).as_deref(), Some("---\ntemplate: Letter\n---\nBody\n"));
+    // An empty block is no block to the parser (two thematic breaks): a block is made in front of them.
+    assert_eq!(set("---\n---\nBody\n", Some("Letter")).as_deref(), Some("---\ntemplate: Letter\n---\n\n---\n---\nBody\n"));
     assert_eq!(set("---\ntitle: T\n...\nBody", Some("L")).as_deref(), Some("---\ntitle: T\ntemplate: L\n...\nBody"));
 }
 
@@ -122,7 +123,9 @@ fn remove_the_block_when_it_is_then_empty() {
     assert_eq!(set("---\ntemplate: A\n---\nBody\n", None).as_deref(), Some("Body\n"));
     // The blank line that adding made goes too: add then remove is the text we began with.
     assert_eq!(set("---\ntemplate: A\n---\n\n# Title\n", None).as_deref(), Some("# Title\n"));
-    assert_eq!(set("---\n\ntemplate: A\n  \n---\nBody\n", None).as_deref(), Some("Body\n"));
+    assert_eq!(set("---\ntemplate: A\n  \n\n---\nBody\n", None).as_deref(), Some("Body\n"));
+    // A blank first line makes it no block to the parser: the `template:` line there is the document's text.
+    assert_eq!(set("---\n\ntemplate: A\n  \n---\nBody\n", None), None);
     assert_eq!(set("---\ntemplate: A\n---\n", None).as_deref(), Some(""));
     assert_eq!(set("\u{feff}---\ntemplate: A\n---\nBody\n", None).as_deref(), Some("\u{feff}Body\n"));
 }
@@ -192,6 +195,107 @@ proptest! {
         prop_assert_eq!(read(&set_text), Some(name.clone()), "{:?} -> {:?}", text, set_text);
         if let Some(removed) = set(&set_text, None) {
             prop_assert_eq!(read(&removed), None);
+        }
+    }
+}
+
+// ----- found by the Opus pass, 7 October -----------------------------------------------------------------------------
+
+/// The text outside the parser's front matter block, without the blank lines it starts with: what the reader sees.
+fn visible(text: &str) -> String {
+    let d = Document::new(text, OffsetEncoding::Utf8);
+    let mut out = text.to_owned();
+    // Only a block at the very start: pulldown-cmark also takes one right after a leading thematic break, which is no
+    // front matter to anyone else.
+    if let Some(s) = d.spans(None).into_iter().find(|s| s.kind == SpanKind::FrontMatter && s.range.start == 0) {
+        out.replace_range(s.range.start as usize..s.range.end as usize, "");
+    }
+    let mut rest = out.as_str();
+    while let Some(line) = rest.split_inclusive('\n').next().filter(|l| l.trim().is_empty() && l.ends_with('\n')) {
+        rest = &rest[line.len()..];
+    }
+    if rest.trim().is_empty() { String::new() } else { rest.to_owned() }
+}
+
+/// Whether the parser (and so the preview, which hides it) sees a front matter block.
+fn parser_sees_front_matter(text: &str) -> bool {
+    doc(text).spans(None).iter().any(|s| s.kind == SpanKind::FrontMatter && s.range.start == 0)
+}
+
+#[test]
+fn a_thematic_break_at_the_top_is_not_a_block_to_write_into() {
+    // `---`, a blank line, a paragraph and a later `---`: two thematic breaks to the parser. The key was written before
+    // the second, where it became a setext heading reading "template: Academic" in the document.
+    let t = "---\n\nIntro.\n\n---\n\nBody\n";
+    assert!(!parser_sees_front_matter(t));
+    let made = set(t, Some("Academic")).unwrap();
+    assert_eq!(made, "---\ntemplate: Academic\n---\n\n---\n\nIntro.\n\n---\n\nBody\n");
+    assert!(parser_sees_front_matter(&made));
+    assert_eq!(set(&made, None).as_deref(), Some(t));
+    // A `template:` line in such a text is the text's, not a key.
+    assert_eq!(read("---\n\ntemplate: X\n---\n"), None);
+    assert_eq!(read("---\n  \ntemplate: X\n---\n"), None);
+    // A closer followed by a tab is text to the parser, as is `----`.
+    assert_eq!(read("---\ntemplate: X\n---\t\n"), None);
+    assert_eq!(read("---\ntemplate: X\n----\n"), None);
+    assert_eq!(read("---\ntemplate: X\n---  \n").as_deref(), Some("X"));
+}
+
+#[test]
+fn removing_the_first_key_keeps_the_rest_a_block() {
+    // Removing the first line left a blank first line, so the parser dropped the block and `title: T` showed as text.
+    let t = "---\ntemplate: A\n\ntitle: T\n---\nx\n";
+    assert!(parser_sees_front_matter(t));
+    let removed = set(t, None).unwrap();
+    assert_eq!(removed, "---\ntitle: T\n---\nx\n");
+    assert!(parser_sees_front_matter(&removed));
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+
+    /// The block the key is read from and written into is the parser's, before and after every edit (without a byte
+    /// order mark: pulldown-cmark sees no block after one, but the shell removes it before the core sees the text, and
+    /// 3.21 asks for the key to be read through one); setting a name
+    /// twice changes nothing the second time; and for a text that had no block and does not start with a blank line
+    /// (adding puts no second blank line after one, so removing cannot tell it was there), setting and removing gives
+    /// back the text byte for byte.
+    #[test]
+    fn the_edit_agrees_with_the_parser(
+        body in prop::collection::vec(prop_oneof![
+            Just("---"), Just("..."), Just("--- "), Just("---\t"), Just("----"), Just("title: T"), Just("template: X"),
+            Just("template: \"Y\""), Just("# c"), Just(""), Just("  "), Just("text"), Just(" template: Y"),
+        ], 0..9),
+        crlf in any::<bool>(),
+        bom in any::<bool>(),
+        name in "[A-Za-z0-9 :#\"'\\\\./é-]{1,12}",
+    ) {
+        let eol = if crlf { "\r\n" } else { "\n" };
+        let text = format!("{}{}", if bom { "\u{feff}" } else { "" }, body.join(eol));
+        let name = name.trim().to_owned();
+        prop_assume!(!name.is_empty());
+        prop_assume!(body.iter().filter(|l| l.starts_with("template:")).count() <= 1);
+        let parser = |t: &str| bom || parser_sees_front_matter(t);
+        if read(&text).is_some() {
+            prop_assert!(parser(&text), "read a key outside the parser's block: {:?}", text);
+        }
+        let set_text = set(&text, Some(&name)).unwrap_or_else(|| text.clone());
+        prop_assert!(parser(&set_text), "{:?} -> {:?}", text, set_text);
+        prop_assert_eq!(read(&set_text), Some(name.clone()));
+        prop_assert_eq!(set(&set_text, Some(&name)), None, "setting {:?} twice changed {:?}", name, set_text);
+        let removed = set(&set_text, None).unwrap();
+        prop_assert_eq!(read(&removed), None);
+        let had_block = read(&text).is_some() || set(&text, Some(&name)).is_none_or(|t| !t.ends_with(&text[bom as usize * 3..]));
+        // A body that is itself a block once the one before it goes (`---`, `---\t`, `---` after the front matter)
+        // cannot be kept as text by any edit here; nobody writes that.
+        if !bom && !parser_sees_front_matter(&visible(&text)) {
+            // What the reader sees (the text outside the block) is the same before, with the key, and after removing it.
+            prop_assert_eq!(visible(&set_text), visible(&text), "{:?} -> {:?}", text, set_text);
+            prop_assert_eq!(visible(&removed), visible(&text), "{:?} -> {:?}", set_text, removed);
+        }
+        let starts_blank = text.trim_start_matches('\u{feff}').starts_with(['\n', '\r']);
+        if !had_block && !starts_blank && !text.trim_start_matches('\u{feff}').is_empty() {
+            prop_assert_eq!(&removed, &text);
         }
     }
 }

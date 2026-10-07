@@ -1103,6 +1103,17 @@ impl Library {
             .filter(|f| !f.contains(['[', ']', '|', '#']))
             .find(|f| self.resolve(&n.r, &link_key(f)) == Some(to_slot))?;
         let replacement = if text::key(matched) == text::key(form) { format!("[[{matched}]]") } else { format!("[[{form}|{matched}]]") };
+        // The brackets must make a link to the parser. Emphasis markers in the name (`__init__`, `*star*`, `~~x~~`) are
+        // read as emphasis first, which splits the text the link is found in: `[[__init__]]` is bold text in brackets,
+        // the mention stayed a mention, and Link pressed again wrapped it again. The line is parsed with the link in it.
+        let line_start = n.text[..start].rfind(['\n', '\r']).map_or(0, |i| i + 1);
+        let line_end = n.text[end..].find(['\n', '\r']).map_or(n.text.len(), |i| end + i);
+        let line = format!("{}{replacement}{}", &n.text[line_start..start], &n.text[end..line_end]);
+        let at = (start - line_start) as u32;
+        let link = TextRange::new(at, at + replacement.len() as u32);
+        if !crate::Document::new(&line, OffsetEncoding::Utf8).spans(None).iter().any(|s| s.kind == SpanKind::Wikilink && s.range == link) {
+            return None;
+        }
         Some(Edit { note: n.r.clone(), range: mention.range, replacement })
     }
 

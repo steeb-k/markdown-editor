@@ -491,9 +491,12 @@ fn text<T>(
     }
 }
 
+/// A number under `key`. TOML has `nan` and `inf`, which no CSS value is (and NaN, not being equal to itself, would make a
+/// template differ from its own read-back), so they are refused as a length's are.
 fn number(t: &Table, parent: &str, key: &str) -> Result<Option<f64>, TemplateError> {
     match t.get(key) {
         None => Ok(None),
+        Some(Value::Float(f)) if !f.is_finite() => Err(value_err(path(parent, key), format!("{f} is not a finite number"))),
         Some(Value::Float(f)) => Ok(Some(*f)),
         Some(Value::Integer(i)) => Ok(Some(*i as f64)),
         Some(_) => Err(value_err(path(parent, key), "expected a number")),
@@ -746,8 +749,29 @@ fn family_css(family: &FontFamily, kind: ElementKind, t: &Typography) -> String 
         FontFamily::Named(name) => {
             let clean = font_stack(name);
             if clean.contains(',') || GENERIC.contains(&clean.trim().to_ascii_lowercase().as_str()) {
-                // A stack the template wrote itself, or a generic family: as it is.
-                return clean;
+                // A stack the template wrote itself, or a generic family: as it is when it is well formed. A comment
+                // opened in it (`Charter, serif /*`) would run to the end of the stylesheet, print block and all, and a
+                // quote left open would take the rule's closing brace with it; such a stack is made again from its
+                // names, each quoted.
+                let well_formed = !clean.contains(['/', '*'])
+                    && clean.split(',').all(|part| {
+                        let p = part.trim();
+                        let inner = [('"', '"'), ('\'', '\'')]
+                            .iter()
+                            .find_map(|(a, b)| p.strip_prefix(*a).and_then(|q| q.strip_suffix(*b)))
+                            .unwrap_or(p);
+                        !p.is_empty() && !inner.contains(['"', '\''])
+                    });
+                if well_formed {
+                    return clean;
+                }
+                let parts: Vec<String> = clean
+                    .split(',')
+                    .map(|p| p.chars().filter(|c| !matches!(c, '"' | '\'' | '/' | '*')).collect::<String>().trim().to_owned())
+                    .filter(|p| !p.is_empty())
+                    .map(|p| if GENERIC.contains(&p.to_ascii_lowercase().as_str()) { p } else { format!("\"{p}\"") })
+                    .collect();
+                return if parts.is_empty() { "sans-serif".to_owned() } else { parts.join(", ") };
             }
             let bare: String = clean.chars().filter(|c| !matches!(c, '"' | '\'')).collect();
             let code = matches!(kind, ElementKind::InlineCode | ElementKind::CodeBlock);

@@ -21,6 +21,17 @@ fn bare(line: &str) -> &str {
     line.strip_suffix('\n').map_or(line, |l| l.strip_suffix('\r').unwrap_or(l))
 }
 
+/// Whether a line (without its ending) closes a block: three dashes or dots and only spaces after them, as
+/// pulldown-cmark's `scan_closing_metadata_block` has it (a tab after them makes it text).
+fn is_closer(line: &str) -> bool {
+    let rest = line.strip_prefix("---").or_else(|| line.strip_prefix("..."));
+    rest.is_some_and(|r| r.bytes().all(|b| b == b' '))
+}
+
+/// The block exactly when the parser sees one, so that the key is only ever read from, and written into, what the
+/// preview treats as front matter. Besides the delimiters, the parser refuses a block whose first line is blank or is
+/// already the closer: `---`, a blank line, a paragraph and a later `---` are two thematic breaks around text, and a
+/// `template:` line written before the second would have become a setext heading in the document.
 fn find_block(text: &str) -> Option<Block> {
     let start = if text.starts_with('\u{feff}') { '\u{feff}'.len_utf8() } else { 0 };
     let mut lines = text[start..].split_inclusive('\n');
@@ -30,9 +41,12 @@ fn find_block(text: &str) -> Option<Block> {
     }
     let body = start + first.len();
     let mut at = body;
-    for line in lines {
-        let t = bare(line).trim_end();
-        if t == "---" || t == "..." {
+    for (i, line) in lines.enumerate() {
+        let t = bare(line);
+        if i == 0 && (t.bytes().all(|b| b == b' ' || b == b'\t') || is_closer(t)) {
+            return None;
+        }
+        if is_closer(t) {
             return Some(Block { start, body, close: at, end: at + line.len() });
         }
         at += line.len();
@@ -153,6 +167,17 @@ pub(crate) fn set_front_matter_template(text: &str, name: Option<&str>) -> Optio
         (None, Some((from, to, _))) => {
             let others = text[block.body..from].trim().is_empty() && text[to..block.close].trim().is_empty();
             if !others {
+                // When the key is the block's first line, the blank lines after it go too: a block whose first line
+                // is blank is no block to the parser, and the keys left in it would show as text.
+                let mut to = to;
+                if from == block.body {
+                    for line in text[to..block.close].split_inclusive('\n') {
+                        if !bare(line).bytes().all(|b| b == b' ' || b == b'\t') {
+                            break;
+                        }
+                        to += line.len();
+                    }
+                }
                 return Some((from, to, String::new()));
             }
             // Nothing else in the block: it goes, and the blank line that was made for it.

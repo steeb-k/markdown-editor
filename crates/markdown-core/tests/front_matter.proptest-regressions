@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c0134f3450519af38d2d5197d2313893cbf7713a7ec5b99463086c2093a20514 # shrinks to body = ["--- ", "template: X", "---", "title: T"], crlf = false, bom = false, name = "\\"
+cc 4feac4a25190d9f6eb2fe003ef33dd929dd680b56ac7d7ab77c8b783cae3f7b5 # shrinks to body = ["---", "---", "---\t", "---"], crlf = false, bom = false, name = "a"
+cc e219d8f8f3e4425a4df7b3e7b32ca7e1bd086bf15aa314d7b638338916a699fa # shrinks to body = ["--- ", "template: X", "---", "  "], crlf = false, bom = false, name = "A"
+cc 23fa5bbe1ac425931242e77e59569328a9371a1f8257aa5de44ed1ac60d18bbe # shrinks to body = ["--- ", "template: X", "---", "--- ", "---\t", "---"], crlf = false, bom = false, name = "-"

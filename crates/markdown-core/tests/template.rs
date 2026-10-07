@@ -594,3 +594,98 @@ proptest! {
         let _ = Template::parse(&s);
     }
 }
+
+// ----- found by the Opus pass, 7 October -----------------------------------------------------------------------------
+
+#[test]
+fn a_font_stack_cannot_open_a_comment_or_a_string_over_the_rest() {
+    // `/*` commented out every later rule, the print block too; a quote left open took the closing brace.
+    for name in ["Charter, serif /*", "\"Charter, serif", "A, 'B", "A, \"B\"\"", "*/, x", "\", '"] {
+        let mut spec = one(ElementKind::Body, ElementStyle { font_family: Some(FontFamily::Named(name.into())), ..Default::default() });
+        spec.elements.insert(ElementKind::H1, ElementStyle { weight: Some(900), ..Default::default() });
+        let got = added(&spec);
+        assert!(!got.contains("/*") && !got.contains("*/"), "{name}: {got}");
+        let line = got.lines().find(|l| l.starts_with("body {")).expect("the body rule");
+        assert!(line.ends_with("; }"), "{name}: {line}");
+        assert_eq!(line.matches('"').count() % 2, 0, "{name}: {line}");
+        assert_eq!(line.matches('\'').count() % 2, 0, "{name}: {line}");
+        assert!(got.contains("h1 { font-weight: 900; }"), "{name}: {got}");
+    }
+    // Well-formed stacks are kept as written; a broken one is made of its names.
+    let stack = |name: &str| {
+        let got = added(&one(ElementKind::Body, ElementStyle { font_family: Some(FontFamily::Named(name.into())), ..Default::default() }));
+        got.lines().find(|l| l.starts_with("body {")).unwrap().to_owned()
+    };
+    assert_eq!(stack("Charter, 'Iowan Old Style', \"Georgia\", serif"), "body { font-family: Charter, 'Iowan Old Style', \"Georgia\", serif; }");
+    assert_eq!(stack("\"Charter, serif"), "body { font-family: \"Charter\", serif; }");
+    assert_eq!(stack("Charter, serif /*"), "body { font-family: \"Charter\", serif; }");
+}
+
+#[test]
+fn numbers_that_are_not_finite_are_refused_with_their_key() {
+    // TOML has `nan` and `inf`; neither is a CSS value, and NaN made a template unequal to its own read-back.
+    for (src, key) in [
+        ("[page]\nmeasure_ch = nan", "page.measure_ch"),
+        ("[page]\nmeasure_ch = inf", "page.measure_ch"),
+        ("[elements.body]\nline_height = -inf", "elements.body.line_height"),
+        ("[elements.body]\nfont_size = \"infem\"", "elements.body.font_size"),
+    ] {
+        match Template::parse(src) {
+            Err(TemplateError::Value { key: k, .. }) => assert_eq!(k, key, "{src}"),
+            other => panic!("{src}: {other:?}"),
+        }
+    }
+    // Extremes that are numbers are kept, written and read back.
+    let t = Template::parse("[page]\nmeasure_ch = 1e300\n[elements.body]\nline_height = -0.0\nfont_size = \"1e300px\"\n").unwrap();
+    assert_eq!(Template::parse(&t.to_toml()).unwrap(), t);
+}
+
+#[test]
+fn hostile_toml_is_an_error_not_a_crash() {
+    for n in [64usize, 1_000, 100_000] {
+        assert!(Template::parse(&format!("x = {}{}", "[".repeat(n), "]".repeat(n))).is_err() || n < 100);
+        assert!(Template::parse(&format!("x = {}1{}", "{a=".repeat(n), "}".repeat(n))).is_err() || n < 100);
+        assert!(Template::parse(&"[a".repeat(n)).is_err());
+    }
+    // A megabyte of name is read (the window cuts what it shows); the stylesheet is not made of it.
+    let big = format!("[template]\nname = \"{}\"\ndescription = \"{}\"\n", "a".repeat(1 << 20), "\u{e9}".repeat(1 << 18));
+    let t = Template::parse(&big).unwrap();
+    assert_eq!(t.meta.name.len(), 1 << 20);
+    assert_eq!(Template::parse(&t.to_toml()).unwrap(), t);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    /// Any finite numbers at all, however large or small, round-trip and make balanced CSS without a comment in it.
+    #[test]
+    fn extreme_numbers_round_trip_and_make_well_formed_css(
+        v in prop_oneof![any::<f64>().prop_filter("finite", |f| f.is_finite()), Just(0.0), Just(-0.0), Just(f64::MAX), Just(f64::MIN_POSITIVE)],
+        unit in pick(Unit::ALL),
+        kind in pick_kind(),
+        name in "[ -~]{1,20}",
+    ) {
+        let l = Length::new(v, unit);
+        let style = ElementStyle {
+            font_family: Some(FontFamily::parse(&name).unwrap_or(FontFamily::Body)),
+            font_size: Some(l), space_above: Some(l), space_below: Some(l), indent: Some(l), letter_spacing: Some(l), radius: Some(l),
+            line_height: Some(v),
+            border: Some(Border { side: Side::Top, style: BorderStyle::Dotted, width: l, color: ColorRef::Theme(ThemeColor::Rule) }),
+            ..Default::default()
+        };
+        let mut spec = one(kind, style);
+        spec.page = PageStyle { measure_ch: Some(v), side_padding: Some(l), ..Default::default() };
+        let t = Template { meta: TemplateMeta::default(), spec };
+        let back = Template::parse(&t.to_toml()).unwrap();
+        prop_assert_eq!(&back, &t);
+        let mid = added(&t.spec);
+        prop_assert_eq!(mid.matches('{').count(), mid.matches('}').count());
+        for line in mid.lines() {
+            // Outside the quoted names (where `/*` is only text) no comment opens.
+            let unquoted: String = line.split('"').step_by(2).collect();
+            prop_assert!(!unquoted.contains("/*"), "{}", line);
+            prop_assert!(line.ends_with('}'), "{}", line);
+            prop_assert_eq!(line.matches('"').count() % 2, 0, "{}", line);
+        }
+    }
+}
