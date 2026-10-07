@@ -149,6 +149,9 @@ pub struct LibraryEdit {
     pub note: NoteRef,
     pub range: Utf16Range,
     pub replacement: String,
+    /// The text the range covers in the library's copy of the note; the edit is written only where it is still there.
+    #[uniffi(default = None)]
+    pub original: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -290,7 +293,7 @@ impl From<NoteMention> for cl::Mention {
 }
 impl From<cl::Edit> for LibraryEdit {
     fn from(e: cl::Edit) -> Self {
-        LibraryEdit { note: e.note.into(), range: e.range.into(), replacement: e.replacement }
+        LibraryEdit { note: e.note.into(), range: e.range.into(), replacement: e.replacement, original: Some(e.original) }
     }
 }
 

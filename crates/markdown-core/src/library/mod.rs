@@ -227,6 +227,9 @@ pub struct Edit {
     pub note: NoteRef,
     pub range: TextRange,
     pub replacement: String,
+    /// The text the range covers in the note as the library has it. The shell writes an edit only where the file
+    /// still holds this: a note changed on disk while a question was up has the range somewhere else.
+    pub original: String,
 }
 
 // ----- internals ----------------------------------------------------------------------------
@@ -791,6 +794,11 @@ impl Library {
         TextRange::new(s as u32, e as u32)
     }
 
+    /// The edit replacing the bytes `start..end` of a note.
+    fn edit(&self, n: &Note, start: usize, end: usize, replacement: String) -> Edit {
+        Edit { note: n.r.clone(), range: self.range(n, start, end), replacement, original: n.text[start..end].to_owned() }
+    }
+
     /// Everything the index knows about a note.
     pub fn note(&self, note: &NoteRef) -> Option<NoteMeta> {
         let n = self.slot(*self.by_ref.get(note)?);
@@ -1118,7 +1126,7 @@ impl Library {
         if !crate::Document::new(&line, OffsetEncoding::Utf8).spans(None).iter().any(|s| s.kind == SpanKind::Wikilink && s.range == link) {
             return None;
         }
-        Some(Edit { note: n.r.clone(), range: mention.range, replacement })
+        Some(Edit { note: n.r.clone(), range: mention.range, replacement, original: matched.to_owned() })
     }
 
     /// The edits that make every link naming `old_title` (or a file stem, written without its
@@ -1134,7 +1142,7 @@ impl Library {
         let mut out = Vec::new();
         for n in notes {
             for l in n.links.iter().filter(|l| l.key == old) {
-                out.push(Edit { note: n.r.clone(), range: self.range(n, l.target_start, l.target_end), replacement: new_title.to_owned() });
+                out.push(self.edit(n, l.target_start, l.target_end, new_title.to_owned()));
             }
         }
         out
@@ -1175,29 +1183,29 @@ impl Library {
                     _ => continue,
                 };
                 if replacement != l.target {
-                    out.push(Edit { note: n.r.clone(), range: self.range(n, l.target_start, l.target_end), replacement });
+                    out.push(self.edit(n, l.target_start, l.target_end, replacement));
                 }
             }
         }
         out
     }
 
-    /// The edits that make every note whose front matter `template:` names `old` (compared by `text::key`, so
-    /// case-insensitively) name `new` instead, for the shell to apply when a template is renamed: the value is
-    /// replaced the way `set_front_matter_template` writes it (quoted only when the name needs it, with the file's line
-    /// ending). Sorted by note.
+    /// The edits that make every note whose front matter `template:` names `old` (compared by `text::template_key`,
+    /// as the shell resolves names: ignoring case and accents) name `new` instead, for the shell to apply when a
+    /// template is renamed: the value is replaced the way `set_front_matter_template` writes it (quoted only when the
+    /// name needs it, with the file's line ending). Sorted by note.
     pub fn template_edits(&self, old: &str, new: &str) -> Vec<Edit> {
-        let old = text::key(old.trim());
+        let old = text::template_key(old);
         if old.is_empty() {
             return Vec::new();
         }
-        let mut notes: Vec<&Note> = self.live().map(|(_, n)| n).filter(|n| n.template.as_deref().is_some_and(|t| text::key(t) == old)).collect();
+        let mut notes: Vec<&Note> = self.live().map(|(_, n)| n).filter(|n| n.template.as_deref().is_some_and(|t| text::template_key(t) == old)).collect();
         notes.sort_by(|a, b| (self.root_rank(&a.r.root), &a.r.path).cmp(&(self.root_rank(&b.r.root), &b.r.path)));
         notes
             .into_iter()
             .filter_map(|n| {
                 let (start, end, replacement) = crate::front_matter::set_front_matter_template(&n.text, Some(new))?;
-                Some(Edit { note: n.r.clone(), range: self.range(n, start, end), replacement })
+                Some(self.edit(n, start, end, replacement))
             })
             .collect()
     }

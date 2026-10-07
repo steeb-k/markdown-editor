@@ -687,6 +687,7 @@ fn rename_edits_follow_the_links_that_resolve_to_the_note() {
     let mut lib = fixture_library();
     let (old, new) = (r("main", "Projects/Alpha.md"), r("main", "Projects/Alpha Prime.md"));
     let edits = lib.rename_edits(&old, &new);
+    assert!(edits.iter().all(|e| slice_units(&text_of(&e.note), ENC, e.range) == e.original));
     let view: Vec<(String, String, String)> = edits
         .iter()
         .map(|e| (format!("{}:{}", e.note.root, e.note.path), slice_units(&text_of(&e.note), ENC, e.range), e.replacement.clone()))
@@ -786,6 +787,53 @@ fn template_edits_rename_the_template_named_in_front_matter() {
     assert_eq!(paths_of(&lib.template_edits("letter", "Y")), ["Bare.md", "Other.md"]);
     lib.remove(&r("main", "Quoted.md"));
     assert_eq!(paths_of(&lib.template_edits("Paper", "Y")), ["Cased.md", "Crlf.md"]);
+}
+
+/// The shell resolves a template name ignoring case and accents (Foundation's folding), so a note naming `resume`
+/// uses the template `Résumé`; the rename must find what the shell resolves. And the spellings a front matter has.
+#[test]
+fn template_edits_find_what_the_shell_resolves_and_keep_the_file() {
+    let mut lib = Library::new(ENC);
+    lib.add_root("main", "/notes");
+    lib.add_root("second", "/other");
+    let notes = [
+        ("main", "Accentless.md", "---\ntemplate: resume\n---\n"),
+        ("main", "Decomposed.md", "---\ntemplate: Re\u{301}sume\u{301}\n---\n"),
+        ("main", "Bom.md", "\u{feff}---\ntemplate: R\u{e9}sum\u{e9}\n---\n"),
+        ("main", "Comment.md", "---\ntemplate: R\u{e9}sum\u{e9} # mine\n---\n"),
+        ("main", "Rule.md", "---\n\ntemplate: R\u{e9}sum\u{e9}\n---\n"),
+        ("second", "Other.md", "---\ntemplate: \"R\u{e9}sum\u{e9}\"\n---\n"),
+        ("main", "Strasse.md", "---\ntemplate: Strasse\n---\n"),
+    ];
+    for (i, (root, p, t)) in notes.iter().enumerate() {
+        lib.upsert(&r(root, p), t, i as i64).unwrap();
+    }
+    let paths_of = |edits: &[Edit]| edits.iter().map(|e| e.note.path.clone()).collect::<Vec<_>>();
+    let edits = lib.template_edits("R\u{e9}sum\u{e9}", "a: b");
+    // A rule at the top with text after it is no front matter; the second root's note comes after the first's.
+    assert_eq!(paths_of(&edits), ["Accentless.md", "Bom.md", "Comment.md", "Decomposed.md", "Other.md"]);
+    let text = |p: &str| notes.iter().find(|n| n.1 == p).unwrap().2;
+    let apply_to = |p: &str| edited(text(p), &edits.iter().filter(|e| e.note.path == p).collect::<Vec<_>>());
+    // Each edit says what it replaces, for the shell to check the file still holds it.
+    for e in &edits {
+        assert_eq!(slice_units(text(&e.note.path), ENC, e.range), e.original, "{}", e.note.path);
+    }
+    assert_eq!(apply_to("Bom.md"), "\u{feff}---\ntemplate: \"a: b\"\n---\n");
+    assert_eq!(apply_to("Comment.md"), "---\ntemplate: \"a: b\"\n---\n");
+    assert_eq!(paths_of(&lib.template_edits("Stra\u{df}e", "X")), ["Strasse.md"]);
+}
+
+/// A rename in a library of a thousand notes naming the template answers at once.
+#[test]
+fn template_edits_in_a_thousand_notes() {
+    let mut lib = Library::new(ENC);
+    lib.add_root("main", "/notes");
+    for i in 0..1000 {
+        lib.upsert(&r("main", &format!("n{i}.md")), &format!("---\ntemplate: Paper\n---\n\nNote {i} with some words.\n"), i).unwrap();
+    }
+    let started = std::time::Instant::now();
+    assert_eq!(lib.template_edits("Paper", "Thesis").len(), 1000);
+    assert!(started.elapsed().as_millis() < 500, "{:?}", started.elapsed());
 }
 
 fn utf16_to_byte(text: &str, unit: u32) -> usize {
@@ -1464,6 +1512,7 @@ fn linking_a_mention_wraps_the_stem_or_labels_the_title() {
     let e = lib.link_mention_edit(&m).unwrap();
     lib.upsert(&r("main", "b.md"), &linked(&notes, "Ideas.md", "b.md").unwrap(), 9).unwrap();
     assert_eq!(e.replacement, "[[Ideas|big ideas]]");
+    assert_eq!(e.original, "big ideas");
     assert!(lib.backlinks(&r("main", "Ideas.md")).iter().any(|b| b.from.path == "b.md"));
     assert!(lib.mentions(&r("main", "Ideas.md")).iter().all(|m| m.from.path != "b.md"));
 }

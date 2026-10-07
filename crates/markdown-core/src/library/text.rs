@@ -32,6 +32,14 @@ pub(crate) fn key(s: &str) -> String {
     }
 }
 
+/// What a template's name is compared by, as the shell's `TemplateStore.key` compares it (Foundation's case- and
+/// diacritic-insensitive folding): trimmed, decomposed with the combining marks dropped, then case-folded, `ß` as `ss`.
+/// A note naming `resume` uses the template `Résumé`, so a rename of `Résumé` must find it too.
+pub(crate) fn template_key(s: &str) -> String {
+    let bare: String = s.trim().nfd().filter(|&c| !is_combining(c)).collect();
+    bare.to_lowercase().replace('ß', "ss")
+}
+
 /// Calls `f(start, end, lower)` for every word of `text`: runs of letters and digits, and each
 /// ideographic character, case-folded (`lower`). Byte offsets.
 pub(crate) fn for_each_word(text: &str, mut f: impl FnMut(usize, usize, &str)) {
