@@ -260,6 +260,8 @@ enum MainMenu {
             _ = item(m, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
             _ = item(m, "Zoom", #selector(NSWindow.performZoom(_:)))
             m.addItem(.separator())
+            _ = item(m, "Templates\u{2026}", #selector(AppDelegate.showTemplates(_:)), "t", [.command, .shift])
+            m.addItem(.separator())
             _ = item(m, "Bring All to Front", #selector(NSApplication.arrangeInFront(_:)))
         }
         NSApp.windowsMenu = window

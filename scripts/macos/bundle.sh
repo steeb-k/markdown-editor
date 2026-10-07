@@ -81,8 +81,8 @@ cp "$APP_PKG/Resources/Info.plist" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-# The guide and the acknowledgements: what the Help menu points at.
-for f in Welcome.md Acknowledgements.md; do
+# The guide and the acknowledgements: what the Help menu points at; and the page the Templates window shows.
+for f in Welcome.md Acknowledgements.md "Template Sample.md"; do
   [ -f "$APP_PKG/Resources/$f" ] || { echo "bundle: missing $APP_PKG/Resources/$f" >&2; exit 1; }
   cp "$APP_PKG/Resources/$f" "$APP/Contents/Resources/$f"
 done

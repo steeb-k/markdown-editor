@@ -704,7 +704,7 @@ public final class PreviewController: NSObject, WKNavigationDelegate, WKUIDelega
 }
 
 /// Breaks the cycle between the web view's content controller and the preview controller.
-private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     weak var target: WKScriptMessageHandler?
     init(_ target: WKScriptMessageHandler) { self.target = target }
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {

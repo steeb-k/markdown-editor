@@ -627,6 +627,22 @@ enum PreviewScripts {
         if (Math.abs(t - window.scrollY) >= 1) setTop(t);
       }
 
+      // The kind of an element for the Templates window: of the kinds whose selector the element or an ancestor matches, the
+      // one nearest the element (the innermost match; of two on the same element, the later kind, which is the more specific:
+      // a tag is a link too).
+      let clickKinds = null;
+      function kindOf(target) {
+        if (!clickKinds || !target || !target.closest) return null;
+        let best = null;
+        for (const [key, selector] of clickKinds) {
+          let m = null;
+          try { m = target.closest(selector); } catch (e) { continue; }
+          if (!m) continue;
+          if (!best || best.el === m || best.el.contains(m)) best = { key, el: m };
+        }
+        return best ? best.key : null;
+      }
+
       window.__md = {
         // Resolves when the page's fonts and pictures are in, or after `ms` (a picture on a server
         // that never answers must not hold up a PDF).
@@ -703,6 +719,18 @@ enum PreviewScripts {
           readingLine = lineForY(window.scrollY);
           return true;
         },
+        // The Templates window's sample page: the element kinds as (key, selector) pairs. With them set, a click reports
+        // the kind of the innermost element under it (see `kindAt`); without, a click is nobody's business.
+        setClickKinds(pairs) { clickKinds = pairs; return true; },
+        // Outlines the elements of one kind (a selector; null takes the outline away) with a rule of its own.
+        outline(selector) {
+          let s = document.getElementById('md-outline');
+          if (!selector) { if (s) s.remove(); return true; }
+          if (!s) { s = document.createElement('style'); s.id = 'md-outline'; document.head.appendChild(s); }
+          s.textContent = selector + ' { outline: 2px solid var(--link); outline-offset: 2px; }';
+          return true;
+        },
+        kindAt(target) { return kindOf(target); },
         scrollTop() { return window.scrollY; },
         readingLine() { return readingLine; },
         scrollLog() { return scrollLog.slice(); },
@@ -720,6 +748,10 @@ enum PreviewScripts {
         }
       });
       addEventListener('resize', () => { anchors = null; });
+      addEventListener('click', (e) => {
+        const kind = kindOf(e.target);
+        if (kind) post({ type: 'templateClick', kind });
+      }, true);
       addEventListener('scroll', () => {
         // The event for a scroll the app made (one per frame): used up by it, so the reader
         // scrolling back to the same place later is still the reader.

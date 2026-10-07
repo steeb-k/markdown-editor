@@ -83,6 +83,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         // NSDocumentController opens the untitled document (or the files we were launched with); the windows of the
         // record come back beside them.
         restoreSession()
+        // Settings' "Manage Templates…" opens the Templates window (made when first asked for).
+        TemplateStore.openManager = { TemplatesWindowController.shared.show() }
         #if DEBUG || UI_SCRIPT
         // A UI script takes activation (and the person's keyboard) only if it has steps that need it: real mouse events.
         if !UIScriptRunner.isRequested || UIScriptRunner.scriptNeedsActivation { NSApp.activate(ignoringOtherApps: true) }
@@ -114,6 +116,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
     // MARK: actions (global settings)
 
     @objc public func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+    @objc public func showTemplates(_ sender: Any?) { TemplatesWindowController.shared.show() }
 
     @objc public func toggleFormattingToolbar(_ sender: Any?) {
         Settings.shared.showFormattingToolbar.toggle()

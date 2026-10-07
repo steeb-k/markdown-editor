@@ -62,4 +62,205 @@ extension UIScriptRunner {
         }
     }
 }
+
+// MARK: the Templates window
+
+/// The harness's steps for the Templates window (`{"templates": {...}}`, one action per step, see `scripts/macos/ui/templates.json`)
+/// and what it asserts about it. The model is driven through the same calls the window's buttons and fields make; the click on
+/// the sample is a real mouse event on the page.
+extension UIScriptRunner {
+    private var templatesController: TemplatesWindowController { TemplatesWindowController.shared }
+    private var templateEditor: TemplateEditor { templatesController.editor }
+
+    func templatesStep(_ t: [String: Any], then done: @escaping () -> Void) {
+        let editor = templateEditor
+        var entry = t
+        var ok = true
+        if let name = t["select"] as? String { ok = editor.select(named: name) && ok }
+        if t["new"] as? Bool == true { editor.newTemplate() }
+        if t["duplicate"] as? Bool == true { editor.duplicateSelected() }
+        if let name = t["rename"] as? String { editor.rename(to: name) }
+        if let key = t["element"] as? String {
+            editor.selectTarget(key)
+            ok = ok && editor.targetKey == key
+        }
+        if let values = t["set"] as? [String: Any] {
+            // `expectRejected`: the change is meant to be refused (a built-in template is read-only).
+            let problem = setFields(values)
+            if t["expectRejected"] as? Bool == true { ok = ok && problem != nil } else if let problem { entry["error"] = problem; ok = false }
+        }
+        if let appearance = t["appearance"] as? String { editor.setSampleDark(appearance == "dark") }
+        if t["undo"] as? Bool == true || t["redo"] as? Bool == true {
+            // Through the responder chain, as Edit > Undo does it: the window must be key, and the action finds its manager.
+            let redo = t["redo"] as? Bool == true
+            guard let w = templatesController.window else { record(["templates": entry, "error": "no window"], ok: false); done(); return }
+            makeKey(w) {
+                let before = editor.undoManager.canUndo
+                let sent = NSApp.sendAction(Selector((redo ? "redo:" : "undo:")), to: nil, from: nil)
+                entry["canUndoBefore"] = before
+                self.record(["templates": entry], ok: sent)
+                done()
+            }
+            return
+        }
+        if t["delete"] as? Bool == true {
+            let name = editor.working?.name ?? ""
+            templatesController.confirmDelete()
+            guard let w = templatesController.window else { record(["templates": entry, "error": "no window"], ok: false); done(); return }
+            // The confirmation is a sheet on the window: Delete is its first button.
+            waitFor(3, { w.attachedSheet != nil }) { found in
+                guard found, let sheet = w.attachedSheet else {
+                    self.record(["templates": entry, "error": "no confirmation sheet"], ok: false)
+                    done()
+                    return
+                }
+                entry["sheet"] = (sheet.contentView?.subviews ?? []).compactMap { ($0 as? NSTextField)?.stringValue }.first ?? ""
+                w.endSheet(sheet, returnCode: .alertFirstButtonReturn)
+                self.waitFor(3, { !editor.templates.contains { $0.name == name && !$0.isBuiltIn } }) { gone in
+                    self.record(["templates": entry], ok: ok && gone)
+                    done()
+                }
+            }
+            return
+        }
+        if let key = t["clickSample"] as? String {
+            clickSample(key, entry, then: done)
+            return
+        }
+        // (A change of template or of a field reaches the page by the run loop: given a turn before the next step.)
+        templatesController.sample.waitUntilSettled()
+        record(["templates": entry], ok: ok)
+        done()
+    }
+
+    /// Sets fields of the shown element (or the page) as `template.toml` spells them, through the core's own parser: a
+    /// value the file would reject is rejected here too. `null` clears a field. Nil when all went in, else why not.
+    private func setFields(_ values: [String: Any]) -> String? {
+        let editor = templateEditor
+        guard !editor.isReadOnly else { return "the selected template is built in" }
+        let section = editor.isPage ? "page" : "elements.\(editor.targetKey)"
+        var lines = ["[\(section)]"]
+        var cleared: [String] = []
+        for (key, value) in values.sorted(by: { $0.key < $1.key }) {
+            if value is NSNull { cleared.append(key); continue }
+            guard let literal = Self.tomlLiteral(value, key: key) else { return "cannot write \(key)" }
+            lines.append("\(key) = \(literal)")
+        }
+        let parsed: Template
+        do { parsed = try parseTemplate(toml: lines.joined(separator: "\n") + "\n") } catch { return "\(error)" }
+        for key in cleared + values.keys.filter({ !(values[$0] is NSNull) }) {
+            let clearing = cleared.contains(key)
+            if editor.isPage {
+                guard let field = TemplatePageField(rawValue: key) else { return "no page field \(key)" }
+                editor.change(key: "script.page.\(key)", actionName: "Change \(key)") { t in
+                    field.copy(from: clearing ? TemplatePage() : parsed.spec.page, to: &t.spec.page)
+                }
+            } else {
+                guard let kind = editor.targetKind, let field = TemplateField(rawValue: key) else { return "no field \(key)" }
+                let source = clearing ? TemplateElementStyle() : (parsed.spec.elements.first { $0.kind == kind }?.style ?? TemplateElementStyle())
+                editor.change(key: "script.\(kind).\(key)", actionName: "Change \(field.title)") { t in
+                    TemplateEditor.update(&t.spec, kind) { field.copy(from: source, to: &$0) }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// A JSON value as `template.toml` writes it: strings quoted, numbers and booleans bare, an object as an inline table.
+    static func tomlLiteral(_ value: Any, key: String = "") -> String? {
+        if let s = value as? String { return "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
+        if let n = value as? NSNumber {
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue ? "true" : "false" }
+            // The floats of the file (`line_height`, `measure_ch`) always have a point, as the core writes them.
+            if ["line_height", "measure_ch"].contains(key) {
+                let d = n.doubleValue
+                return d == d.rounded() ? String(format: "%.1f", d) : "\(d)"
+            }
+            return "\(n)"
+        }
+        if let d = value as? [String: Any] {
+            let parts = d.sorted { $0.key < $1.key }.compactMap { k, v in tomlLiteral(v, key: k).map { "\(k) = \($0)" } }
+            return "{ " + parts.joined(separator: ", ") + " }"
+        }
+        return nil
+    }
+
+    /// The right-hand side of `key` in `[section]` of a `template.toml` text.
+    static func tomlValue(_ toml: String, section: String, key: String) -> String? {
+        var inside = false
+        for line in toml.components(separatedBy: "\n") {
+            let l = line.trimmingCharacters(in: .whitespaces)
+            if l.hasPrefix("[") { inside = l == "[\(section)]"; continue }
+            if inside, l.hasPrefix(key + " = ") { return String(l.dropFirst(key.count + 3)) }
+        }
+        return nil
+    }
+
+    /// A real click (mouse down and up, posted to the app) at the middle of the first element of a kind on the sample page.
+    private func clickSample(_ key: String, _ entry: [String: Any], then done: @escaping () -> Void) {
+        var entry = entry
+        let editor = templateEditor
+        guard let w = templatesController.window, let selector = editor.selector(forKey: key),
+              let p = templatesController.sample.windowPoint(ofSelector: selector) else {
+            record(["templates": entry, "error": "no such element on the sample"], ok: false)
+            done()
+            return
+        }
+        let sample = templatesController.sample
+        makeKey(w) {
+            entry["at"] = NSStringFromPoint(p)
+            let clicksBefore = sample.clicks.count
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) {
+                    NSApp.postEvent(e, atStart: false)
+                }
+            }
+            self.waitFor(3, { sample.clicks.count > clicksBefore }) { reported in
+                entry["reported"] = sample.clicks.last ?? ""
+                entry["key"] = w.isKeyWindow
+                self.record(["templates": entry], ok: reported)
+                done()
+            }
+        }
+    }
+
+    func templatesAssertions(_ t: [String: Any]) {
+        let editor = templateEditor
+        let sample = templatesController.sample
+        let toml = editor.working.map { templateToml(template: $0.template) } ?? ""
+        let section = editor.isPage ? "page" : "elements.\(editor.targetKey)"
+        if let want = t["selected"] as? String { check("templates selected \(want)", editor.working?.name == want, editor.working?.name ?? "none") }
+        if let want = t["element"] as? String { check("templates element \(want)", editor.targetKey == want, editor.targetKey) }
+        if let want = t["list"] as? [String] { check("templates list \(want)", editor.templates.map(\.name) == want, "\(editor.templates.map(\.name))") }
+        if let want = t["readOnly"] as? Bool { check("templates read-only \(want)", editor.isReadOnly == want) }
+        if let want = t["theme"] as? String { check("templates sample theme \(want)", editor.sampleTheme.id == want, editor.sampleTheme.id) }
+        if let want = t["outline"] as? String { let got = sample.pageOutline(); check("templates outline \(want)", got == want, got ?? "none") }
+        if let want = t["customCSS"] as? Bool { check("templates custom css \(want)", editor.working?.hasCustomCSS == want) }
+        if let want = t["canUndo"] as? Bool { check("templates can undo \(want)", editor.undoManager.canUndo == want) }
+        if let want = t["lastClick"] as? String { check("templates last click \(want)", sample.clicks.last == want, sample.clicks.last ?? "none") }
+        for (name, wantContains) in [("sampleStyleContains", true), ("sampleStyleLacks", false)] {
+            let wanted = (t[name] as? [String]) ?? (t[name] as? String).map { [$0] } ?? []
+            guard !wanted.isEmpty else { continue }
+            let css = sample.pageStyle()
+            for text in wanted { check("templates sample style \(wantContains ? "contains" : "lacks") \(text.debugDescription)", css.contains(text) == wantContains) }
+        }
+        if let fields = t["field"] as? [String: Any] {
+            for (key, value) in fields.sorted(by: { $0.key < $1.key }) {
+                let got = Self.tomlValue(toml, section: section, key: key)
+                let want = value is NSNull ? nil : Self.tomlLiteral(value, key: key)
+                check("templates field \(key) = \(want ?? "unset")", got == want, got ?? "unset")
+            }
+        }
+        if let fields = t["saved"] as? [String: Any] {
+            // What is on disk, read again: the package as another program (or the next launch) finds it.
+            let disk = editor.working.flatMap { TemplateStore.readPackage($0.url, builtIn: false) }.map { templateToml(template: $0.template) } ?? ""
+            for (key, value) in fields.sorted(by: { $0.key < $1.key }) {
+                let got = Self.tomlValue(disk, section: section, key: key)
+                let want = value is NSNull ? nil : Self.tomlLiteral(value, key: key)
+                check("templates saved \(key) = \(want ?? "unset")", got == want, got ?? "unset")
+            }
+        }
+    }
+}
 #endif

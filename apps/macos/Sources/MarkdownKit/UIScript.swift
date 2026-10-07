@@ -242,7 +242,7 @@ final class UIScriptRunner {
     /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
     /// forward) and full screen. A script without any never takes activation from the person at the machine.
     nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "slowDrag", "contextMenu", "dividerDrag", "liveResize",
-                                                      "doubleClickTitlebar", "fullscreen", "codeBadge"]
+                                                      "doubleClickTitlebar", "fullscreen", "codeBadge", "templates"]
 
     /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
     /// been launched, and not later from the background (`activate` is then refused, and `makeKey` waits in vain), so
@@ -741,6 +741,12 @@ final class UIScriptRunner {
             if w == "show" { SettingsWindowController.shared.show() } else { SettingsWindowController.shared.close() }
             record(["settingsWindow": w], ok: true)
             done()
+        } else if let w = str("templatesWindow") {
+            if w == "show" { TemplatesWindowController.shared.show() } else { TemplatesWindowController.shared.close() }
+            record(["templatesWindow": w], ok: true)
+            done()
+        } else if let t = step["templates"] as? [String: Any] {
+            templatesStep(t, then: done)
         } else if let sheet = str("sheet") {
             // "end": dismiss whatever sheet is attached (Cancel).
             if sheet == "end", let w = window, let s = w.attachedSheet {
@@ -2114,7 +2120,8 @@ final class UIScriptRunner {
     // MARK: windows
 
     private func snapshot(_ name: String, which: String?, bitmap: Bool = false, then done: @escaping () -> Void) {
-        let w: NSWindow? = which == "settings" ? SettingsWindowController.shared.window : (which == "sheet" ? window?.attachedSheet : window)
+        let w: NSWindow? = which == "settings" ? SettingsWindowController.shared.window
+            : (which == "templates" ? TemplatesWindowController.shared.window : (which == "sheet" ? window?.attachedSheet : window))
         guard let w, let content = w.contentView else {
             record(["snapshot": name, "error": "no window"], ok: false)
             done()
@@ -2127,6 +2134,14 @@ final class UIScriptRunner {
             let web = c.previewController.webView
             web.takeSnapshot(with: WKSnapshotConfiguration()) { image, error in
                 if let error { self.record(["snapshot": name, "web view": "\(error)"], ok: false) }
+                self.composeSnapshot(name, window: w, content: content, bitmap: bitmap, web: image)
+                done()
+            }
+            return
+        }
+        if which == "templates" {
+            // The sample page is web content too: asked for a picture of itself, drawn over its place in the window.
+            TemplatesWindowController.shared.sample.webView.takeSnapshot(with: WKSnapshotConfiguration()) { image, _ in
                 self.composeSnapshot(name, window: w, content: content, bitmap: bitmap, web: image)
                 done()
             }
@@ -2179,6 +2194,10 @@ final class UIScriptRunner {
         } else {
             for v in content.subviews { draw(v) }
             draw(content)
+            if let web, w === TemplatesWindowController.shared.window {
+                let view = TemplatesWindowController.shared.sample.webView
+                web.draw(in: view.convert(view.bounds, to: frameView))
+            }
         }
         out.unlockFocus()
         let url = outDir.appendingPathComponent("\(name).png")
@@ -2390,6 +2409,7 @@ final class UIScriptRunner {
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
         if let t = a["template"] as? [String: Any] { templateAssertions(t) }
+        if let t = a["templates"] as? [String: Any] { templatesAssertions(t) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {
