@@ -50,4 +50,28 @@ final class TemplateSampleClickTests: XCTestCase {
         XCTAssertEqual(editor.targetKey, "link")
         XCTAssertEqual(sample.pageOutline(), "a")
     }
+
+    /// A paragraph names the nearest container it is the text of, through containers inside others (the M11d pass).
+    func testAParagraphNamesItsNearestContainer() throws {
+        // What the renderer writes for these, put on the page: a quote in a loose list item, a loose list in a quote, a
+        // loose task list, a quote holding a heading and a code block, and a footnote's own list and back link.
+        _ = sample.evaluate("""
+            const m = document.getElementById('md');
+            m.insertAdjacentHTML('beforeend',
+                '<ul><li><p id="t-lp">item</p><blockquote><p id="t-lqp">quote in a list <em id="t-lqe">em</em></p></blockquote></li></ul>'
+              + '<blockquote><ol><li><p id="t-qlp">list in a quote <a id="t-qla" href="#">a</a></p></li></ol></blockquote>'
+              + '<ul><li class="task-list-item"><p id="t-tp"><input type="checkbox" disabled> loose task</p></li></ul>'
+              + '<blockquote id="t-q"><h3 id="t-qh">Heading in a quote</h3><pre id="t-qpre"><code>code</code></pre></blockquote>');
+            return true;
+            """)
+        let want: [(String, String)] = [
+            ("#t-lp", "bullet_list"), ("#t-lqp", "block_quote"), ("#t-lqe", "emphasis"),
+            ("#t-qlp", "numbered_list"), ("#t-qla", "link"),
+            ("#t-tp", "task_item"), ("#t-tp input", "task_item"),
+            ("#t-qh", "h3"), ("#t-qpre", "code_block"), ("#t-q", "block_quote"),
+            (".footnotes ol", "numbered_list"), (".footnotes li", "numbered_list"), (".footnote-backref", "link"),
+            (".footnotes", "footnotes"),
+        ]
+        for (selector, kind) in want { XCTAssertEqual(sample.kind(atSelector: selector), kind, selector) }
+    }
 }

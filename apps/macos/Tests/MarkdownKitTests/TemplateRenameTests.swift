@@ -112,6 +112,55 @@ final class TemplateRenameTests: XCTestCase {
         XCTAssertEqual(lib.read("Letter.md"), "---\ntemplate: Note\n---\n\nLetter\n")
     }
 
+    /// A closed note changed on disk while the question was up is not written with ranges from its old text (they cut
+    /// into the new one); it is left and reported. The others are written.
+    func testAClosedNoteChangedWhileTheQuestionIsUpIsLeftAndReported() throws {
+        var reported: [Error] = []
+        WorkspacePrompts.reportOverride = { reported.append($0) }
+        defer { WorkspacePrompts.reportOverride = nil }
+        let changed = "---\ntitle: Added on another machine\ntemplate: \"paper\"\n---\n\nClosed\n"
+        WorkspacePrompts.templateUpdateOverride = { [unowned self] q in
+            questions.append(q)
+            try? lib.write("Closed.md", changed)
+            return true
+        }
+        let open = try open("Open.md")
+        offer()
+        XCTAssertEqual(questions.count, 1)
+        XCTAssertEqual(lib.read("Closed.md"), changed)
+        XCTAssertEqual(open.session.text, "---\ntemplate: Thesis\n---\n\nOpen\n")
+        XCTAssertEqual(reported.count, 1)
+        XCTAssertEqual((reported.first as NSError?)?.localizedDescription, "Some documents could not be updated")
+        XCTAssertEqual((reported.first as NSError?)?.localizedRecoverySuggestion, "Closed.md")
+    }
+
+    /// An open note that takes no typing (an authorship question pending) refuses the edit; it is reported, not counted
+    /// as written.
+    func testAnOpenNoteThatTakesNoTypingIsReported() throws {
+        var reported: [Error] = []
+        WorkspacePrompts.reportOverride = { reported.append($0) }
+        defer { WorkspacePrompts.reportOverride = nil }
+        let open = try open("Open.md")
+        open.session.textView?.isEditable = false
+        offer()
+        XCTAssertEqual(open.session.text, "---\ntemplate: Paper\n---\n\nOpen\n")
+        XCTAssertEqual((reported.first as NSError?)?.localizedRecoverySuggestion, "Open.md")
+        XCTAssertEqual(lib.read("Closed.md"), "---\ntemplate: Thesis\n---\n\nClosed\n")
+    }
+
+    /// A name is found as the store resolves it, accents and case aside: a note naming `resume` uses `Résumé`.
+    func testANameWithoutItsAccentsIsFound() throws {
+        try lib.write("Accentless.md", "---\ntemplate: resume\n---\n\nText\n")
+        controller.refresh([lib.url.appendingPathComponent("Accentless.md")])
+        XCTAssertTrue(controller.waitUntilIdle())
+        let stray = try open("Stray.md", in: outside)
+        XCTAssertTrue(stray.session.setTemplate(name: "RESUME"))
+        offer("R\u{e9}sum\u{e9}", "CV")
+        XCTAssertEqual(questions, ["Update 2 documents that use \u{201C}R\u{e9}sum\u{e9}\u{201D}?"])
+        XCTAssertEqual(lib.read("Accentless.md"), "---\ntemplate: CV\n---\n\nText\n")
+        XCTAssertEqual(stray.session.frontMatterTemplateName(), "CV")
+    }
+
     func testTheSettingFollowsARenameAndADelete() throws {
         Settings.shared.defaultTemplate = "paper"
         editor.rename(to: "Thesis")

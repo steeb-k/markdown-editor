@@ -136,6 +136,78 @@ final class TemplateStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("custom.css").path))
     }
 
+    /// An override that cannot be read means nothing: the built-in is still the one meant. Renamed (to a built-in's
+    /// name, or any other), it is still the one the rename hands back, not the built-in its name would find.
+    func testAnUnreadableOverrideLeavesTheBuiltInAndARenameKeepsHoldOfIt() throws {
+        let fm = FileManager.default
+        let package = yours.appendingPathComponent("Academic.mdtemplate")
+        try fm.createDirectory(at: package, withIntermediateDirectories: true)
+        try "[page\nbroken".write(to: package.appendingPathComponent("template.toml"), atomically: true, encoding: .utf8)
+        let s = store()
+        let broken = try XCTUnwrap(s.yours.first)
+        XCTAssertFalse(broken.isUsable)
+        XCTAssertTrue(try XCTUnwrap(s.template(named: "Academic")).isBuiltIn)
+        XCTAssertNil(s.resolve(frontMatterName: "Academic", defaultName: "Default").note, "no \"(could not be read)\": the built-in is there")
+        XCTAssertFalse(s.isHidden(try XCTUnwrap(s.builtIn.first { $0.name == "Academic" })))
+        let other = try s.rename(broken, to: "Letter")
+        XCTAssertFalse(other.isBuiltIn, "the renamed package, not the built-in Letter")
+        XCTAssertEqual(other.url.lastPathComponent, "Letter.mdtemplate")
+    }
+
+    /// A stylesheet-only package as Finder makes them: an empty stylesheet is a template; a stylesheet or a TOML that is a
+    /// folder is not one. Renamed, exported as a zip and imported, it is a template with its CSS each time.
+    func testStylesheetOnlyPackagesAtTheirEdges() throws {
+        let fm = FileManager.default
+        func package(_ name: String, _ files: [String: String?]) throws {
+            let p = yours.appendingPathComponent("\(name).mdtemplate")
+            try fm.createDirectory(at: p, withIntermediateDirectories: true)
+            for (file, text) in files {
+                if let text { try text.write(to: p.appendingPathComponent(file), atomically: true, encoding: .utf8) }
+                else { try fm.createDirectory(at: p.appendingPathComponent(file), withIntermediateDirectories: true) }
+            }
+        }
+        try package("Empty Sheet", ["custom.css": ""])
+        try package("Sheet Folder", ["custom.css": nil])
+        try package("Toml Folder", ["template.toml": nil, "custom.css": "p { }"])
+        try package("Sheet", ["custom.css": "h1 { color: green; }"])
+        let s = store()
+        XCTAssertTrue(try XCTUnwrap(s.template(named: "Empty Sheet")).isUsable)
+        XCTAssertEqual(s.yours.first { $0.name == "Sheet Folder" }?.error, "no template.toml or custom.css")
+        let tomlFolder = try XCTUnwrap(s.yours.first { $0.name == "Toml Folder" })
+        XCTAssertFalse(tomlFolder.isUsable)
+        XCTAssertNotNil(tomlFolder.error)
+
+        let renamed = try s.rename(try XCTUnwrap(s.template(named: "Sheet")), to: "Green")
+        XCTAssertEqual(renamed.name, "Green")
+        XCTAssertEqual(renamed.customCSS, "h1 { color: green; }")
+        XCTAssertTrue(fm.fileExists(atPath: renamed.url.appendingPathComponent("template.toml").path), "the rename wrote the name down")
+        let zip = tmp.appendingPathComponent("Green.mdtemplate.zip")
+        try s.export(renamed, to: zip, zipped: true)
+        try s.delete(renamed)
+        let back = try s.importTemplate(at: zip)
+        XCTAssertEqual(back.name, "Green")
+        XCTAssertTrue(back.isUsable)
+        XCTAssertEqual(back.customCSS, "h1 { color: green; }")
+    }
+
+    /// A package copied in from Finder while the store is up is read on the next activation (`reloadIfChanged`), and
+    /// takes the built-in's place; a duplicate of the hidden built-in is a copy under its own name.
+    func testAnOverrideCopiedInIsReadOnActivation() throws {
+        let s = store()
+        let builtInLetter = try XCTUnwrap(s.template(named: "Letter"))
+        try FileManager.default.createDirectory(at: yours, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: builtInLetter.url, to: yours.appendingPathComponent("Letter.mdtemplate"))
+        XCTAssertTrue(try XCTUnwrap(s.template(named: "Letter")).isBuiltIn)
+        s.reloadIfChanged()
+        XCTAssertFalse(try XCTUnwrap(s.template(named: "Letter")).isBuiltIn)
+        XCTAssertTrue(s.isHidden(builtInLetter))
+        XCTAssertEqual(s.usable.filter { TemplateStore.key($0.name) == "letter" }.count, 1)
+        XCTAssertEqual(try s.duplicate(builtInLetter).name, "Letter Copy")
+        let out = tmp.appendingPathComponent("Exported.mdtemplate")
+        try s.export(builtInLetter, to: out, zipped: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("template.toml").path))
+    }
+
     func testAPackageWithNeitherFileIsUnreadable() throws {
         let package = yours.appendingPathComponent("Empty.mdtemplate")
         try FileManager.default.createDirectory(at: package, withIntermediateDirectories: true)

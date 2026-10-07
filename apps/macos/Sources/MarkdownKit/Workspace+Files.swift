@@ -327,7 +327,7 @@ extension Workspace {
     /// thread, 500 of them held it for 1.4 s). `done` gets, on the main thread, the files of the closed notes it
     /// changed.
     func applyEdits(_ edits: [LibraryEdit], texts: [String: String], window: NSWindow?, actionName: String = "Update Links",
-                    done: @escaping ([URL]) -> Void) {
+                    failure: String = "Some links could not be updated", done: @escaping ([URL]) -> Void) {
         guard !edits.isEmpty else { done([]); return }
         var order: [NoteRef] = []
         var byNote: [NoteRef: [LibraryEdit]] = [:]
@@ -371,7 +371,7 @@ extension Workspace {
             DispatchQueue.main.async {
                 let all = failed + failedClosed
                 if !all.isEmpty {
-                    let info = [NSLocalizedDescriptionKey: "Some links could not be updated", NSLocalizedRecoverySuggestionErrorKey: all.joined(separator: ", ")]
+                    let info = [NSLocalizedDescriptionKey: failure, NSLocalizedRecoverySuggestionErrorKey: all.joined(separator: ", ")]
                     WorkspacePrompts.report(NSError(domain: "Markdown", code: 1, userInfo: info), window: window)
                 }
                 done(changed)

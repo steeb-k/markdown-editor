@@ -25,12 +25,17 @@ extension EditorSession {
     /// text untouched, when an edit does not fit the text.
     @discardableResult
     func applyLinkEdits(_ edits: [LibraryEdit], actionName: String = "Update Links") -> Bool {
-        guard let tv = textView, !edits.isEmpty else { return false }
+        // A text view that takes no typing (an authorship question pending) refuses each replacement: reporting the
+        // edits as written would leave the note naming what it named, with nobody told.
+        guard let tv = textView, tv.isEditable, !edits.isEmpty else { return false }
         let ordered = edits.sorted { $0.range.start > $1.range.start }
         var last = storage.length
+        let text = storage.string as NSString
         for e in ordered {
             let end = Int(e.range.end)
             guard Int(e.range.start) <= end, end <= last else { return false }
+            if let original = e.original,
+               text.substring(with: NSRange(location: Int(e.range.start), length: end - Int(e.range.start))) != original { return false }
             last = Int(e.range.start)
         }
         let selection = tv.selectedRange()

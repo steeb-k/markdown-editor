@@ -199,13 +199,16 @@ public enum NoteText {
     }
 
     /// The text with `edits` (ranges in UTF-16 units of that text) applied, last to first so that none
-    /// moves another. Nil when an edit does not fit (the text is not the one the ranges were made for).
+    /// moves another. Nil when an edit does not fit (the text is not the one the ranges were made for): out of
+    /// range, or not over the text the library saw there (a file changed on disk while a question was up has its
+    /// ranges elsewhere, and writing them would cut into other words).
     public static func apply(_ edits: [LibraryEdit], to text: String) -> String? {
         let ns = NSMutableString(string: text)
         var last = Int.max
         for e in edits.sorted(by: { $0.range.start > $1.range.start }) {
             let r = NSRange(location: Int(e.range.start), length: Int(e.range.end - e.range.start))
             guard NSMaxRange(r) <= last, NSMaxRange(r) <= ns.length else { return nil }
+            if let original = e.original, ns.substring(with: r) != original { return nil }
             ns.replaceCharacters(in: r, with: e.replacement)
             last = r.location
         }

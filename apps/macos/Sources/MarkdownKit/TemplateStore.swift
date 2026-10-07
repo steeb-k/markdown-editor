@@ -327,7 +327,7 @@ public final class TemplateStore: ObservableObject {
             try write(Template(meta: meta, spec: source.spec), to: target)
         }
         reload()
-        return template(named: unique) ?? yours.first { $0.url.standardizedFileURL == target.standardizedFileURL }!
+        return yours.first { $0.url.standardizedFileURL == target.standardizedFileURL } ?? template(named: unique)!
     }
 
     /// Gives one of yours another name (made unique among the others); the package folder follows.
@@ -357,7 +357,8 @@ public final class TemplateStore: ObservableObject {
         }
         if t.isUsable { try write(Template(meta: meta, spec: t.spec), to: target) }
         reload()
-        return template(named: name) ?? yours.first { $0.url.standardizedFileURL == target.standardizedFileURL } ?? t
+        // By its package: by its name, one that cannot be read would be the built-in of that name, which yours hides.
+        return yours.first { $0.url.standardizedFileURL == target.standardizedFileURL } ?? template(named: name) ?? t
     }
 
     /// Writes `template.toml` of one of yours, atomically (`custom.css` is never touched).

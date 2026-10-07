@@ -642,13 +642,14 @@ enum PreviewScripts {
         }
         if (best && best.key === 'paragraph') {
           // A paragraph inside a quote, a list item or the footnotes is that container's text: the click names the container
-          // (the footnotes first, whose paragraphs sit in a list of their own).
+          // (the footnotes first, whose paragraphs sit in a list of their own). A loose task item's text is in a paragraph
+          // too, and names the task item, as a tight one's does, not the list around it.
           const sel = {};
           for (const [key, selector] of clickKinds) sel[key] = selector;
           const parent = best.el.parentElement;
           if (parent && sel.footnotes && parent.closest(sel.footnotes)) return 'footnotes';
           let near = null;
-          for (const key of ['block_quote', 'bullet_list', 'numbered_list']) {
+          for (const key of ['block_quote', 'bullet_list', 'numbered_list', 'task_item']) {
             if (!sel[key] || !parent) continue;
             const m = parent.closest(sel[key]);
             if (m && (!near || near.el.contains(m))) near = { key, el: m };

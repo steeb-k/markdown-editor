@@ -24,7 +24,8 @@ extension TemplateEditor {
             let question = "Update \(count) document\(count == 1 ? "" : "s") that \(count == 1 ? "uses" : "use") \u{201C}\(old)\u{201D}?"
             WorkspacePrompts.confirmTemplateUpdate(question: question, newName: new, window: self?.hostWindow) { update in
                 guard update else { done(); return }
-                workspace.applyEdits(edits, texts: texts, window: self?.hostWindow, actionName: "Change Template") { touched in
+                workspace.applyEdits(edits, texts: texts, window: self?.hostWindow, actionName: "Change Template",
+                                     failure: "Some documents could not be updated") { touched in
                     // An open note was written through its document; the strays have no note to be written to.
                     for doc in strays where doc.session.frontMatterTemplateName().map(TemplateStore.key) == key {
                         doc.session.setTemplate(name: new)
