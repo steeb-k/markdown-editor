@@ -52,6 +52,7 @@ trap 'rm -f "$EXPECTED" "$ACTUAL"' EXIT
   echo "Contents/Resources/Assets.car"
   echo "Contents/Resources/Markdown.icns"
   echo "Contents/Resources/Welcome.md"
+  echo "Contents/Resources/Template Sample.md"
   echo "Contents/Resources/Fonts/OFL-LICENSE.md"
   for t in Academic Default Letter Typewriter; do echo "Contents/Resources/Templates/${t}.mdtemplate/template.toml"; done
   for fam in Duo Mono Quattro; do
