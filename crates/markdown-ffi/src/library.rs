@@ -399,6 +399,11 @@ impl Library {
     pub fn rename_edits(&self, old: NoteRef, new: NoteRef) -> Vec<LibraryEdit> {
         self.with(|l| l.rename_edits(&old.into(), &new.into()).into_iter().map(Into::into).collect())
     }
+
+    /// The front matter edits that make the notes naming template `old` name `new`.
+    pub fn template_edits(&self, old: String, new: String) -> Vec<LibraryEdit> {
+        self.with(|l| l.template_edits(&old, &new).into_iter().map(Into::into).collect())
+    }
 }
 
 impl Default for Library {

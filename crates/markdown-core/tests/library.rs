@@ -737,6 +737,57 @@ fn rename_edits_follow_the_links_that_resolve_to_the_note() {
     assert!(lib.rename_edits(&r("main", "nope.md"), &r("main", "x.md")).is_empty());
 }
 
+/// The text of `note` with `edits` applied, whatever the library holds.
+fn edited(text: &str, edits: &[&Edit]) -> String {
+    let mut text = text.to_owned();
+    let mut es: Vec<&&Edit> = edits.iter().collect();
+    es.sort_by_key(|e| std::cmp::Reverse(e.range.start));
+    for e in es {
+        let (s, t) = (utf16_to_byte(&text, e.range.start), utf16_to_byte(&text, e.range.end));
+        text.replace_range(s..t, &e.replacement);
+    }
+    text
+}
+
+#[test]
+fn template_edits_rename_the_template_named_in_front_matter() {
+    let mut lib = Library::new(ENC);
+    lib.add_root("main", "/notes");
+    let notes = [
+        ("Quoted.md", "---\ntitle: \u{e9}\ntemplate: \"Paper\"\n---\n\nBody\n"),
+        ("Bare.md", "---\ntemplate: Paper\n---\n"),
+        ("Spaced.md", "---\ntemplate: Old Paper\n---\n"),
+        ("Cased.md", "---\ntemplate: pAPER\n---\n"),
+        ("Crlf.md", "---\r\ntemplate: Paper\r\ntags: [a]\r\n---\r\n\r\nText\r\n"),
+        ("Plain.md", "No front matter, template: Paper\n"),
+        ("Other.md", "---\ntemplate: Letter\n---\n"),
+    ];
+    for (i, (p, t)) in notes.iter().enumerate() {
+        lib.upsert(&r("main", p), t, i as i64).unwrap();
+    }
+    let text = |p: &str| notes.iter().find(|n| n.0 == p).unwrap().1;
+    let paths_of = |edits: &[Edit]| edits.iter().map(|e| e.note.path.clone()).collect::<Vec<_>>();
+
+    let edits = lib.template_edits("Paper", "Thesis Draft");
+    assert_eq!(paths_of(&edits), ["Bare.md", "Cased.md", "Crlf.md", "Quoted.md"]);
+    let apply_to = |p: &str| edited(text(p), &edits.iter().filter(|e| e.note.path == p).collect::<Vec<_>>());
+    assert_eq!(apply_to("Quoted.md"), "---\ntitle: \u{e9}\ntemplate: Thesis Draft\n---\n\nBody\n");
+    assert_eq!(apply_to("Bare.md"), "---\ntemplate: Thesis Draft\n---\n");
+    assert_eq!(apply_to("Cased.md"), "---\ntemplate: Thesis Draft\n---\n");
+    assert_eq!(apply_to("Crlf.md"), "---\r\ntemplate: Thesis Draft\r\ntags: [a]\r\n---\r\n\r\nText\r\n");
+    // A name with spaces is found by its key, not as a prefix of another.
+    assert_eq!(paths_of(&lib.template_edits("old paper", "X")), ["Spaced.md"]);
+    assert!(lib.template_edits("Nothing", "X").is_empty());
+    assert!(lib.template_edits("  ", "X").is_empty());
+
+    // The index follows the note: once it names another template, the old name finds nothing of it.
+    lib.upsert(&r("main", "Bare.md"), "---\ntemplate: Letter\n---\n", 9).unwrap();
+    assert_eq!(paths_of(&lib.template_edits("Paper", "Y")), ["Cased.md", "Crlf.md", "Quoted.md"]);
+    assert_eq!(paths_of(&lib.template_edits("letter", "Y")), ["Bare.md", "Other.md"]);
+    lib.remove(&r("main", "Quoted.md"));
+    assert_eq!(paths_of(&lib.template_edits("Paper", "Y")), ["Cased.md", "Crlf.md"]);
+}
+
 fn utf16_to_byte(text: &str, unit: u32) -> usize {
     let mut u = 0;
     for (i, c) in text.char_indices() {

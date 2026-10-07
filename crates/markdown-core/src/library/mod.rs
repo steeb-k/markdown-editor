@@ -259,6 +259,8 @@ struct Parsed {
     h1: Option<String>,
     front_tags: Vec<String>,
     aliases: Vec<String>,
+    /// The front matter `template:`, as written.
+    template: Option<String>,
     inline_tags: Vec<String>,
     links: Vec<Link>,
     headings: Vec<Heading>,
@@ -281,6 +283,7 @@ struct Note {
     h1: Option<String>,
     front_tags: Vec<String>,
     aliases: Vec<String>,
+    template: Option<String>,
     inline_tags: Vec<String>,
     tags: Vec<String>,
     links: Vec<Link>,
@@ -447,7 +450,7 @@ fn parse(text: &str) -> Parsed {
     let (terms, _) = text::term_counts(text);
     let mut words = 0u32;
     text::for_each_word(&text[body_start..], |_, _, _| words = words.saturating_add(1));
-    Parsed { h1, front_tags, aliases, inline_tags, links, headings, words, terms, body_start, skip }
+    Parsed { h1, front_tags, aliases, template: crate::front_matter::front_matter_template(text), inline_tags, links, headings, words, terms, body_start, skip }
 }
 
 impl Library {
@@ -598,7 +601,7 @@ impl Library {
             },
         };
         let stem = stem_of(&r.path).to_owned();
-        let Parsed { h1, front_tags, aliases, inline_tags, links, headings, words, terms, body_start, skip } = parsed;
+        let Parsed { h1, front_tags, aliases, template, inline_tags, links, headings, words, terms, body_start, skip } = parsed;
         let mut tags: Vec<String> = front_tags.iter().chain(&inline_tags).cloned().collect();
         tags.sort();
         tags.dedup();
@@ -619,6 +622,7 @@ impl Library {
             h1,
             front_tags,
             aliases,
+            template,
             inline_tags,
             tags,
             links,
@@ -1176,6 +1180,26 @@ impl Library {
             }
         }
         out
+    }
+
+    /// The edits that make every note whose front matter `template:` names `old` (compared by `text::key`, so
+    /// case-insensitively) name `new` instead, for the shell to apply when a template is renamed: the value is
+    /// replaced the way `set_front_matter_template` writes it, so quoting and the line ending are kept. Sorted by
+    /// note.
+    pub fn template_edits(&self, old: &str, new: &str) -> Vec<Edit> {
+        let old = text::key(old.trim());
+        if old.is_empty() {
+            return Vec::new();
+        }
+        let mut notes: Vec<&Note> = self.live().map(|(_, n)| n).filter(|n| n.template.as_deref().is_some_and(|t| text::key(t) == old)).collect();
+        notes.sort_by(|a, b| (self.root_rank(&a.r.root), &a.r.path).cmp(&(self.root_rank(&b.r.root), &b.r.path)));
+        notes
+            .into_iter()
+            .filter_map(|n| {
+                let (start, end, replacement) = crate::front_matter::set_front_matter_template(&n.text, Some(new))?;
+                Some(Edit { note: n.r.clone(), range: self.range(n, start, end), replacement })
+            })
+            .collect()
     }
 }
 
