@@ -19,7 +19,7 @@
 	<key>CFBundleIconFile</key>
 	<string>Markdown</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.1.0</string>
 	<!-- The build number: scripts/macos/bundle.sh replaces it with the number of commits. -->
 	<key>CFBundleVersion</key>
 	<string>1</string>
