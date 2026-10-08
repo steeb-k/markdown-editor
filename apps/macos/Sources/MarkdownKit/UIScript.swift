@@ -355,6 +355,8 @@ final class UIScriptRunner {
             templateStep(name, then: done)
         } else if let l = step["lineWidth"] as? [String: Any] {
             lineWidthStep(l, then: done)
+        } else if let e = step["export"] as? [String: Any] {
+            exportStep(e, then: done)
         } else if let o = step["outline"] as? [String: Any] {
             outlineStep(o, then: done)
         } else if let h = step["history"] as? [String: Any] {
@@ -2426,6 +2428,8 @@ final class UIScriptRunner {
         if let c = a["column"] as? [String: Any] { columnAssertions(c) }
         if let f = a["documentFile"] as? [String: Any] { fileAssertions(f) }
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
+        if let f = a["file"] as? [String: Any] { exportFileAssertions(f) }
+        if let d = a["docx"] as? [String: Any] { docxAssertions(d) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
         if let t = a["template"] as? [String: Any] { templateAssertions(t) }
         if a["measure"] != nil || a["lineWidthMenu"] != nil { lineWidthAssertions(a) }
@@ -2588,8 +2592,8 @@ final class UIScriptRunner {
             if let pending = v["pendingDecision"] as? Bool { check("authorship decision pending \(pending)", (s.pendingAuthorshipDecision != nil) == pending) }
             if let editable = v["editable"] as? Bool { check("text editable \(editable)", textView?.isEditable == editable) }
         }
-        if let v = a["file"] as? [String: Any], let url = document?.fileURL {
-            // What is on disk: `contains` / `lacks` / `suffix` (strings).
+        if let v = a["file"] as? [String: Any], v["path"] == nil, let url = document?.fileURL {
+            // What is on disk: `contains` / `lacks` / `suffix` (strings). (With a `path` it is a file the harness wrote: `exportFileAssertions`.)
             let disk = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             // (A string, or a list of them.)
             for c in (v["contains"] as? [String]) ?? (v["contains"] as? String).map({ [$0] }) ?? [] {

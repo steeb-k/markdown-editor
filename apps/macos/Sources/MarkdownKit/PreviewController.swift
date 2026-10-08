@@ -750,6 +750,18 @@ enum PreviewTypography {
                           lineHeight: Double(a.lineHeight), measureCh: Double(a.settingsCharacters))
     }
 
+    /// The typography for a Word file: the same stacks, without the names declared for the bundled faces. Those are CSS
+    /// families the preview's `@font-face` rules create; Word would look for a font of that name and not find it, so the
+    /// stack's next name (the system's) is the one it gets.
+    static func makeForWord(from a: EditorAppearance) -> Typography {
+        var t = make(from: a)
+        for name in bundledFamilies.values {
+            t.fontFamily = t.fontFamily.replacingOccurrences(of: "\"\(name)\", ", with: "")
+            t.monoFamily = t.monoFamily.replacingOccurrences(of: "\"\(name)\", ", with: "")
+        }
+        return t
+    }
+
     /// A font as a CSS family stack: the bundled faces by the names declared for them, installed
     /// fonts by their own family name, the system fonts by their generic names; then a fallback of
     /// the same kind.

@@ -93,6 +93,10 @@ enum MainMenu {
             m.addItem(.separator())
             nested(m, "Export") { e in
                 _ = item(e, "PDF…", #selector(EditorWindowController.exportPDF(_:)))
+                _ = item(e, "HTML…", #selector(EditorWindowController.exportHTML(_:)))
+                _ = item(e, "Word…", #selector(EditorWindowController.exportWord(_:)))
+                _ = item(e, "Plain Text…", #selector(EditorWindowController.exportPlainText(_:)))
+                _ = item(e, "Markdown…", #selector(EditorWindowController.exportMarkdown(_:)))
             }
             _ = item(m, "Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift])
             _ = item(m, "Print…", #selector(NSDocument.printDocument(_:)), "p")

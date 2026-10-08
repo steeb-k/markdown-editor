@@ -350,7 +350,8 @@ enum ExportError: Error, LocalizedError, Equatable {
         case .pageDidNotLoad: return "The document could not be prepared for printing."
         case .printFailed: return "The PDF could not be written."
         case .useAsynchronousPath: return "Use File > Print."
-        case .cannotWrite(let name): return "The PDF could not be saved as “\(name)” because you don’t have permission to write there."
+        case .cannotWrite(let name):
+            return "\(ExportFormat.subject(ofFileNamed: name)) could not be saved as “\(name)” because you don’t have permission to write there."
         }
     }
 

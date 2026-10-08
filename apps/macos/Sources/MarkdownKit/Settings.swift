@@ -102,6 +102,7 @@ public final class Settings: NSObject {
         static let sidebarWidth = "sidebarWidth"
         static let reopenAtLaunch = "reopenDocumentsAtLaunch"
         static let askBeforeQuitting = "askBeforeQuitting"
+        static let exportKeepsFrontMatter = "exportKeepsFrontMatter"
         /// The side column's own keys; the outline's and the history's (M8d, M8e) are read once if these are not set.
         static let sideColumnByDefault = "sideColumnByDefault"
         static let sideColumnPane = "sideColumnPane"
@@ -143,6 +144,7 @@ public final class Settings: NSObject {
             Key.sidebarWidth: 240.0,
             Key.reopenAtLaunch: true,
             Key.askBeforeQuitting: true,
+            Key.exportKeepsFrontMatter: true,
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -183,6 +185,13 @@ public final class Settings: NSObject {
             let v = min(max(newValue, Self.lineWidthRange.lowerBound), Self.lineWidthRange.upperBound)
             defaults.set(v, forKey: Key.lineWidth); changed()
         }
+    }
+
+    /// The Markdown export's "Keep front matter" checkbox, remembered from one export to the next. Setting it posts no
+    /// change notification: nothing on screen depends on it.
+    public var exportKeepsFrontMatter: Bool {
+        get { defaults.bool(forKey: Key.exportKeepsFrontMatter) }
+        set { defaults.set(newValue, forKey: Key.exportKeepsFrontMatter) }
     }
 
     public var spellCheck: Bool {

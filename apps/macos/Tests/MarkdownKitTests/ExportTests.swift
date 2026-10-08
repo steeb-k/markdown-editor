@@ -434,6 +434,223 @@ final class ExportTests: XCTestCase {
         XCTAssertTrue(spin(timeout: 5) { weakDoc == nil && weakPreview == nil }, "document \(weakDoc == nil), preview \(weakPreview == nil)")
         _ = weakWeb
     }
+    // MARK: the other formats (HTML, Word, plain text, Markdown)
+
+    private let tinyPNG = Fixtures.root.appendingPathComponent("scripts/macos/ui/fixtures/pictures/small.png")
+
+    /// Runs one of the document's export methods and waits; the completion must run once, on the main thread.
+    private func exportFormat(_ doc: MarkdownDocument, _ format: ExportFormat, to name: String, keepFrontMatter: Bool = true) -> (URL, Error?) {
+        let url = tmp.appendingPathComponent(name)
+        var results: [Error?] = []
+        let finished: @MainActor (Error?) -> Void = { error in
+            XCTAssertTrue(Thread.isMainThread, "completion on the main thread")
+            results.append(error)
+        }
+        switch format {
+        case .html: doc.exportHTML(to: url, completion: finished)
+        case .word: doc.exportWord(to: url, completion: finished)
+        case .plainText: doc.exportPlainText(to: url, completion: finished)
+        case .markdown: doc.exportMarkdown(to: url, keepFrontMatter: keepFrontMatter, completion: finished)
+        }
+        XCTAssertTrue(spin(timeout: 30) { !results.isEmpty }, "export finished")
+        pumpRunLoop(0.1)
+        XCTAssertEqual(results.count, 1, "completion runs once")
+        XCTAssertEqual(MarkdownDocument.exportsInFlight, 0, "and lets termination happen again")
+        return (url, results.first ?? nil)
+    }
+
+    private func put(_ name: String) throws {
+        let folder = tmp.appendingPathComponent("pictures")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        try FileManager.default.copyItem(at: tinyPNG, to: folder.appendingPathComponent(name))
+    }
+
+    private static let formatted = """
+    ---
+    title: A Formatted Page
+    template: Academic
+    ---
+
+    # Heading
+
+    Some *text* with a footnote[^1].
+
+    ![local](pictures/small.png) ![remote](https://example.com/r.png) ![gone](pictures/missing.png)
+
+    | A | B |
+    | - | - |
+    | 1 | 2 |
+
+    [^1]: The note.
+    """
+
+    func testHTMLIsOneFileWithTheTemplateAndItsPictures() throws {
+        try put("small.png")
+        let doc = try document(Self.formatted)
+        // Dark in the window; the file is the printed look.
+        let (url, error) = exportFormat(doc, .html, to: "page.html")
+        XCTAssertNil(error)
+        let html = try String(contentsOf: url, encoding: .utf8)
+        let bytes = try Data(contentsOf: tinyPNG)
+        XCTAssertTrue(html.hasPrefix("<!DOCTYPE html>"))
+        XCTAssertTrue(html.contains("<title>A Formatted Page</title>"))
+        // The template's own stylesheet: Academic's serif and numbered headings, in the Light theme.
+        XCTAssertTrue(html.contains("Charter") && html.contains("counter-reset: md-h1"), "Academic's rules")
+        XCTAssertTrue(html.contains("--bg: #FBFBF9"), "the Light theme")
+        // The picture embedded; the remote one and the one that cannot be read are as written.
+        XCTAssertTrue(html.contains("src=\"data:image/png;base64,\(bytes.base64EncodedString())\""), "the local picture is embedded")
+        XCTAssertTrue(html.contains("src=\"https://example.com/r.png\"") && html.contains("src=\"pictures/missing.png\""))
+        XCTAssertFalse(html.contains("src=\"pictures/small.png\""))
+        // Nothing of the editor's: no source lines, no scheme of the app's, no font faces, no front matter text.
+        XCTAssertFalse(html.contains("data-line") || html.contains("mdoc://") || html.contains("@font-face"))
+        XCTAssertFalse(html.contains("template: Academic"))
+        XCTAssertTrue(html.contains("<table>") && html.contains("class=\"footnote-ref\""))
+        doc.close()
+    }
+
+    func testHTMLOfAnUntitledDocumentAndOfNothing() throws {
+        let doc = try document("", file: nil)
+        let (url, error) = exportFormat(doc, .html, to: "empty.html")
+        XCTAssertNil(error)
+        let html = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(html.contains("<title>") && html.contains("</html>"))
+        doc.close()
+    }
+
+    func testWordHoldsTheTemplatesStylesAndThePictures() throws {
+        try put("small.png")
+        let doc = try document(Self.formatted)
+        let (url, error) = exportFormat(doc, .word, to: "page.docx")
+        XCTAssertNil(error)
+        let parts = try unzip(url)
+        XCTAssertEqual(parts["word/media/image1.png"], try Data(contentsOf: tinyPNG), "the picture's media part")
+        XCTAssertEqual(parts.keys.filter { $0.hasPrefix("word/media/") }.count, 1, "only the picture that could be read")
+        let document = String(decoding: try XCTUnwrap(parts["word/document.xml"]), as: UTF8.self)
+        let styles = String(decoding: try XCTUnwrap(parts["word/styles.xml"]), as: UTF8.self)
+        XCTAssertTrue(document.contains("<w:drawing>") && document.contains("<w:tbl>") && document.contains("<w:footnoteReference"))
+        XCTAssertTrue(document.contains(">gone</w:t>") && document.contains(">remote</w:t>"), "pictures that are not there are their alt text")
+        XCTAssertTrue(styles.contains("w:ascii=\"Charter\"") && styles.contains("w:styleId=\"Heading1\""), "Academic's family in the styles")
+        XCTAssertTrue(String(decoding: try XCTUnwrap(parts["docProps/core.xml"]), as: UTF8.self).contains("<dc:title>A Formatted Page</dc:title>"))
+        XCTAssertFalse(document.contains("template: Academic"))
+        // The paper is the document's.
+        let paper = doc.printInfo.paperSize
+        XCTAssertTrue(document.contains("<w:pgSz w:w=\"\(Int((paper.width * 20).rounded()))\""), document.suffix(300).description)
+        doc.close()
+    }
+
+    func testPlainTextIsWhatTheCoreRenders() throws {
+        let doc = try document(Self.formatted)
+        let (url, error) = exportFormat(doc, .plainText, to: "page.txt")
+        XCTAssertNil(error)
+        let data = try Data(contentsOf: url)
+        XCTAssertFalse(data.starts(with: [0xEF, 0xBB, 0xBF]), "no byte order mark")
+        let expected = doc.session.coordinator.sync { $0.renderPlain() }
+        XCTAssertEqual(String(decoding: data, as: UTF8.self), expected)
+        XCTAssertTrue(expected.hasPrefix("Heading\n\nSome text with a footnote[1].") && expected.contains("[1] The note."))
+        doc.close()
+    }
+
+    func testMarkdownLacksTheAnnotationBlockAndKeepsOrDropsTheFrontMatter() throws {
+        let doc = try document("---\ntitle: T\n---\n\nfirst line\n\nlast line\n")
+        let text = doc.session.text as NSString
+        XCTAssertTrue(doc.session.mark(NSRange(location: text.range(of: "last line").location, length: 9), as: .ai))
+        // The file the document saves has the block; the export does not.
+        let saved = String(decoding: try doc.data(ofType: "net.daringfireball.markdown"), as: UTF8.self)
+        XCTAssertTrue(saved.contains("Annotations:"), saved)
+        var (url, error) = exportFormat(doc, .markdown, to: "keep.md", keepFrontMatter: true)
+        XCTAssertNil(error)
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "---\ntitle: T\n---\n\nfirst line\n\nlast line\n")
+        (url, error) = exportFormat(doc, .markdown, to: "bare.md", keepFrontMatter: false)
+        XCTAssertNil(error)
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "first line\n\nlast line\n")
+        doc.close()
+    }
+
+    func testMarkdownKeepsTheLineEndingsAndTheByteOrderMark() throws {
+        let doc = MarkdownDocument(settings: isolatedSettings())
+        try doc.read(from: Data("\u{FEFF}---\r\nk: v\r\n---\r\nbody\r\nmore\r\n".utf8), ofType: "net.daringfireball.markdown")
+        doc.makeWindowControllers()
+        XCTAssertTrue(doc.session.waitUntilStyled())
+        var (url, error) = exportFormat(doc, .markdown, to: "crlf.md")
+        XCTAssertNil(error)
+        XCTAssertEqual(try Data(contentsOf: url), Data("\u{FEFF}---\r\nk: v\r\n---\r\nbody\r\nmore\r\n".utf8))
+        (url, error) = exportFormat(doc, .markdown, to: "crlf-bare.md", keepFrontMatter: false)
+        XCTAssertNil(error)
+        XCTAssertEqual(try Data(contentsOf: url), Data("\u{FEFF}body\r\nmore\r\n".utf8))
+        // Plain text is always LF, whatever the file's endings.
+        (url, error) = exportFormat(doc, .plainText, to: "crlf.txt")
+        XCTAssertNil(error)
+        XCTAssertFalse(try String(contentsOf: url, encoding: .utf8).contains("\r"))
+        doc.close()
+    }
+
+    func testAnEmptyDocumentExportsAnEmptyFileInEveryFormat() throws {
+        let doc = try document("", file: nil)
+        for (format, name) in [(ExportFormat.plainText, "e.txt"), (.markdown, "e.md")] {
+            let (url, error) = exportFormat(doc, format, to: name)
+            XCTAssertNil(error, name)
+            XCTAssertEqual(try Data(contentsOf: url).count, 0, name)
+        }
+        let (word, error) = exportFormat(doc, .word, to: "e.docx")
+        XCTAssertNil(error)
+        XCTAssertNotNil(try unzip(word)["word/document.xml"])
+        doc.close()
+    }
+
+    func testTheOtherFormatsReportAnUnwritableDestination() throws {
+        let doc = try document("# Hello\n")
+        for (format, name, subject) in [(ExportFormat.html, "x.html", "HTML"), (.word, "x.docx", "Word"), (.plainText, "x.txt", "text"), (.markdown, "x.md", "Markdown")] {
+            let (url, error) = exportFormat(doc, format, to: "missing-folder/" + name)
+            XCTAssertEqual(error as? ExportError, .cannotWrite(name), name)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+            XCTAssertTrue((error as? LocalizedError)?.errorDescription?.contains(subject) == true, "\(subject): \(String(describing: error))")
+        }
+        doc.close()
+    }
+
+    func testTheExportMenuHasTheFiveFormatsAndTheyAreEnabledOnlyWithADocument() throws {
+        _ = NSApplication.shared
+        let file = try XCTUnwrap(MainMenu.build().items.first { $0.title == "File" }?.submenu)
+        let export = try XCTUnwrap(file.items.first { $0.title == "Export" }?.submenu)
+        XCTAssertEqual(export.items.map(\.title), ["PDF…", "HTML…", "Word…", "Plain Text…", "Markdown…"])
+        let doc = try document("# Hello\n")
+        let controller = try XCTUnwrap(doc.windowControllers.first as? EditorWindowController)
+        for item in export.items {
+            // The window's controller answers each action and says yes; nobody else does, so with no window the item is dimmed.
+            XCTAssertTrue(controller.validateMenuItem(item), item.title)
+            XCTAssertTrue(controller.responds(to: item.action!), item.title)
+        }
+        doc.close()
+    }
+
+    func testTheKeepFrontMatterChoiceIsRemembered() {
+        let settings = isolatedSettings()
+        XCTAssertTrue(settings.exportKeepsFrontMatter, "on by default")
+        settings.exportKeepsFrontMatter = false
+        XCTAssertFalse(settings.exportKeepsFrontMatter)
+        XCTAssertFalse(Settings(defaults: settings.defaults).exportKeepsFrontMatter, "kept in the defaults")
+    }
+
+    /// The package's parts by name (`ditto -x -k`, as the harness does).
+    private func unzip(_ file: URL) throws -> [String: Data] {
+        let folder = tmp.appendingPathComponent("unzipped-" + file.lastPathComponent)
+        try? FileManager.default.removeItem(at: folder)
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-x", "-k", file.path, folder.path]
+        try ditto.run()
+        ditto.waitUntilExit()
+        XCTAssertEqual(ditto.terminationStatus, 0)
+        var parts: [String: Data] = [:]
+        // (The temporary folder is reached through a symbolic link: the paths are compared resolved.)
+        let base = folder.resolvingSymlinksInPath().path
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]))
+        for case let url as URL in walker where (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+            parts[String(url.resolvingSymlinksInPath().path.dropFirst(base.count + 1))] = try Data(contentsOf: url)
+        }
+        return parts
+    }
 }
 
 /// A TCP server that accepts connections and never answers.

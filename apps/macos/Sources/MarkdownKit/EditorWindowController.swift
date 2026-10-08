@@ -451,6 +451,55 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         }
     }
 
+    @objc func exportHTML(_ sender: Any?) {
+        presentExportPanel(.html) { doc, url, completion in doc.exportHTML(to: url, completion: completion) }
+    }
+
+    @objc func exportWord(_ sender: Any?) {
+        presentExportPanel(.word) { doc, url, completion in doc.exportWord(to: url, completion: completion) }
+    }
+
+    @objc func exportPlainText(_ sender: Any?) {
+        presentExportPanel(.plainText) { doc, url, completion in doc.exportPlainText(to: url, completion: completion) }
+    }
+
+    /// The Markdown export has one choice to make, and the panel is where it is made: whether to keep the front matter.
+    /// The checkbox starts as it was left, and is remembered.
+    @objc func exportMarkdown(_ sender: Any?) {
+        let keep = NSButton(checkboxWithTitle: "Keep front matter", target: nil, action: nil)
+        keep.state = session.settings.exportKeepsFrontMatter ? .on : .off
+        keep.sizeToFit()
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: keep.frame.width + 40, height: keep.frame.height + 20))
+        keep.frame.origin = NSPoint(x: 20, y: 10)
+        accessory.addSubview(keep)
+        presentExportPanel(.markdown, accessory: accessory) { [weak self] doc, url, completion in
+            let keeps = keep.state == .on
+            self?.session.settings.exportKeepsFrontMatter = keeps
+            doc.exportMarkdown(to: url, keepFrontMatter: keeps, completion: completion)
+        }
+    }
+
+    /// A save panel on the window for `format`, named after the document and starting in its folder; `export` runs when a
+    /// file is chosen, and a failure is shown on the window as the PDF's is.
+    private func presentExportPanel(_ format: ExportFormat, accessory: NSView? = nil,
+                                    export: @escaping (MarkdownDocument, URL, @escaping @MainActor (Error?) -> Void) -> Void) {
+        guard let window, let doc = document as? MarkdownDocument else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [format.contentType]
+        panel.nameFieldStringValue = (doc.displayName ?? "Untitled") + "." + format.fileExtension
+        if let folder = doc.fileURL?.deletingLastPathComponent() { panel.directoryURL = folder }
+        panel.canCreateDirectories = true
+        panel.accessoryView = accessory
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            export(doc, url) { [weak window] error in
+                guard let error else { return }
+                guard let window, window.isVisible, window.attachedSheet == nil else { NSSound.beep(); return }
+                NSAlert(error: error).beginSheetModal(for: window)
+            }
+        }
+    }
+
     /// The selection's blocks, or the whole document: the selection of the editor, which in the
     /// preview layout (where nothing is selected in it) is the whole document.
     private var copyRange: NSRange {
@@ -487,7 +536,8 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
             // The history is of a document with a file of its own; a Help page has none.
             return markdownDocument?.isBundled == false
         case #selector(copyAsHTML(_:)), #selector(copyAsRichText(_:)): return session.storage.length > 0
-        case #selector(exportPDF(_:)): return true
+        case #selector(exportPDF(_:)), #selector(exportHTML(_:)), #selector(exportWord(_:)), #selector(exportPlainText(_:)),
+             #selector(exportMarkdown(_:)): return true
         case .some(let action) where Self.forwardedToEditor.contains(action):
             // The View menu's switches while the preview has the keyboard: the editor's answers.
             guard let r = textView.validateEditorAction(action, tag: item.tag) else { return true }

@@ -1,0 +1,245 @@
+[
+ {
+  "log": "File > Export: HTML, Word, plain text and Markdown from the core, in the Academic template, with a picture, a footnote, lists, a table and authorship that none of them may carry."
+ },
+ {
+  "setting": {
+   "theme": "dark",
+   "fontChoice": "iaQuattro",
+   "fontSize": 17,
+   "lineWidth": 72,
+   "autoHideChrome": false,
+   "spellCheck": false,
+   "authorName": "Steve"
+  }
+ },
+ {
+  "open": "scripts/macos/ui/fixtures/export-formats.md",
+  "folder": true
+ },
+ {
+  "resize": [
+   1300,
+   820
+  ]
+ },
+ {
+  "waitStyled": 20
+ },
+ {
+  "selectText": "The end."
+ },
+ {
+  "action": "markAsAI:"
+ },
+ {
+  "wait": 0.2
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "The end.",
+      "ai"
+     ]
+    ],
+    "marks": true
+   }
+  }
+ },
+ {
+  "export": {
+   "format": "html",
+   "to": "out:export.html"
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "path": "out:export.html",
+    "sizeOver": 8000,
+    "contains": [
+     "<!DOCTYPE html>",
+     "<title>Export Formats</title>",
+     "<h1 id=\"export-formats\">Export Formats</h1>",
+     "data:image/png;base64,",
+     "Charter",
+     "counter-reset: md-h1",
+     "--bg: #FBFBF9",
+     "<table>",
+     "class=\"footnote-ref\"",
+     "href=\"https://example.com/site\"",
+     "<a href=\"Another%20Note.md\">wikilink</a>",
+     "<div class=\"raw\">Raw HTML is dropped.</div>"
+    ],
+    "lacks": [
+     "data-line",
+     "mdoc://",
+     "@font-face",
+     "src=\"pictures/small.png\"",
+     "template: Academic",
+     "Annotations"
+    ]
+   }
+  }
+ },
+ {
+  "export": {
+   "format": "docx",
+   "to": "out:export.docx"
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "path": "out:export.docx",
+    "sizeOver": 6000
+   },
+   "docx": {
+    "path": "out:export.docx",
+    "documentContains": [
+     "<w:pStyle w:val=\"Heading1\"/>",
+     "<w:pStyle w:val=\"Heading2\"/>",
+     "<w:pStyle w:val=\"Heading3\"/>",
+     "<w:pStyle w:val=\"Quote\"/>",
+     "<w:pStyle w:val=\"Code\"/>",
+     "<w:tbl>",
+     "<w:tblHeader/>",
+     "<w:hyperlink ",
+     "<w:footnoteReference w:id=\"1\"/>",
+     "<w:drawing>",
+     "<w:numId w:val=\"3\"/>",
+     "Starts at three",
+     "Nested bullet",
+     "A finished task",
+     "Export Formats"
+    ],
+    "documentLacks": [
+     "Raw HTML",
+     "template: Academic",
+     "Annotations"
+    ],
+    "styles": [
+     "Normal",
+     "Heading1",
+     "Heading2",
+     "Heading3",
+     "Heading4",
+     "Heading5",
+     "Heading6",
+     "Quote",
+     "Code",
+     "InlineCode",
+     "Hyperlink",
+     "TableHeader",
+     "FootnoteText",
+     "ListParagraph"
+    ],
+    "stylesContain": [
+     "w:ascii=\"Charter\"",
+     "<w:jc w:val=\"both\"/>"
+    ],
+    "parts": [
+     "word/footnotes.xml",
+     "word/numbering.xml",
+     "word/media/image1.png"
+    ],
+    "mediaCount": 1
+   }
+  }
+ },
+ {
+  "export": {
+   "format": "text",
+   "to": "out:export.txt"
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "path": "out:export.txt",
+    "contains": [
+     "Export Formats\n\nA paragraph with emphasis, strong text, struck words, inline code, a link to the site (https://example.com/site)",
+     "a wikilink and a footnote[1].",
+     "- Second bullet\n  - Nested bullet",
+     "3. Starts at three\n4. Goes on to four",
+     "- [ ] An open task\n- [x] A finished task",
+     "    A quoted thought, as a block quote",
+     "    let greeting = \"Hello\"",
+     "Apple      3   red",
+     "A small picture",
+     "[1] The footnote's text, with emphasis."
+    ],
+    "lacks": [
+     "template: Academic",
+     "**",
+     "<div",
+     "Raw HTML",
+     "Annotations",
+     "\r"
+    ]
+   }
+  }
+ },
+ {
+  "export": {
+   "format": "markdown",
+   "to": "out:export.md"
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "path": "out:export.md",
+    "contains": [
+     "---\ntitle: Export Formats\ntemplate: Academic\n---\n\n# Export Formats",
+     "**strong text**",
+     "[^one]: The footnote's text, with *emphasis*.",
+     "The end."
+    ],
+    "lacks": [
+     "Annotations",
+     "author"
+    ]
+   }
+  }
+ },
+ {
+  "export": {
+   "format": "markdown",
+   "to": "out:export-without-front-matter.md",
+   "keepFrontMatter": false
+  }
+ },
+ {
+  "assert": {
+   "file": {
+    "path": "out:export-without-front-matter.md",
+    "contains": [
+     "# Export Formats\n\nA paragraph with",
+     "The end."
+    ],
+    "lacks": [
+     "template: Academic",
+     "title: Export Formats",
+     "---\ntitle",
+     "Annotations"
+    ]
+   }
+  }
+ },
+ {
+  "assert": {
+   "authorship": {
+    "runs": [
+     [
+      "The end.",
+      "ai"
+     ]
+    ],
+    "marks": true
+   }
+  }
+ }
+]
