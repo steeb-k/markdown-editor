@@ -57,12 +57,11 @@ final class FontPanelTarget: NSObject {
 private struct PaneTile: View {
     let pane: SettingsPane
     var body: some View {
+        // System Settings' metrics: a 20-point tile, the symbol at 11 points, white, a small continuous corner.
         Image(systemName: pane.symbol)
-            .resizable()
-            .scaledToFit()
-            .padding(4)
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 22, height: 22)
+            .frame(width: 20, height: 20)
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(pane.tint.gradient))
     }
 }
@@ -83,7 +82,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             List(model.panes, selection: Binding(get: { Optional(model.pane) }, set: { if let p = $0 { model.pane = p } })) { pane in
-                Label { Text(pane.rawValue) } icon: { PaneTile(pane: pane) }
+                Label { Text(pane.rawValue).padding(.leading, 2) } icon: { PaneTile(pane: pane) }
                     .tag(pane)
             }
             .navigationSplitViewColumnWidth(200)
@@ -134,14 +133,20 @@ public final class SettingsWindowController: NSWindowController {
 
     let model: SettingsModel
     private var titleToken: AnyCancellable?
+    private var searchToken: AnyCancellable?
 
     /// `frameName` is the name the window's frame is saved under in the standard defaults; nil (tests, a UI script) saves none.
     public init(settings: Settings, frameName: String? = nil) {
         model = SettingsModel(settings: settings)
         let host = NSHostingController(rootView: SettingsView(model: model))
         let window = NSWindow(contentViewController: host)
-        // Not resizable: the content pane scrolls, so no pane needs a taller window.
-        window.styleMask = [.titled, .closable, .miniaturizable]
+        // Not resizable: the content pane scrolls, so no pane needs a taller window. The sidebar runs the window's
+        // full height under a transparent title bar, with the pane's name in a unified toolbar over the form, as
+        // System Settings is laid out; without the toolbar the split view floats its sidebar inside the content.
+        window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.toolbar = NSToolbar(identifier: "MarkdownSettingsToolbar")
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 720, height: 672))
         super.init(window: window)
@@ -150,6 +155,13 @@ public final class SettingsWindowController: NSWindowController {
         if let frameName { windowFrameAutosaveName = frameName }
         // The title bar names the pane, as System Settings does.
         titleToken = model.$pane.sink { [weak window] pane in window?.title = pane.rawValue }
+        // Escape in the field ends the search (SwiftUI drops the binding) and the list takes the keyboard, so the arrows
+        // move the pane next: the field alone would keep the caret in a toolbar-style search.
+        searchToken = model.$searchPresented.dropFirst().removeDuplicates().sink { [weak self] presented in
+            guard !presented, let self, let window = self.window, (window.firstResponder as? NSTextView)?.isFieldEditor == true,
+                  let list = Self.firstTable(in: window.contentView) else { return }
+            window.makeFirstResponder(list)
+        }
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
@@ -163,6 +175,13 @@ public final class SettingsWindowController: NSWindowController {
 
     private var hasSavedFrame: Bool {
         !windowFrameAutosaveName.isEmpty && UserDefaults.standard.string(forKey: "NSWindow Frame \(windowFrameAutosaveName)") != nil
+    }
+
+    private static func firstTable(in view: NSView?) -> NSTableView? {
+        guard let view else { return nil }
+        if let t = view as? NSTableView { return t }
+        for sub in view.subviews { if let t = firstTable(in: sub) { return t } }
+        return nil
     }
 
     /// The search field of the window's sidebar, if SwiftUI has made it yet.
