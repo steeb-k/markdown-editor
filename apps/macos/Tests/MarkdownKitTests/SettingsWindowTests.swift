@@ -105,6 +105,22 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(model.pane, .editor)
     }
 
+    /// A pane's name typed while another pane is shown goes to that pane, not to the first pane with a row that mentions it
+    /// ("Notes" went to General for its "Open new windows in Notes mode").
+    func testAPanesNameSelectsThatPane() {
+        let model = SettingsModel(settings: isolatedSettings())
+        model.pane = .appearance
+        model.query = "notes"
+        XCTAssertEqual(model.pane, .notes)
+        XCTAssertEqual(model.panes, [.general, .notes], "the other pane with a match is still listed")
+        model.pane = .appearance
+        model.query = "Authorsh"
+        XCTAssertEqual(model.pane, .authorship, "as it is typed")
+        model.pane = .general
+        model.query = "notes"
+        XCTAssertEqual(model.pane, .general, "a shown pane with a match is not left")
+    }
+
     func testNoMatchAtAll() {
         let model = SettingsModel(settings: isolatedSettings())
         model.pane = .notes
@@ -127,5 +143,29 @@ final class SettingsWindowTests: XCTestCase {
     func testARowNamesTheKeyItEdits() {
         let row = SettingsCatalog.rows.first { $0.title == "Ask before quitting" }!
         XCTAssertEqual(row.keys, ["askBeforeQuitting"])
+    }
+
+    /// The window keeps the place it was moved to, when shown again and in the next launch: AppKit saves the frame under
+    /// the autosave name, and a saved frame is not centred over.
+    func testFrameIsKeptWhereItWasMoved() throws {
+        let name = "MarkdownSettingsTest"
+        let key = "NSWindow Frame \(name)"
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+        let controller = SettingsWindowController(settings: isolatedSettings(), frameName: name)
+        let window = try XCTUnwrap(controller.window)
+        controller.show()
+        let moved = NSPoint(x: window.screen!.visibleFrame.minX + 40, y: window.screen!.visibleFrame.minY + 60)
+        window.setFrameOrigin(moved)
+        controller.close()
+        controller.show()
+        XCTAssertEqual(window.frame.origin, moved, "shown again where it was left, not centred")
+        controller.close()
+        // One window holds a name at a time in a process; the next launch's window is a new one in a new process.
+        controller.windowFrameAutosaveName = ""
+        let next = SettingsWindowController(settings: isolatedSettings(), frameName: name)
+        next.show()
+        XCTAssertEqual(next.window?.frame.origin, moved, "the next launch's window opens where it was left")
+        next.close()
     }
 }

@@ -219,6 +219,12 @@ enum SettingsCatalog {
         return words.allSatisfy { hay.contains($0) }
     }
 
+    /// Whether the query names the pane: every word typed is in its name.
+    static func names(_ pane: SettingsPane, _ query: String) -> Bool {
+        let words = fold(query).split(whereSeparator: \.isWhitespace)
+        return !words.isEmpty && words.allSatisfy { fold(pane.rawValue).contains($0) }
+    }
+
     /// The rows now shown for a pane: the declared ones that apply to the settings and answer the query.
     static func rows(in pane: SettingsPane, matching query: String, settings: Settings) -> [SettingsRow] {
         rows.filter { $0.pane == pane && $0.when(settings) && matches($0, query) }

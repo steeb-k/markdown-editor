@@ -7,13 +7,14 @@ final class SettingsModel: ObservableObject {
     let settings: Settings
     private var token: NSObjectProtocol?
 
-    /// What is typed in the search field. A query the shown pane has no match for moves the selection to the first pane
-    /// that has one; clearing it keeps the pane then shown.
+    /// What is typed in the search field. A query the shown pane has no match for moves the selection to the pane it
+    /// names, or else to the first pane that has a match (a pane's name is mentioned in other panes' rows: "Notes" is in
+    /// General's "Open new windows in Notes mode"); clearing it keeps the pane then shown.
     @Published var query = "" {
         didSet {
             guard query != oldValue else { return }
             let found = panes
-            if let first = found.first, !found.contains(pane) { pane = first }
+            if let first = found.first, !found.contains(pane) { pane = found.first { SettingsCatalog.names($0, query) } ?? first }
         }
     }
 
@@ -120,12 +121,15 @@ struct SettingsView: View {
 }
 
 public final class SettingsWindowController: NSWindowController {
-    public static let shared = SettingsWindowController(settings: .shared)
+    /// A UI script runs under the app's own bundle identifier, so its frames would land in the person's defaults: the
+    /// harness's window keeps none.
+    public static let shared = SettingsWindowController(settings: .shared, frameName: UIScriptRunner.isRequested ? nil : "MarkdownSettings")
 
     let model: SettingsModel
     private var titleToken: AnyCancellable?
 
-    public init(settings: Settings) {
+    /// `frameName` is the name the window's frame is saved under in the standard defaults; nil (tests, a UI script) saves none.
+    public init(settings: Settings, frameName: String? = nil) {
         model = SettingsModel(settings: settings)
         let host = NSHostingController(rootView: SettingsView(model: model))
         let window = NSWindow(contentViewController: host)
@@ -133,8 +137,10 @@ public final class SettingsWindowController: NSWindowController {
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 720, height: 560))
-        window.setFrameAutosaveName("MarkdownSettings")
         super.init(window: window)
+        // Through the controller, not the window: a window controller hands its window its own autosave name when it
+        // takes the window, which emptied the one set on the window before, so no frame was ever saved.
+        if let frameName { windowFrameAutosaveName = frameName }
         // The title bar names the pane, as System Settings does.
         titleToken = model.$pane.sink { [weak window] pane in window?.title = pane.rawValue }
     }
@@ -142,9 +148,14 @@ public final class SettingsWindowController: NSWindowController {
     public required init?(coder: NSCoder) { fatalError("not supported") }
 
     public func show() {
-        if window?.isVisible != true { window?.center() }
+        // Centred only the first time: after that the frame is where the person left it.
+        if window?.isVisible != true, !hasSavedFrame { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private var hasSavedFrame: Bool {
+        !windowFrameAutosaveName.isEmpty && UserDefaults.standard.string(forKey: "NSWindow Frame \(windowFrameAutosaveName)") != nil
     }
 
     /// The search field of the window's sidebar, if SwiftUI has made it yet.

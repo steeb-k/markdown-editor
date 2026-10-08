@@ -138,21 +138,22 @@ private struct TemplatesRoot: View {
 /// The Templates window (Window > Templates…, and Settings' "Manage Templates…"): a sidebar of the installed templates, the
 /// sample page in the selected one, and an inspector for one element at a time. See PLAN 3.21.
 public final class TemplatesWindowController: NSWindowController, NSWindowDelegate {
-    public static let shared = TemplatesWindowController(store: .shared)
+    /// No saved frame under a UI script, which runs under the app's own bundle identifier and so the person's defaults.
+    public static let shared = TemplatesWindowController(store: .shared, frameName: UIScriptRunner.isRequested ? nil : "MarkdownTemplates")
 
     let editor: TemplateEditor
     let sample = TemplateSampleController()
     private var cancellables: [AnyCancellable] = []
     private var terminating: NSObjectProtocol?
 
-    public init(store: TemplateStore) {
+    /// `frameName` is the name the window's frame is saved under in the standard defaults; nil (tests, a UI script) saves none.
+    public init(store: TemplateStore, frameName: String? = nil) {
         let editor = TemplateEditor(store: store)
         self.editor = editor
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 740),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Templates"
         window.isReleasedWhenClosed = false
-        window.setFrameAutosaveName("MarkdownTemplates")
         super.init(window: window)
         window.delegate = self
         editor.hostWindow = window
@@ -161,6 +162,10 @@ public final class TemplatesWindowController: NSWindowController, NSWindowDelega
         host.sizingOptions = [.minSize]
         window.contentViewController = host
         window.setContentSize(NSSize(width: 1180, height: 740))
+        // Through the controller, not the window: a window controller hands its window its own autosave name when it
+        // takes the window, which emptied the one set on the window before, so no frame was ever saved. After the
+        // default size, so a saved frame wins over it.
+        if let frameName { windowFrameAutosaveName = frameName }
         sample.onClick = { [weak editor] key in editor?.selectTarget(key) }
         // The sample follows the editor: stylesheet (a field, a template, the theme) and outlined element.
         editor.$css.receive(on: RunLoop.main).sink { [weak self] _ in self?.updateSample() }.store(in: &cancellables)
@@ -188,9 +193,14 @@ public final class TemplatesWindowController: NSWindowController, NSWindowDelega
         TemplateStore.openManager = { [weak self] in self?.show() }
         // A package may have changed in Finder since the window was last in front.
         editor.store.reloadIfChanged()
-        if window?.isVisible != true { window?.center() }
+        // Centred only the first time: after that the frame is where the person left it.
+        if window?.isVisible != true, !hasSavedFrame { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private var hasSavedFrame: Bool {
+        !windowFrameAutosaveName.isEmpty && UserDefaults.standard.string(forKey: "NSWindow Frame \(windowFrameAutosaveName)") != nil
     }
 
     // MARK: NSWindowDelegate

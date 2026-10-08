@@ -36,6 +36,18 @@ extension UIScriptRunner {
             }
             found[index].performClick(nil)
         }
+        if let keys = t["keys"] as? [String] {
+            // Keys pressed with the Settings window key, as the window server would deliver them: Command keys go to the
+            // window's key equivalents and then to the main menu, the others to the window.
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKeyAndOrderFront(nil)
+            for name in keys { settingsKey(name, in: w) }
+        }
+        if t["clearButton"] as? Bool == true, let field = controller.searchField,
+           let button = (field.cell as? NSSearchFieldCell)?.cancelButtonCell, let action = button.action {
+            // The field's own clear button, sending what a click on it sends.
+            NSApp.sendAction(action, to: button.target ?? field, from: field)
+        }
         guard let text = t["search"] as? String else {
             // Let SwiftUI draw the pane before the next step looks at it.
             later(0.2) { self.record(["settings": entry], ok: true); done() }
@@ -70,6 +82,30 @@ extension UIScriptRunner {
         }
     }
 
+    /// One named key (`down`, `up`, `tab`, `shiftTab`, `escape`, `delete`, `cmd-f`, `cmd-w`, `cmd-g`, or a character)
+    /// delivered to the Settings window.
+    private func settingsKey(_ name: String, in w: NSWindow) {
+        let arrows: NSEvent.ModifierFlags = [.numericPad, .function]
+        let table: [String: (String, UInt16, NSEvent.ModifierFlags)] = [
+            "down": (String(Character(UnicodeScalar(NSDownArrowFunctionKey)!)), 125, arrows),
+            "up": (String(Character(UnicodeScalar(NSUpArrowFunctionKey)!)), 126, arrows),
+            "tab": ("\t", 48, []), "shiftTab": ("\u{19}", 48, .shift), "escape": ("\u{1B}", 53, []), "delete": ("\u{7F}", 51, []),
+            "return": ("\r", 36, []),
+            "cmd-f": ("f", 3, .command), "cmd-w": ("w", 13, .command), "cmd-g": ("g", 5, .command), "cmd-a": ("a", 0, .command),
+        ]
+        let (chars, code, mods) = table[name] ?? (name, name == " " ? 49 : 0, [])
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            guard let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: w.windowNumber, context: nil, characters: chars,
+                                           charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code) else { continue }
+            if type == .keyDown, mods.contains(.command) {
+                if w.performKeyEquivalent(with: e) { continue }
+                if NSApp.mainMenu?.performKeyEquivalent(with: e) == true { continue }
+            }
+            w.sendEvent(e)
+        }
+    }
+
     /// The switches of the shown pane, in form order.
     private func settingsControls() -> [NSControl] {
         var out: [NSControl] = []
@@ -86,6 +122,7 @@ extension UIScriptRunner {
     func settingsAssertions(_ a: [String: Any]) {
         let controller = settingsController
         let model = controller.model
+        if let want = a["visible"] as? Bool { check("the Settings window is shown: \(want)", controller.window?.isVisible == want) }
         if let want = a["pane"] as? String { check("Settings shows the \(want) pane", model.pane.rawValue == want, model.pane.rawValue) }
         if let want = a["title"] as? String { check("the Settings title is \(want)", controller.window?.title == want, controller.window?.title ?? "") }
         if let want = a["panes"] as? [String] { check("Settings lists the panes \(want)", model.panes.map(\.rawValue) == want, "\(model.panes.map(\.rawValue))") }

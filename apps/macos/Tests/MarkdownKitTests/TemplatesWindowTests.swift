@@ -166,6 +166,24 @@ final class TemplatesWindowTests: XCTestCase {
         XCTAssertEqual(editor.style(for: .h1).fontSize?.value, 2.2)
         XCTAssertTrue(try diskTOML().contains("2.2em"))
     }
+
+    /// The window keeps the place it was moved to when shown again (its frame saved under the autosave name, which a
+    /// window controller replaces with its own when it takes the window).
+    func testFrameIsKeptWhereItWasMoved() throws {
+        let key = "NSWindow Frame MarkdownTemplatesTest"
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+        let controller = TemplatesWindowController(store: TemplateStore(builtInDirectory: builtIn, userDirectory: yours), frameName: "MarkdownTemplatesTest")
+        defer { controller.window?.orderOut(nil); controller.windowFrameAutosaveName = "" }
+        let window = try XCTUnwrap(controller.window)
+        XCTAssertEqual(window.frameAutosaveName, "MarkdownTemplatesTest")
+        controller.show()
+        let moved = NSPoint(x: window.screen!.visibleFrame.minX + 30, y: window.screen!.visibleFrame.minY + 20)
+        window.setFrameOrigin(moved)
+        controller.close()
+        controller.show()
+        XCTAssertEqual(window.frame.origin, moved, "shown again where it was left, not centred")
+    }
 }
 
 private extension InstalledTemplate {
