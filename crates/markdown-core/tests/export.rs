@@ -602,6 +602,11 @@ fn docx_template_colours_resolve_through_the_light_theme() {
 fn docx_title_is_in_the_properties() {
     let d = docx_with("x\n", &DocxOptions { title: "A & B".into(), ..Default::default() });
     assert!(d.part("docProps/core.xml").contains("<dc:title>A &amp; B</dc:title>"));
+    // The document's own title wins: the front matter's, then the first heading.
+    let d = docx_with("---\ntitle: \"From Front\"\n---\n# Heading\n", &DocxOptions { title: "file".into(), ..Default::default() });
+    assert!(d.part("docProps/core.xml").contains("<dc:title>From Front</dc:title>"));
+    let d = docx_with("# The *Heading*\n", &DocxOptions { title: "file".into(), ..Default::default() });
+    assert!(d.part("docProps/core.xml").contains("<dc:title>The Heading</dc:title>"));
 }
 
 #[test]

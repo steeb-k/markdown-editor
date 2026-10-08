@@ -30,7 +30,7 @@ use self::package::{document_xml, footnotes_xml, Parts, Resources};
 /// What to write and how it is set.
 #[derive(Debug, Clone)]
 pub struct DocxOptions {
-    /// The document's title, for the file's properties.
+    /// The title for the file's properties when the document has neither a front matter `title:` nor a heading.
     pub title: String,
     /// The resolved template (the empty spec is the Default template).
     pub spec: TemplateSpec,
@@ -66,8 +66,13 @@ impl Document {
         let mut resources = Resources::new();
         let mut numbering = Numbering::new(&look);
         let text = self.text();
+        let mut title = options.title.clone();
         let (body, notes) = match Tree::parse(text) {
             Some(tree) => {
+                // The document's own title (front matter, else the first heading) before the shell's fallback.
+                if let Some(t) = tree.title() {
+                    title = t;
+                }
                 let mut body = Body::new(&tree, &look, &mut resources, &mut numbering);
                 let main = body.document();
                 (main, body.footnotes())
@@ -85,7 +90,7 @@ impl Document {
             styles: styles::styles_xml(&look, numbering.heading_id()),
             numbering: numbering.xml(),
             footnotes: footnotes_xml(&notes),
-            title: options.title.clone(),
+            title,
             resources,
         };
         package::zip(parts)
