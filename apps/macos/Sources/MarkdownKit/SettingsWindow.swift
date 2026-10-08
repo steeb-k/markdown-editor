@@ -21,6 +21,9 @@ final class SettingsModel: ObservableObject {
     @Published var pane: SettingsPane {
         didSet { if pane != oldValue { settings.settingsPane = pane.rawValue } }
     }
+    /// Whether the search field has the caret: SwiftUI's own binding, which holds against the sidebar's list taking the
+    /// keyboard at its first layout (an AppKit first responder set before that is taken back).
+    @Published var searchPresented = false
 
     /// The panes with a row that matches the query (all of them for an empty query), in the sidebar's order.
     var panes: [SettingsPane] { SettingsCatalog.panes(matching: query, settings: settings) }
@@ -107,7 +110,7 @@ struct SettingsView: View {
             .navigationSplitViewColumnWidth(520)
             .navigationTitle(model.pane.rawValue)
         }
-        .searchable(text: $model.query, placement: .sidebar, prompt: "Search")
+        .searchable(text: $model.query, isPresented: $model.searchPresented, placement: .sidebar, prompt: "Search")
         .frame(width: 720, height: 528)
     }
 
@@ -142,12 +145,6 @@ public final class SettingsWindowController: NSWindowController {
         if window?.isVisible != true { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
-        focusSearch()
-        // The sidebar's list takes the keyboard when SwiftUI first lays the window out; the field is asked again after that.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self, let w = self.window, w.isVisible, (w.firstResponder as? NSTextView)?.isFieldEditor != true else { return }
-            self.focusSearch()
-        }
     }
 
     /// The search field of the window's sidebar, if SwiftUI has made it yet.
@@ -160,8 +157,11 @@ public final class SettingsWindowController: NSWindowController {
         return window?.contentView.flatMap(find)
     }
 
-    /// Puts the caret in the search field (SwiftUI builds it a moment after the window shows, so this also tries again).
+    /// Puts the caret in the search field (Edit > Find while the window is key). As the window opens the sidebar's list
+    /// takes the keyboard, as System Settings' does, whatever is asked before or after SwiftUI's first layout; the field
+    /// is given it on request only, with a retry for a field SwiftUI has not built yet.
     func focusSearch(retries: Int = 10) {
+        model.searchPresented = true
         guard let window else { return }
         if let field = searchField { window.makeFirstResponder(field); return }
         guard retries > 0 else { return }

@@ -3,7 +3,7 @@
   {"setting": {"theme": "light", "grammarCheck": false, "spellCheck": true, "fontChoice": "iaQuattro"}},
   {"settingsWindow": "show"},
   {"wait": 0.5},
-  {"assert": {"settings": {"searchFocused": true, "query": ""}}},
+  {"assert": {"settings": {"query": ""}}},
 
   {"log": "Every pane in turn: its title, its sections' rows by title, a snapshot"},
   {"settings": {"pane": "General"}},
