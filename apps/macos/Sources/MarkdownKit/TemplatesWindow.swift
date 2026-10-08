@@ -139,7 +139,14 @@ private struct TemplatesRoot: View {
 /// sample page in the selected one, and an inspector for one element at a time. See PLAN 3.21.
 public final class TemplatesWindowController: NSWindowController, NSWindowDelegate {
     /// No saved frame under a UI script, which runs under the app's own bundle identifier and so the person's defaults.
-    public static let shared = TemplatesWindowController(store: .shared, frameName: UIScriptRunner.isRequested ? nil : "MarkdownTemplates")
+    public static let shared = TemplatesWindowController(store: .shared, frameName: sharedFrameName)
+
+    private static var sharedFrameName: String? {
+        #if DEBUG || UI_SCRIPT
+        if UIScriptRunner.isRequested { return nil }
+        #endif
+        return "MarkdownTemplates"
+    }
 
     let editor: TemplateEditor
     let sample = TemplateSampleController()

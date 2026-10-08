@@ -1,3 +1,4 @@
+#if DEBUG || UI_SCRIPT
 import AppKit
 
 // MARK: the Settings window
@@ -148,3 +149,4 @@ extension UIScriptRunner {
         }
     }
 }
+#endif

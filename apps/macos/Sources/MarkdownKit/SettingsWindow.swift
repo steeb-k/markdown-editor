@@ -123,7 +123,14 @@ struct SettingsView: View {
 public final class SettingsWindowController: NSWindowController {
     /// A UI script runs under the app's own bundle identifier, so its frames would land in the person's defaults: the
     /// harness's window keeps none.
-    public static let shared = SettingsWindowController(settings: .shared, frameName: UIScriptRunner.isRequested ? nil : "MarkdownSettings")
+    public static let shared = SettingsWindowController(settings: .shared, frameName: sharedFrameName)
+
+    private static var sharedFrameName: String? {
+        #if DEBUG || UI_SCRIPT
+        if UIScriptRunner.isRequested { return nil }
+        #endif
+        return "MarkdownSettings"
+    }
 
     let model: SettingsModel
     private var titleToken: AnyCancellable?
