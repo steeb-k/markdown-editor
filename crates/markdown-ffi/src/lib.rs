@@ -458,6 +458,35 @@ pub struct RenderOptions {
     pub style: Option<PreviewStyle>,
     #[uniffi(default = [])]
     pub image_sizes: Vec<ImageSize>,
+    /// Pictures the shell has read, embedded as `data:` URIs (see `core::ImageData`).
+    #[uniffi(default = [])]
+    pub image_data: Vec<ImageData>,
+}
+
+/// A picture's bytes and type for the destination as written (see `core::ImageData`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ImageData {
+    pub destination: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
+/// What `Document::render_docx` writes and how it is set. See `core::DocxOptions`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DocxOptions {
+    #[uniffi(default = "")]
+    pub title: String,
+    pub spec: TemplateSpec,
+    pub typography: Typography,
+    #[uniffi(default = [])]
+    pub image_sizes: Vec<ImageSize>,
+    #[uniffi(default = [])]
+    pub image_data: Vec<ImageData>,
+    /// The paper in points; zero is US Letter.
+    #[uniffi(default = 0.0)]
+    pub page_width_pt: f64,
+    #[uniffi(default = 0.0)]
+    pub page_height_pt: f64,
 }
 
 /// A picture's size in points for the destination as written (see `core::ImageSize`).
@@ -914,6 +943,27 @@ impl From<RenderOptions> for core::RenderOptions {
             fallback_title: o.fallback_title,
             style: o.style.map(Into::into),
             image_sizes: o.image_sizes.into_iter().map(|s| core::ImageSize { destination: s.destination, width: s.width, height: s.height }).collect(),
+            image_data: o.image_data.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<ImageData> for core::ImageData {
+    fn from(d: ImageData) -> Self {
+        core::ImageData { destination: d.destination, mime: d.mime, bytes: d.bytes }
+    }
+}
+
+impl From<DocxOptions> for core::DocxOptions {
+    fn from(o: DocxOptions) -> Self {
+        core::DocxOptions {
+            title: o.title,
+            spec: o.spec.into(),
+            typography: o.typography.into(),
+            image_sizes: o.image_sizes.into_iter().map(|s| core::ImageSize { destination: s.destination, width: s.width, height: s.height }).collect(),
+            image_data: o.image_data.into_iter().map(Into::into).collect(),
+            page_width_pt: o.page_width_pt,
+            page_height_pt: o.page_height_pt,
         }
     }
 }
@@ -1139,6 +1189,16 @@ impl Document {
         self.with(|d| d.render_html(&options.into()))
     }
 
+    /// The document as plain text: no markup, `\n` line endings.
+    pub fn render_plain(&self) -> String {
+        self.with(|d| d.render_plain())
+    }
+
+    /// The document as a `.docx` file's bytes, styled by `options.spec`.
+    pub fn render_docx(&self, options: DocxOptions) -> Vec<u8> {
+        self.with(|d| d.render_docx(&options.into()))
+    }
+
     /// The whole blocks `range` touches as HTML; an empty range is the whole document.
     pub fn render_html_fragment(&self, range: Utf16Range, options: RenderOptions) -> String {
         self.with(|d| d.render_html_fragment(range.into(), &options.into()))
@@ -1301,6 +1361,7 @@ mod tests {
             fallback_title: String::new(),
             style: None,
             image_sizes: vec![ImageSize { destination: "p.png".into(), width: 10, height: 20 }],
+            image_data: vec![ImageData { destination: "p.png".into(), mime: "image/png".into(), bytes: vec![1, 2, 3] }],
         };
         let h = d.render_html(opts.clone());
         assert!(h.contains("<h1 id=\"t\" data-line=\"0\">T</h1>") && h.contains("s-storage"), "{h}");
@@ -1321,5 +1382,22 @@ mod tests {
         assert!(page.starts_with("<!DOCTYPE html>") && page.contains("max-width: 70ch"));
         assert_eq!(heading_slug("Hello, World".into()), "hello-world");
         warm_up_highlighting();
+    }
+
+    #[test]
+    fn exports_cross_the_boundary() {
+        let d = Document::new("# T\n\nbody *em*\n".into());
+        assert_eq!(d.render_plain(), "T\n\nbody em\n");
+        let options = DocxOptions {
+            title: "T".into(),
+            spec: TemplateSpec { page: TemplatePage { measure_ch: None, side_padding: None, background: None, align: None }, elements: Vec::new() },
+            typography: Typography { font_family: "serif".into(), mono_family: "monospace".into(), font_size_px: 17.0, line_height: 1.5, measure_ch: 72.0 },
+            image_sizes: Vec::new(),
+            image_data: Vec::new(),
+            page_width_pt: 0.0,
+            page_height_pt: 0.0,
+        };
+        let bytes = d.render_docx(options);
+        assert!(bytes.starts_with(b"PK"));
     }
 }
