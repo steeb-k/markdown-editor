@@ -72,7 +72,9 @@ public final class Settings: NSObject {
 
     public let defaults: UserDefaults
 
-    private enum Key {
+    /// The stored keys. Internal, not private, so the Settings window's rows can name the key each one edits and the
+    /// tests can see that every preference has a row.
+    enum Key {
         static let theme = "theme"
         static let font = "fontChoice"
         static let customFamily = "customFontFamily"
@@ -103,6 +105,7 @@ public final class Settings: NSObject {
         static let reopenAtLaunch = "reopenDocumentsAtLaunch"
         static let askBeforeQuitting = "askBeforeQuitting"
         static let exportKeepsFrontMatter = "exportKeepsFrontMatter"
+        static let settingsPane = "settingsPane"
         /// The side column's own keys; the outline's and the history's (M8d, M8e) are read once if these are not set.
         static let sideColumnByDefault = "sideColumnByDefault"
         static let sideColumnPane = "sideColumnPane"
@@ -145,6 +148,7 @@ public final class Settings: NSObject {
             Key.reopenAtLaunch: true,
             Key.askBeforeQuitting: true,
             Key.exportKeepsFrontMatter: true,
+            Key.settingsPane: "General",
         ].merging(Dictionary(uniqueKeysWithValues: SyntaxClass.allCases.map { (Key.syntaxClass($0), true as Any) })) { a, _ in a })
     }
 
@@ -192,6 +196,13 @@ public final class Settings: NSObject {
     public var exportKeepsFrontMatter: Bool {
         get { defaults.bool(forKey: Key.exportKeepsFrontMatter) }
         set { defaults.set(newValue, forKey: Key.exportKeepsFrontMatter) }
+    }
+
+    /// The pane the Settings window shows, by name, so it opens where it was left. Posts no change notification: nothing
+    /// outside that window depends on it.
+    public var settingsPane: String {
+        get { defaults.string(forKey: Key.settingsPane) ?? "General" }
+        set { defaults.set(newValue, forKey: Key.settingsPane) }
     }
 
     public var spellCheck: Bool {

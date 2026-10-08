@@ -259,7 +259,7 @@ final class UIScriptRunner {
     /// The steps that need the app active: real mouse events (a click on a window of an inactive app only brings it
     /// forward) and full screen. A script without any never takes activation from the person at the machine.
     nonisolated static let stepsNeedingActivation: Set<String> = ["click", "drag", "slowDrag", "contextMenu", "dividerDrag", "liveResize",
-                                                      "doubleClickTitlebar", "fullscreen", "codeBadge", "templates"]
+                                                      "doubleClickTitlebar", "fullscreen", "codeBadge", "templates", "settings"]
 
     /// Whether the script has such a step. Read at launch: since macOS 14 an app may take activation when it has just
     /// been launched, and not later from the background (`activate` is then refused, and `makeKey` waits in vain), so
@@ -768,6 +768,8 @@ final class UIScriptRunner {
             done()
         } else if let t = step["templates"] as? [String: Any] {
             templatesStep(t, then: done)
+        } else if let t = step["settings"] as? [String: Any] {
+            settingsStep(t, then: done)
         } else if let sheet = str("sheet") {
             // "end": dismiss whatever sheet is attached (Cancel).
             if sheet == "end", let w = window, let s = w.attachedSheet {
@@ -2434,6 +2436,7 @@ final class UIScriptRunner {
         if let t = a["template"] as? [String: Any] { templateAssertions(t) }
         if a["measure"] != nil || a["lineWidthMenu"] != nil { lineWidthAssertions(a) }
         if let t = a["templates"] as? [String: Any] { templatesAssertions(t) }
+        if let t = a["settings"] as? [String: Any] { settingsAssertions(t) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }
         if let menus = a["menu"] as? [String: Any] {

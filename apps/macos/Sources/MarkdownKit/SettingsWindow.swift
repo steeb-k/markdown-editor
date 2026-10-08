@@ -1,12 +1,36 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Re-publishes `Settings` changes to SwiftUI.
 final class SettingsModel: ObservableObject {
     let settings: Settings
     private var token: NSObjectProtocol?
+
+    /// What is typed in the search field. A query the shown pane has no match for moves the selection to the first pane
+    /// that has one; clearing it keeps the pane then shown.
+    @Published var query = "" {
+        didSet {
+            guard query != oldValue else { return }
+            let found = panes
+            if let first = found.first, !found.contains(pane) { pane = first }
+        }
+    }
+
+    /// The pane shown, remembered in the settings so the window opens where it was left.
+    @Published var pane: SettingsPane {
+        didSet { if pane != oldValue { settings.settingsPane = pane.rawValue } }
+    }
+
+    /// The panes with a row that matches the query (all of them for an empty query), in the sidebar's order.
+    var panes: [SettingsPane] { SettingsCatalog.panes(matching: query, settings: settings) }
+
+    /// The rows of the shown pane that match the query.
+    var rows: [SettingsRow] { SettingsCatalog.rows(in: pane, matching: query, settings: settings) }
+
     init(settings: Settings) {
         self.settings = settings
+        pane = SettingsPane(rawValue: settings.settingsPane) ?? .general
         token = NotificationCenter.default.addObserver(forName: Settings.didChangeNotification, object: settings, queue: .main) { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -25,106 +49,91 @@ final class FontPanelTarget: NSObject {
     }
 }
 
+/// A pane's icon in the sidebar: the symbol in white on a small rounded tile, as System Settings draws it.
+private struct PaneTile: View {
+    let pane: SettingsPane
+    var body: some View {
+        Image(systemName: pane.symbol)
+            .resizable()
+            .scaledToFit()
+            .padding(4)
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(pane.tint.gradient))
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var templates: TemplateStore = .shared
-    private var s: Settings { model.settings }
+
+    /// The shown rows with their section headers, in order; the section of a row follows the one before it.
+    private var sections: [(title: String, rows: [SettingsRow])] {
+        var out: [(title: String, rows: [SettingsRow])] = []
+        for row in model.rows {
+            if let last = out.last, last.title == row.section { out[out.count - 1].rows.append(row) } else { out.append((row.section, [row])) }
+        }
+        return out
+    }
 
     var body: some View {
-        Form {
-            Toggle("Reopen documents at launch", isOn: Binding(get: { s.reopenAtLaunch }, set: { s.reopenAtLaunch = $0 }))
-            Toggle("Ask before quitting", isOn: Binding(get: { s.askBeforeQuitting }, set: { s.askBeforeQuitting = $0 }))
-            Picker("Theme", selection: Binding(get: { s.theme }, set: { s.theme = $0 })) {
-                ForEach(ThemeChoice.allCases, id: \.self) { Text($0.title).tag($0) }
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(model.panes, selection: Binding(get: { Optional(model.pane) }, set: { if let p = $0 { model.pane = p } })) { pane in
+                Label { Text(pane.rawValue) } icon: { PaneTile(pane: pane) }
+                    .tag(pane)
             }
-            Picker("Font", selection: Binding(get: { s.fontChoice }, set: { s.fontChoice = $0 })) {
-                ForEach(FontChoice.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            if s.fontChoice == .custom {
-                HStack {
-                    Picker("Family", selection: Binding(get: { s.customFontFamily }, set: { s.customFontFamily = $0 })) {
-                        if s.customFontFamily.isEmpty { Text("Choose…").tag("") }
-                        ForEach(FontStore.installedFamilies, id: \.self) { Text($0).tag($0) }
+            .navigationSplitViewColumnWidth(200)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            Group {
+                if model.panes.isEmpty {
+                    Text("No settings match “\(model.query)”")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Form {
+                        let context = SettingsContext(settings: model.settings, templates: templates)
+                        ForEach(Array(sections.enumerated()), id: \.offset) { _, group in
+                            if group.title.isEmpty {
+                                Section { rowViews(group.rows, context) }
+                            } else {
+                                Section(group.title) { rowViews(group.rows, context) }
+                            }
+                        }
                     }
-                    Button("Font Panel…") {
-                        FontPanelTarget.shared.settings = s
-                        NSFontManager.shared.target = FontPanelTarget.shared
-                        NSFontManager.shared.setSelectedFont(NSFont.systemFont(ofSize: 13), isMultiple: false)
-                        NSFontManager.shared.orderFrontFontPanel(nil)
-                    }
+                    .formStyle(.grouped)
                 }
             }
-            if !FontStore.bundledFontsAvailable, [.iaMono, .iaDuo, .iaQuattro].contains(s.fontChoice) {
-                Text("The bundled fonts were not found; a system font is used instead.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Stepper(value: Binding(get: { s.fontSize }, set: { s.fontSize = $0 }), in: Settings.fontSizeRange, step: 1) {
-                Text("Font size: \(Int(s.fontSize)) pt")
-            }
-            Stepper(value: Binding(get: { s.lineWidth }, set: { s.lineWidth = $0 }), in: Settings.lineWidthRange, step: 2) {
-                Text("Line width: \(s.lineWidth) characters")
-            }
-            HStack {
-                // (The installed spelling: names match in any case, the popup's tags only exactly, so a default written
-                // `academic`, or one renamed in capitals only, showed nothing chosen.)
-                Picker("Default template", selection: Binding(get: { templates.template(named: s.defaultTemplate)?.name ?? s.defaultTemplate },
-                                                              set: { s.defaultTemplate = $0 })) {
-                    // A default that is no longer installed stays in the list, so the picker does not lie about it.
-                    if !templates.usable.contains(where: { TemplateStore.key($0.name) == TemplateStore.key(s.defaultTemplate) }) {
-                        Text("\(s.defaultTemplate) (not installed)").tag(s.defaultTemplate)
-                    }
-                    ForEach(templates.usable) { Text($0.name).tag($0.name) }
-                }
-                Button("Manage Templates…") { TemplateStore.openManager?() }
-            }
-            Picker("Default layout", selection: Binding(get: { s.defaultLayout }, set: { s.defaultLayout = $0 })) {
-                ForEach(LayoutMode.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            Toggle("Show side column in new windows", isOn: Binding(get: { s.showSideColumnInNewWindows }, set: { s.showSideColumnInNewWindows = $0 }))
-            Picker("Side column starts on", selection: Binding(get: { s.sideColumnPane }, set: { s.sideColumnPane = $0 })) {
-                ForEach(SideColumnPane.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            Toggle("Start windows in focus mode", isOn: Binding(get: { s.focusMode }, set: { s.focusMode = $0 }))
-            Picker("Focus on", selection: Binding(get: { s.focusScope }, set: { s.focusScope = $0 })) {
-                ForEach(FocusScopeChoice.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            Toggle("Keep the focused line centred", isOn: Binding(get: { s.centreFocusedLine }, set: { s.centreFocusedLine = $0 }))
-            Toggle("Start windows with syntax highlighting", isOn: Binding(get: { s.syntaxHighlight }, set: { s.syntaxHighlight = $0 }))
-            ForEach(SyntaxClass.allCases, id: \.self) { c in
-                Toggle("Highlight \(c.title.lowercased())", isOn: Binding(get: { s.syntaxClass(c) }, set: { s.setSyntaxClass(c, $0) }))
-            }
-            Toggle("Show authorship colours in new windows", isOn: Binding(get: { s.authorshipDisplay }, set: { s.authorshipDisplay = $0 }))
-            TextField("Name for my text", text: Binding(get: { s.authorNameSetting }, set: { s.authorNameSetting = $0 }),
-                      prompt: Text(s.authorName))
-            Toggle("Open new windows in Notes mode", isOn: Binding(get: { s.notesModeByDefault }, set: { s.notesModeByDefault = $0 }))
-            TextField("Daily notes folder", text: Binding(get: { s.dailyFolder }, set: { s.dailyFolder = $0 }), prompt: Text("Daily"))
-            TextField("Daily note name", text: Binding(get: { s.dailyFormat }, set: { s.dailyFormat = $0 }), prompt: Text("YYYY-MM-DD"))
-            TextField("Templates folder", text: Binding(get: { s.templatesFolder }, set: { s.templatesFolder = $0 }), prompt: Text("Templates"))
-            Toggle("Check spelling while typing", isOn: Binding(get: { s.spellCheck }, set: { s.spellCheck = $0 }))
-            Toggle("Check grammar", isOn: Binding(get: { s.grammarCheck }, set: { s.grammarCheck = $0 }))
-            Toggle("Correct spelling automatically", isOn: Binding(get: { s.autoCorrect }, set: { s.autoCorrect = $0 }))
-            Toggle("Show formatting toolbar", isOn: Binding(get: { s.showFormattingToolbar }, set: { s.showFormattingToolbar = $0 }))
-            Toggle("Hide title bar and toolbar while typing", isOn: Binding(get: { s.autoHideChrome }, set: { s.autoHideChrome = $0 }))
-            Toggle("Show them again after a pause in typing", isOn: Binding(get: { s.chromeReturnsAfterPause }, set: { s.chromeReturnsAfterPause = $0 }))
-                .disabled(!s.autoHideChrome)
+            .navigationSplitViewColumnWidth(520)
+            .navigationTitle(model.pane.rawValue)
         }
-        .formStyle(.grouped)
-        .frame(width: 440)
-        .fixedSize(horizontal: false, vertical: true)
+        .searchable(text: $model.query, placement: .sidebar, prompt: "Search")
+        .frame(width: 720, height: 528)
+    }
+
+    @ViewBuilder private func rowViews(_ rows: [SettingsRow], _ context: SettingsContext) -> some View {
+        ForEach(rows) { $0.view(context) }
     }
 }
 
 public final class SettingsWindowController: NSWindowController {
     public static let shared = SettingsWindowController(settings: .shared)
 
+    let model: SettingsModel
+    private var titleToken: AnyCancellable?
+
     public init(settings: Settings) {
-        let host = NSHostingController(rootView: SettingsView(model: SettingsModel(settings: settings)))
+        model = SettingsModel(settings: settings)
+        let host = NSHostingController(rootView: SettingsView(model: model))
         let window = NSWindow(contentViewController: host)
-        window.title = "Settings"
+        // Not resizable: the content pane scrolls, so no pane needs a taller window.
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 720, height: 560))
         window.setFrameAutosaveName("MarkdownSettings")
         super.init(window: window)
+        // The title bar names the pane, as System Settings does.
+        titleToken = model.$pane.sink { [weak window] pane in window?.title = pane.rawValue }
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
@@ -133,5 +142,32 @@ public final class SettingsWindowController: NSWindowController {
         if window?.isVisible != true { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        focusSearch()
+        // The sidebar's list takes the keyboard when SwiftUI first lays the window out; the field is asked again after that.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, let w = self.window, w.isVisible, (w.firstResponder as? NSTextView)?.isFieldEditor != true else { return }
+            self.focusSearch()
+        }
     }
+
+    /// The search field of the window's sidebar, if SwiftUI has made it yet.
+    var searchField: NSSearchField? {
+        func find(_ v: NSView) -> NSSearchField? {
+            if let f = v as? NSSearchField { return f }
+            for sub in v.subviews { if let f = find(sub) { return f } }
+            return nil
+        }
+        return window?.contentView.flatMap(find)
+    }
+
+    /// Puts the caret in the search field (SwiftUI builds it a moment after the window shows, so this also tries again).
+    func focusSearch(retries: Int = 10) {
+        guard let window else { return }
+        if let field = searchField { window.makeFirstResponder(field); return }
+        guard retries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.focusSearch(retries: retries - 1) }
+    }
+
+    /// Edit > Find while this window is key: the search field, not the editor's find bar.
+    @objc public override func performTextFinderAction(_ sender: Any?) { focusSearch() }
 }
