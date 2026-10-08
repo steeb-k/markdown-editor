@@ -84,6 +84,7 @@ pub(crate) struct Body<'t, 'a, 'o> {
     note_mark_pending: bool,
     drawing_id: u32,
     text_width: i64,
+    text_height: i64,
 }
 
 impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
@@ -106,6 +107,7 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
             note_mark_pending: false,
             drawing_id: 0,
             text_width: look.page().text_width(),
+            text_height: look.page().text_height(),
         }
     }
 
@@ -164,6 +166,11 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
         let mut indent: Option<(i64, i64)> = None;
         let mut jc = None;
         let style = if let Kind::Heading(n) = kind {
+            // The heading's style does not indent: a list item or a quote around it does.
+            let left = self.container_indent();
+            if left > 0 {
+                indent = Some((left, 0));
+            }
             format!("Heading{n}")
         } else {
             let mut base = None;
@@ -191,7 +198,8 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
                     }
                 }
                 base = Some("ListParagraph");
-            } else if depth > 1 {
+            } else if depth > 1 || (depth == 1 && kind == Kind::Code) {
+                // One quote indents through its style; a second, or code (whose style is its own), needs it said.
                 indent = Some((360 * depth, 0));
             }
             if let Some(Frame::Cell { head, jc: j }) = self.frames.last() {
@@ -226,6 +234,15 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
             runs.push_str("<w:r><w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> </w:t></w:r>");
         }
         self.open = Some(Open { ppr, runs, keep });
+    }
+
+    /// How far the containers around the text push a block in: the innermost list item's text and the quotes.
+    fn container_indent(&self) -> i64 {
+        let item = self.frames.iter().rev().find_map(|f| match f {
+            Frame::Item { level, .. } => Some(level_indent(*level).0),
+            _ => None,
+        });
+        item.unwrap_or(0) + 360 * self.quote_depth()
     }
 
     fn ensure_para(&mut self) {
@@ -335,6 +352,9 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
         }
         self.ensure_para();
         let id = self.res.hyperlink(url);
+        if self.in_footnote {
+            self.res.used_in_notes(&id);
+        }
         if let Some(p) = self.open.as_mut() {
             let _ = write!(p.runs, "<w:hyperlink r:id=\"{id}\" w:history=\"1\">");
         }
@@ -356,11 +376,7 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
         if let (Some(t), Some(Frame::Cell { .. })) = (&self.table, self.frames.last()) {
             return (t.col_width - 216).max(720);
         }
-        let item = self.frames.iter().rev().find_map(|f| match f {
-            Frame::Item { level, .. } => Some(level_indent(*level).0),
-            _ => None,
-        });
-        (self.text_width - item.unwrap_or(0) - 360 * self.quote_depth()).max(720)
+        (self.text_width - self.container_indent()).max(720)
     }
 
     /// A picture as an inline drawing, or `false` when its bytes were not given (or are not a format Word reads).
@@ -382,8 +398,17 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
             cy = (cy as f64 * max as f64 / cx as f64).round() as i64;
             cx = max;
         }
+        // And a taller one to the page's text height: Word cuts an inline picture off at the bottom margin.
+        let max = self.text_height * 635;
+        if cy > max {
+            cx = (cx as f64 * max as f64 / cy as f64).round() as i64;
+            cy = max;
+        }
         let (cx, cy) = (cx.max(12700), cy.max(12700));
         let rid = self.res.picture(dest, ext, &data.bytes);
+        if self.in_footnote {
+            self.res.used_in_notes(&rid);
+        }
         self.drawing_id += 1;
         let id = self.drawing_id;
         let descr = escape(alt);
@@ -573,7 +598,12 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
     fn end(&mut self, tag: TagEnd) {
         match tag {
             TagEnd::Paragraph | TagEnd::Heading(_) => self.close_para(),
-            TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item => {
+            // An item with nothing in it still has its marker (and its number counts).
+            TagEnd::Item => {
+                self.before_block();
+                self.frames.pop();
+            }
+            TagEnd::BlockQuote(_) | TagEnd::List(_) => {
                 self.close_para();
                 self.frames.pop();
             }
@@ -618,7 +648,13 @@ impl<'t, 'a, 'o> Body<'t, 'a, 'o> {
                 *entry = (entry.0, color, size);
             }
         }
-        let _ = write!(self.out, "<w:tbl><w:tblPr><w:tblW w:w=\"{}\" w:type=\"dxa\"/><w:tblBorders>", col_width * cols as i64);
+        let _ = write!(self.out, "<w:tbl><w:tblPr><w:tblW w:w=\"{}\" w:type=\"dxa\"/>", col_width * cols as i64);
+        // Under the text of the item or quote it is in, as its width already assumes.
+        let indent = self.container_indent();
+        if indent > 0 {
+            let _ = write!(self.out, "<w:tblInd w:w=\"{indent}\" w:type=\"dxa\"/>");
+        }
+        self.out.push_str("<w:tblBorders>");
         for (side, color, size) in &borders {
             let _ = write!(self.out, "<w:{side} w:val=\"single\" w:sz=\"{size}\" w:space=\"0\" w:color=\"{color}\"/>");
         }

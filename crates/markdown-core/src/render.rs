@@ -30,7 +30,7 @@ use std::ops::Range;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::{Duration, Instant};
 
-use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, MetadataBlockKind, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Parser, Tag, TagEnd};
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
 use crate::analysis::options;
@@ -485,18 +485,9 @@ impl<'a, 'o> Renderer<'a, 'o> {
 
     /// Front-matter `title:`, else the first heading's text.
     fn title(&self) -> Option<String> {
-        for (i, (ev, _)) in self.events.iter().enumerate() {
-            if let Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) = ev {
-                let body = self.plain_text(i + 1, self.end_of[i] as usize);
-                for line in body.lines() {
-                    if let Some(v) = line.strip_prefix("title:") {
-                        let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim();
-                        if !v.is_empty() {
-                            return Some(v.to_owned());
-                        }
-                    }
-                }
-            }
+        // Read as the `template:` key is, so a quoted title loses its quotes and nothing else (`'It''s'`, a comment).
+        if let Some(title) = crate::front_matter::front_matter_value(self.src, "title") {
+            return Some(title);
         }
         let i = self.events.iter().position(|(e, _)| matches!(e, Event::Start(Tag::Heading { .. })))?;
         Some(self.plain_text(i + 1, self.end_of[i] as usize))

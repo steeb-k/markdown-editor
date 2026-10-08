@@ -659,3 +659,101 @@ fn docx_fixture_has_every_construct() {
     assert!(!x.contains("Raw HTML") && !x.contains("Export Formats</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Normal\"/></w:pPr><w:r><w:t xml:space=\"preserve\">---"));
     assert_eq!(count(&d.rels(), "relationships/hyperlink\""), 2);
 }
+
+// ----- found by the M12 test pass ---------------------------------------------------------------
+
+/// The relationship ids a part uses, and the ids its own relationships part defines.
+fn rel_ids(d: &Docx, part: &str) -> (Vec<String>, Vec<String>) {
+    let x = d.part(part);
+    let used = ["r:id=\"", "r:embed=\""]
+        .iter()
+        .flat_map(|k| x.split(k).skip(1).map(|s| s[..s.find('"').unwrap()].to_owned()).collect::<Vec<_>>())
+        .collect();
+    let (dir, file) = part.rsplit_once('/').unwrap();
+    let rels = d.parts.get(&format!("{dir}/_rels/{file}.rels")).map(|b| String::from_utf8(b.clone()).unwrap()).unwrap_or_default();
+    let defined = rels.split("Id=\"").skip(1).map(|s| s[..s.find('"').unwrap()].to_owned()).collect();
+    (used, defined)
+}
+
+#[test]
+fn docx_links_and_pictures_in_a_footnote_have_relationships_of_the_footnotes_part() {
+    // Every part has its own relationships: an id footnotes.xml uses must be in footnotes.xml.rels, not only in the
+    // document's, or Word finds unreadable content.
+    let opts = DocxOptions { image_data: vec![small_png()], ..Default::default() };
+    let d = docx_with("Text[^n] and [a link](https://example.com/body).\n\n[^n]: See [the site](https://example.com/note) and ![p](pictures/small.png).\n", &opts);
+    let (used, defined) = rel_ids(&d, "word/footnotes.xml");
+    assert_eq!(used.len(), 2, "{}", d.footnotes());
+    for id in &used {
+        assert!(defined.contains(id), "footnotes.xml uses {id}, its relationships are {defined:?}");
+    }
+    let rels = d.part("word/_rels/footnotes.xml.rels");
+    assert!(rels.contains("Target=\"https://example.com/note\" TargetMode=\"External\""));
+    assert!(rels.contains("Target=\"media/image1.png\""));
+    // The document's own ids still hold.
+    let (used, defined) = rel_ids(&d, "word/document.xml");
+    assert!(used.iter().all(|id| defined.contains(id)));
+    // A package with no links or pictures in its notes has no relationships part for them.
+    assert!(!docx("a[^n]\n\n[^n]: plain\n").parts.contains_key("word/_rels/footnotes.xml.rels"));
+}
+
+#[test]
+fn docx_empty_list_items_keep_their_markers() {
+    // `1.` with nothing after it is an item: Word must count it, or the next item is numbered one too low.
+    let x = docx("1.\n2. two\n").document();
+    assert_eq!(count(&x, "<w:numPr>"), 2, "{x}");
+    let x = docx("-\n- [ ]\n- after\n").document();
+    assert_eq!(count(&x, "<w:numPr>"), 2, "{x}");
+    assert_eq!(count(&x, "\u{2610}"), 1, "{x}");
+}
+
+#[test]
+fn docx_picture_taller_than_the_page_is_scaled_to_the_text() {
+    let opts = DocxOptions {
+        image_data: vec![small_png()],
+        image_sizes: vec![ImageSize { destination: "pictures/small.png".into(), width: 50, height: 8000 }],
+        ..Default::default()
+    };
+    let x = docx_with("![w](pictures/small.png)\n", &opts).document();
+    // Letter with one-inch margins: 9 inches of text, 8229600 EMU, and the width keeps the ratio.
+    assert!(x.contains("<wp:extent cx=\"51435\" cy=\"8229600\"/>"), "{x}");
+}
+
+#[test]
+fn docx_blocks_in_a_quote_are_indented_with_it() {
+    // A code block, a heading and a table take their own styles, which do not indent: the quote's indent is theirs too.
+    let x = docx("> ```\n> code\n> ```\n").document();
+    assert!(x.contains("<w:pStyle w:val=\"Code\"/><w:ind w:left=\"360\"/>"), "{x}");
+    let x = docx("> # Head\n").document();
+    assert!(x.contains("<w:pStyle w:val=\"Heading1\"/><w:ind w:left=\"360\"/>"), "{x}");
+    let x = docx("> | a |\n> | - |\n> | b |\n").document();
+    assert!(x.contains("<w:tblInd w:w=\"360\" w:type=\"dxa\"/>"), "{x}");
+    // A table in a list item stands under the item's text.
+    let x = docx("- item\n\n  | a |\n  | - |\n  | b |\n").document();
+    assert!(x.contains("<w:tblInd w:w=\"720\" w:type=\"dxa\"/>"), "{x}");
+    // At the top level nothing changes.
+    let x = docx("```\ncode\n```\n\n# Head\n\n| a |\n| - |\n| b |\n").document();
+    assert!(!x.contains("<w:ind ") && !x.contains("<w:tblInd"), "{x}");
+}
+
+#[test]
+fn the_title_is_read_as_yaml_reads_it() {
+    // Quotes are the scalar's, not the title's: a doubled single quote, an escaped double quote and a comment.
+    for (yaml, title) in [("'It''s'", "It's"), ("\"Say \\\"hi\\\"\"", "Say \"hi\""), ("Plain # a comment", "Plain"), ("\"a <b> & c\"", "a <b> & c")] {
+        let text = format!("---\ntitle: {yaml}\n---\n\n# Heading\n");
+        let d = docx(&text);
+        let escaped = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;");
+        assert!(d.part("docProps/core.xml").contains(&format!("<dc:title>{escaped}</dc:title>")), "{yaml}: {}", d.part("docProps/core.xml"));
+        let html = doc(&text).render_html(&RenderOptions { standalone: true, ..Default::default() });
+        let escaped = title.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        assert!(html.contains(&format!("<title>{escaped}</title>")), "{yaml}: {}", &html[..html.find("</title>").unwrap() + 8]);
+    }
+}
+
+#[test]
+fn docx_font_sizes_stay_within_what_word_sets() {
+    // Word sets type from 1 to 1638 points; a template's 10em heading over a 500pt body asks for 5000.
+    let spec = template::Template::parse("[template]\nname = \"Huge\"\n[elements.body]\nfont_size = \"500pt\"\n[elements.h1]\nfont_size = \"10em\"\n").unwrap().spec;
+    let d = docx_with("# H\n\ntext\n", &DocxOptions { spec, ..Default::default() });
+    assert!(d.style("Heading1").contains("<w:sz w:val=\"3276\"/>"), "{}", d.style("Heading1"));
+    assert!(d.style("Normal").contains("<w:sz w:val=\"1000\"/>"));
+}

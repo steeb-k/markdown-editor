@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use pulldown_cmark::{Event, MetadataBlockKind, Parser, Tag};
+use pulldown_cmark::{Event, Parser, Tag};
 
 use crate::analysis::options;
 use crate::{autolink, wiki};
@@ -79,17 +79,9 @@ impl<'a> Tree<'a> {
             }
             s
         };
-        for (i, (ev, _)) in self.events.iter().enumerate() {
-            if let Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) = ev {
-                for line in plain(i + 1, self.end_of[i]).lines() {
-                    if let Some(v) = line.strip_prefix("title:") {
-                        let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim();
-                        if !v.is_empty() {
-                            return Some(v.to_owned());
-                        }
-                    }
-                }
-            }
+        // Read as the `template:` key is, so a quoted title loses its quotes and nothing else (`'It''s'`, a comment).
+        if let Some(title) = crate::front_matter::front_matter_value(self.src, "title") {
+            return Some(title);
         }
         let i = self.events.iter().position(|(e, _)| matches!(e, Event::Start(Tag::Heading { .. })))?;
         Some(plain(i + 1, self.end_of[i])).filter(|t| !t.trim().is_empty())

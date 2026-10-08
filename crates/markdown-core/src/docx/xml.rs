@@ -24,9 +24,9 @@ pub(crate) fn twips(pt: f64) -> i64 {
     (pt * 20.0).round() as i64
 }
 
-/// Points as half-points (the unit of font sizes), rounded and never below one point.
+/// Points as half-points (the unit of font sizes), rounded, from one point to the 1638 Word sets type at most.
 pub(crate) fn half_points(pt: f64) -> i64 {
-    ((pt * 2.0).round() as i64).max(2)
+    ((pt * 2.0).round() as i64).clamp(2, 3276)
 }
 
 /// `<w:tag w:val="value"/>`.

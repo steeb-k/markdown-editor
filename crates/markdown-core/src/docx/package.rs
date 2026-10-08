@@ -20,6 +20,9 @@ pub(crate) struct Resources {
     pub media: Vec<MediaPart>,
     /// Picture destination -> its relationship id.
     pictures: HashMap<String, String>,
+    /// The ids the footnotes use. Every part has relationships of its own, so these are written again (same ids, same
+    /// targets) for `footnotes.xml`: an id it uses that only the document's part defines makes the file unreadable.
+    notes: Vec<String>,
 }
 
 impl Resources {
@@ -35,7 +38,7 @@ impl Resources {
             .enumerate()
             .map(|(n, (kind, target))| (format!("rId{}", n + 1), format!("{OFFICE_REL}/{kind}"), (*target).to_owned(), false))
             .collect();
-        Resources { rels, links: HashMap::new(), media: Vec::new(), pictures: HashMap::new() }
+        Resources { rels, links: HashMap::new(), media: Vec::new(), pictures: HashMap::new(), notes: Vec::new() }
     }
 
     fn add(&mut self, kind: &str, target: String, external: bool) -> String {
@@ -66,10 +69,18 @@ impl Resources {
         id
     }
 
-    fn relationships_xml(&self) -> String {
+    /// Notes that a footnote uses the relationship `id`.
+    pub fn used_in_notes(&mut self, id: &str) {
+        if !self.notes.iter().any(|n| n == id) {
+            self.notes.push(id.to_owned());
+        }
+    }
+
+    /// The relationships of `word/document.xml`, or (`notes`) the ones the footnotes use.
+    fn relationships_xml(&self, notes: bool) -> String {
         let mut x = String::from(XML_DECLARATION);
         x.push_str(&format!("<Relationships xmlns=\"{REL_NS}\">"));
-        for (id, kind, target, external) in &self.rels {
+        for (id, kind, target, external) in self.rels.iter().filter(|r| !notes || self.notes.contains(&r.0)) {
             let mode = if *external { " TargetMode=\"External\"" } else { "" };
             x.push_str(&format!("<Relationship Id=\"{id}\" Type=\"{kind}\" Target=\"{}\"{mode}/>", escape(target)));
         }
@@ -173,7 +184,10 @@ pub(crate) fn zip(parts: Parts) -> Vec<u8> {
         put("_rels/.rels", root.as_bytes())?;
         put("docProps/core.xml", core_xml(&parts.title).as_bytes())?;
         put("word/document.xml", parts.document.as_bytes())?;
-        put("word/_rels/document.xml.rels", parts.resources.relationships_xml().as_bytes())?;
+        put("word/_rels/document.xml.rels", parts.resources.relationships_xml(false).as_bytes())?;
+        if !parts.resources.notes.is_empty() {
+            put("word/_rels/footnotes.xml.rels", parts.resources.relationships_xml(true).as_bytes())?;
+        }
         put("word/styles.xml", parts.styles.as_bytes())?;
         put("word/numbering.xml", parts.numbering.as_bytes())?;
         put("word/footnotes.xml", parts.footnotes.as_bytes())?;

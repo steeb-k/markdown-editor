@@ -26,6 +26,11 @@ impl Page {
     pub fn text_width(&self) -> i64 {
         self.width - 2 * self.margin_x
     }
+
+    /// The height of the text column.
+    pub fn text_height(&self) -> i64 {
+        self.height - 2 * self.margin_y
+    }
 }
 
 /// How a run of text is set.
