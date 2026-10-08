@@ -48,7 +48,7 @@
  {"waitStyled": 20},
  {"assert": {"template": {"effective": "Letter", "frontMatter": "Letter"}}},
  {"template": "Typewriter"},
- {"assert": {"textContains": "template: Typewriter\ntemplate: Academic\n", "template": {"effective": "Typewriter"}}},
+ {"assert": {"textContains": "---\ntemplate: Typewriter\n---\n", "textLacks": "Academic", "template": {"effective": "Typewriter"}}},
  {"close": true},
  {"makeFile": {"name": "dots.md", "text": "---\ntitle: T\n...\n\n# A\n"}},
  {"waitStyled": 20},
