@@ -112,7 +112,7 @@ struct SettingsView: View {
             .navigationTitle(model.pane.rawValue)
         }
         .searchable(text: $model.query, isPresented: $model.searchPresented, placement: .sidebar, prompt: "Search")
-        .frame(width: 720, height: 528)
+        .frame(width: 720, height: 640)
     }
 
     @ViewBuilder private func rowViews(_ rows: [SettingsRow], _ context: SettingsContext) -> some View {
@@ -136,7 +136,7 @@ public final class SettingsWindowController: NSWindowController {
         // Not resizable: the content pane scrolls, so no pane needs a taller window.
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 720, height: 560))
+        window.setContentSize(NSSize(width: 720, height: 672))
         super.init(window: window)
         // Through the controller, not the window: a window controller hands its window its own autosave name when it
         // takes the window, which emptied the one set on the window before, so no frame was ever saved.

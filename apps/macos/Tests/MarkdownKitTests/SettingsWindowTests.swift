@@ -70,6 +70,12 @@ final class SettingsWindowTests: XCTestCase {
         XCTAssertEqual(titles("spelling typing"), ["Check spelling while typing"], "every word must be found, in any of the places")
         XCTAssertEqual(titles("").count, SettingsCatalog.rows.filter { $0.when(settings) }.count, "an empty query shows every row")
         XCTAssertTrue(titles("zzz").isEmpty)
+        // A typed word must begin a word, as System Settings matches: "me" finds Measure (a keyword of Line width) and
+        // Me (of the author's name), not the inside of Theme; "idth" and "ing" find nothing.
+        XCTAssertTrue(titles("me").contains("Line width") && titles("me").contains("Name for my text"))
+        XCTAssertFalse(titles("me").contains("Theme"))
+        XCTAssertTrue(titles("idth").isEmpty && titles("ing").isEmpty)
+        XCTAssertEqual(SettingsCatalog.panes(matching: "ing", settings: settings), [])
     }
 
     func testDiacriticsAreIgnored() {

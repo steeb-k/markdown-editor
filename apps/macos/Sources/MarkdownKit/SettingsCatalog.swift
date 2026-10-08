@@ -211,18 +211,27 @@ enum SettingsCatalog {
     /// Case- and diacritic-insensitive, as a person types.
     private static func fold(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
 
-    /// Whether the row answers the query: every word typed is found in its title, section, pane or keywords.
-    static func matches(_ row: SettingsRow, _ query: String) -> Bool {
-        let words = fold(query).split(whereSeparator: \.isWhitespace)
-        if words.isEmpty { return true }
-        let hay = fold(([row.title, row.section, row.pane.rawValue] + row.keywords).joined(separator: " "))
-        return words.allSatisfy { hay.contains($0) }
+    /// The words of a text, folded: what a typed word is matched against.
+    private static func words(of text: String) -> [Substring] {
+        fold(text).split { !$0.isLetter && !$0.isNumber }
     }
 
-    /// Whether the query names the pane: every word typed is in its name.
+    /// Whether every word typed begins a word of `text` (as System Settings matches: "me" finds Measure, not Theme).
+    private static func found(_ query: String, in text: String) -> Bool {
+        let typed = words(of: query)
+        let have = words(of: text)
+        return !typed.isEmpty && typed.allSatisfy { q in have.contains { $0.hasPrefix(q) } }
+    }
+
+    /// Whether the row answers the query: every word typed begins a word of its title, section, pane or keywords.
+    static func matches(_ row: SettingsRow, _ query: String) -> Bool {
+        if words(of: query).isEmpty { return true }
+        return found(query, in: ([row.title, row.section, row.pane.rawValue] + row.keywords).joined(separator: " "))
+    }
+
+    /// Whether the query names the pane: every word typed begins a word of its name.
     static func names(_ pane: SettingsPane, _ query: String) -> Bool {
-        let words = fold(query).split(whereSeparator: \.isWhitespace)
-        return !words.isEmpty && words.allSatisfy { fold(pane.rawValue).contains($0) }
+        found(query, in: pane.rawValue)
     }
 
     /// The rows now shown for a pane: the declared ones that apply to the settings and answer the query.
