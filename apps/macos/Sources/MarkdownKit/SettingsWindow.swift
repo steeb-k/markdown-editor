@@ -22,10 +22,6 @@ final class SettingsModel: ObservableObject {
     @Published var pane: SettingsPane {
         didSet { if pane != oldValue { settings.settingsPane = pane.rawValue } }
     }
-    /// Whether the search field has the caret: SwiftUI's own binding, which holds against the sidebar's list taking the
-    /// keyboard at its first layout (an AppKit first responder set before that is taken back).
-    @Published var searchPresented = false
-
     /// The panes with a row that matches the query (all of them for an empty query), in the sidebar's order.
     var panes: [SettingsPane] { SettingsCatalog.panes(matching: query, settings: settings) }
 
@@ -66,6 +62,104 @@ private struct PaneTile: View {
     }
 }
 
+/// The sidebar's search field: AppKit's, so Escape clears it and the harness finds an `NSSearchField`. After Escape
+/// the list takes the keyboard, so the arrows move the pane next.
+private struct SearchField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = "Search"
+        field.delegate = context.coordinator
+        field.sendsWholeSearchString = false
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        if field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var parent: SearchField
+        init(_ parent: SearchField) { self.parent = parent }
+        func controlTextDidChange(_ note: Notification) {
+            guard let field = note.object as? NSSearchField else { return }
+            parent.text = field.stringValue
+        }
+
+        /// Escape (the field editor's cancel) clears the field and hands the keyboard to the list beside it, so the
+        /// arrows move the pane next.
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+            if !control.stringValue.isEmpty {
+                control.stringValue = ""
+                parent.text = ""
+            }
+            if let window = control.window, let list = SettingsWindowController.firstTable(in: window.contentView) {
+                window.makeFirstResponder(list)
+            }
+            return true
+        }
+    }
+}
+
+/// The sidebar: the search field under the window's controls, then the panes. Hosted in the split view controller's
+/// sidebar item, which runs it the window's full height under the title bar with the sidebar's material.
+struct SettingsSidebar: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        // System Settings' measures: the field and the rows' highlight 15 points from the edge, rows 32 points tall,
+        // the name 6 points from its tile.
+        VStack(spacing: 0) {
+            SearchField(text: $model.query)
+                .padding(.horizontal, 15)
+                .padding(.top, 52)
+                .padding(.bottom, 10)
+            List(model.panes, selection: Binding(get: { Optional(model.pane) }, set: { if let p = $0 { model.pane = p } })) { pane in
+                Label { Text(pane.rawValue).padding(.leading, -2) } icon: { PaneTile(pane: pane) }
+                    .frame(height: 24)
+                    .tag(pane)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 5)
+        }
+    }
+}
+
+/// The two columns: the sidebar (217 points, as System Settings') with its material, a divider, the pane.
+struct SettingsWindowView: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SettingsSidebar(model: model)
+                .frame(width: 217)
+                .background(SidebarMaterial())
+            Divider()
+            SettingsView(model: model)
+        }
+        .ignoresSafeArea()
+        .frame(width: 720, height: 672)
+    }
+}
+
+/// The sidebar's material, behind the list and under the title bar.
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .sidebar
+        v.blendingMode = .behindWindow
+        v.state = .followsWindowActiveState
+        return v
+    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var templates: TemplateStore = .shared
@@ -80,38 +174,31 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            List(model.panes, selection: Binding(get: { Optional(model.pane) }, set: { if let p = $0 { model.pane = p } })) { pane in
-                Label { Text(pane.rawValue).padding(.leading, 2) } icon: { PaneTile(pane: pane) }
-                    .tag(pane)
-            }
-            .navigationSplitViewColumnWidth(200)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            Group {
-                if model.panes.isEmpty {
-                    Text("No settings match “\(model.query)”")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Form {
-                        let context = SettingsContext(settings: model.settings, templates: templates)
-                        ForEach(Array(sections.enumerated()), id: \.offset) { _, group in
-                            if group.title.isEmpty {
-                                Section { rowViews(group.rows, context) }
-                            } else {
-                                Section(group.title) { rowViews(group.rows, context) }
-                            }
+        VStack(alignment: .leading, spacing: 0) {
+            // The pane's name where System Settings puts it: level with the window's controls, over the form.
+            Text(model.pane.rawValue)
+                .font(.system(size: 15, weight: .bold))
+                .padding(.leading, 20)
+                .frame(height: 52)
+            if model.panes.isEmpty {
+                Text("No settings match “\(model.query)”")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Form {
+                    let context = SettingsContext(settings: model.settings, templates: templates)
+                    ForEach(Array(sections.enumerated()), id: \.offset) { _, group in
+                        if group.title.isEmpty {
+                            Section { rowViews(group.rows, context) }
+                        } else {
+                            Section(group.title) { rowViews(group.rows, context) }
                         }
                     }
-                    .formStyle(.grouped)
                 }
+                .formStyle(.grouped)
             }
-            .navigationSplitViewColumnWidth(520)
-            .navigationTitle(model.pane.rawValue)
         }
-        .searchable(text: $model.query, isPresented: $model.searchPresented, placement: .sidebar, prompt: "Search")
-        .frame(width: 720, height: 640)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder private func rowViews(_ rows: [SettingsRow], _ context: SettingsContext) -> some View {
@@ -133,20 +220,21 @@ public final class SettingsWindowController: NSWindowController {
 
     let model: SettingsModel
     private var titleToken: AnyCancellable?
-    private var searchToken: AnyCancellable?
 
     /// `frameName` is the name the window's frame is saved under in the standard defaults; nil (tests, a UI script) saves none.
     public init(settings: Settings, frameName: String? = nil) {
         model = SettingsModel(settings: settings)
-        let host = NSHostingController(rootView: SettingsView(model: model))
+        // Laid out as System Settings is, by hand: on this OS a split view's sidebar item (AppKit's or SwiftUI's) is
+        // drawn as a glass panel floating inset from the window's edge, which Apple's own app opts out of; a flat
+        // full-height sidebar needs the two columns side by side with the sidebar's material behind the first.
+        let host = NSHostingController(rootView: SettingsWindowView(model: model))
         let window = NSWindow(contentViewController: host)
-        // Not resizable: the content pane scrolls, so no pane needs a taller window. The sidebar runs the window's
-        // full height under a transparent title bar, with the pane's name in a unified toolbar over the form, as
-        // System Settings is laid out; without the toolbar the split view floats its sidebar inside the content.
+        // Not resizable: the content pane scrolls, so no pane needs a taller window. The pane names itself where
+        // System Settings does; the window's title is still set, for the Window menu and the harness, but not drawn.
         window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified
-        window.toolbar = NSToolbar(identifier: "MarkdownSettingsToolbar")
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.setContentSize(NSSize(width: 720, height: 672))
         super.init(window: window)
@@ -155,13 +243,6 @@ public final class SettingsWindowController: NSWindowController {
         if let frameName { windowFrameAutosaveName = frameName }
         // The title bar names the pane, as System Settings does.
         titleToken = model.$pane.sink { [weak window] pane in window?.title = pane.rawValue }
-        // Escape in the field ends the search (SwiftUI drops the binding) and the list takes the keyboard, so the arrows
-        // move the pane next: the field alone would keep the caret in a toolbar-style search.
-        searchToken = model.$searchPresented.dropFirst().removeDuplicates().sink { [weak self] presented in
-            guard !presented, let self, let window = self.window, (window.firstResponder as? NSTextView)?.isFieldEditor == true,
-                  let list = Self.firstTable(in: window.contentView) else { return }
-            window.makeFirstResponder(list)
-        }
     }
 
     public required init?(coder: NSCoder) { fatalError("not supported") }
@@ -171,13 +252,15 @@ public final class SettingsWindowController: NSWindowController {
         if window?.isVisible != true, !hasSavedFrame { window?.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        // The list has the keyboard as the window opens (the arrows move the pane), as System Settings opens.
+        if let window, let list = Self.firstTable(in: window.contentView) { window.makeFirstResponder(list) }
     }
 
     private var hasSavedFrame: Bool {
         !windowFrameAutosaveName.isEmpty && UserDefaults.standard.string(forKey: "NSWindow Frame \(windowFrameAutosaveName)") != nil
     }
 
-    private static func firstTable(in view: NSView?) -> NSTableView? {
+    static func firstTable(in view: NSView?) -> NSTableView? {
         guard let view else { return nil }
         if let t = view as? NSTableView { return t }
         for sub in view.subviews { if let t = firstTable(in: sub) { return t } }
@@ -198,7 +281,6 @@ public final class SettingsWindowController: NSWindowController {
     /// takes the keyboard, as System Settings' does, whatever is asked before or after SwiftUI's first layout; the field
     /// is given it on request only, with a retry for a field SwiftUI has not built yet.
     func focusSearch(retries: Int = 10) {
-        model.searchPresented = true
         guard let window else { return }
         if let field = searchField { window.makeFirstResponder(field); return }
         guard retries > 0 else { return }
