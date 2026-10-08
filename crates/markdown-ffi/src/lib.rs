@@ -1068,6 +1068,17 @@ impl Document {
         self.with(|d| d.set_front_matter_template(name.as_deref()).map(TextEdit::from))
     }
 
+    /// The document's own measure: the front matter's `line_width:` when it is an integer from 30 to 160.
+    pub fn front_matter_line_width(&self) -> Option<u32> {
+        self.with(|d| d.front_matter_line_width())
+    }
+
+    /// The edit that makes `width` the front matter's `line_width:`, or removes the key (and a block it leaves empty)
+    /// for `None`. `None` when nothing would change.
+    pub fn set_front_matter_line_width(&self, width: Option<u32>) -> Option<TextEdit> {
+        self.with(|d| d.set_front_matter_line_width(width).map(TextEdit::from))
+    }
+
     /// The edit that makes the fenced block `block` `token`'s language, keeping its other attributes.
     pub fn set_code_language(&self, block: Utf16Range, token: String) -> Option<TextEdit> {
         self.with(|d| d.set_code_language(block.into(), &token).map(TextEdit::from))

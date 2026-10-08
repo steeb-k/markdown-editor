@@ -304,7 +304,23 @@ impl Document {
     /// change. The edit applies cleanly with [`Document::replace`]; its `selection` is the caret just after the new text,
     /// which a shell that keeps its own selection ignores.
     pub fn set_front_matter_template(&self, name: Option<&str>) -> Option<TextEdit> {
-        let (from, to, replacement) = crate::front_matter::set_front_matter_template(&self.text, name)?;
+        self.front_matter_edit(crate::front_matter::set_front_matter_template(&self.text, name))
+    }
+
+    /// The document's own measure: the `line_width:` of the front matter as an integer from 30 to 160, else `None`.
+    pub fn front_matter_line_width(&self) -> Option<u32> {
+        crate::front_matter::front_matter_line_width(&self.text)
+    }
+
+    /// The edit that makes `width` the front matter's `line_width:` (or removes the key, and a block it leaves empty,
+    /// for `None`), with the same rules and result as [`Document::set_front_matter_template`].
+    pub fn set_front_matter_line_width(&self, width: Option<u32>) -> Option<TextEdit> {
+        self.front_matter_edit(crate::front_matter::set_front_matter_line_width(&self.text, width))
+    }
+
+    /// A byte-range edit of the front matter as an edit in the document's units.
+    fn front_matter_edit(&self, edit: Option<(usize, usize, String)>) -> Option<TextEdit> {
+        let (from, to, replacement) = edit?;
         let start = self.to_unit(from);
         let caret = start + self.units_in(&replacement);
         Some(TextEdit { range: TextRange::new(start, self.to_unit(to)), replacement, selection: TextRange::new(caret, caret) })

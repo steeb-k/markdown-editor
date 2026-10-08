@@ -1,4 +1,5 @@
-//! The `template:` key of a YAML front matter block: reading it, and the edit that sets or removes it.
+//! The scalar keys of a YAML front matter block (`template:`, `line_width:`): reading one, and the edit that sets or
+//! removes it.
 //!
 //! Works on the text, not on the parsed document, so the edit can be computed for a text the shell holds and the
 //! document does not (and a front matter block is simple enough to find by hand: `---` on the first line, the next
@@ -54,11 +55,11 @@ fn find_block(text: &str) -> Option<Block> {
     None
 }
 
-/// The byte range of the first top-level `template:` line of the block body, with its line ending, and the value text.
-fn find_key(text: &str, b: &Block) -> Option<(usize, usize, String)> {
+/// The byte range of the first top-level `key:` line of the block body, with its line ending, and the value text.
+fn find_key(text: &str, b: &Block, key: &str) -> Option<(usize, usize, String)> {
     let mut at = b.body;
     for line in text[b.body..b.close].split_inclusive('\n') {
-        if let Some(rest) = line.strip_prefix("template:") {
+        if let Some(rest) = line.strip_prefix(key).and_then(|r| r.strip_prefix(':')) {
             return Some((at, at + line.len(), read_value(bare(rest))));
         }
         at += line.len();
@@ -128,18 +129,42 @@ fn write_value(name: &str) -> String {
     }
 }
 
-/// The `template:` value of the front matter block at the very start of `text` (after a byte order mark), if there is
-/// one: quoted or bare, trimmed, never empty.
-pub(crate) fn front_matter_template(text: &str) -> Option<String> {
+/// The `key` value of the front matter block at the very start of `text` (after a byte order mark), if there is one:
+/// quoted or bare, trimmed, never empty.
+pub(crate) fn front_matter_value(text: &str, key: &str) -> Option<String> {
     let block = find_block(text)?;
-    find_key(text, &block).map(|k| k.2).filter(|v| !v.is_empty())
+    find_key(text, &block, key).map(|k| k.2).filter(|v| !v.is_empty())
 }
 
-/// The edit that makes `name` the block's `template:` (`None`, or a blank name, removes the key and a block that is
+/// The `template:` value of the front matter block.
+pub(crate) fn front_matter_template(text: &str) -> Option<String> {
+    front_matter_value(text, "template")
+}
+
+/// The document's own measure: `line_width:` as an integer from 30 to 160 (the range of the setting), else none.
+pub(crate) fn front_matter_line_width(text: &str) -> Option<u32> {
+    let v = front_matter_value(text, "line_width")?;
+    if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    v.parse::<u32>().ok().filter(|n| (30..=160).contains(n))
+}
+
+/// The edit that makes `line_width:` the given number (`None` removes the key).
+pub(crate) fn set_front_matter_line_width(text: &str, width: Option<u32>) -> Option<(usize, usize, String)> {
+    set_front_matter_key(text, "line_width", width.map(|w| w.to_string()).as_deref())
+}
+
+/// The edit that sets the block's `template:` (see `set_front_matter_key`).
+pub(crate) fn set_front_matter_template(text: &str, name: Option<&str>) -> Option<(usize, usize, String)> {
+    set_front_matter_key(text, "template", name)
+}
+
+/// The edit that makes `value` the block's `key:` (`None`, or a blank value, removes the key and a block that is
 /// then empty): a byte range of `text` and its replacement. `None` when `text` already says that. The file's line
 /// ending is kept; a block that has to be made is followed by a blank line unless the text already starts with one.
-pub(crate) fn set_front_matter_template(text: &str, name: Option<&str>) -> Option<(usize, usize, String)> {
-    let name = name.map(str::trim).filter(|n| !n.is_empty());
+pub(crate) fn set_front_matter_key(text: &str, key: &str, value: Option<&str>) -> Option<(usize, usize, String)> {
+    let name = value.map(str::trim).filter(|n| !n.is_empty());
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
     let Some(block) = find_block(text) else {
         let name = name?;
@@ -147,9 +172,9 @@ pub(crate) fn set_front_matter_template(text: &str, name: Option<&str>) -> Optio
         let blank = rest.is_empty() || rest.starts_with(['\n', '\r']);
         let start = text.len() - rest.len();
         let gap = if blank { "" } else { eol };
-        return Some((start, start, format!("---{eol}template: {}{eol}---{eol}{gap}", write_value(name))));
+        return Some((start, start, format!("---{eol}{key}: {}{eol}---{eol}{gap}", write_value(name))));
     };
-    let existing = find_key(text, &block);
+    let existing = find_key(text, &block, key);
     match (name, existing) {
         (Some(name), Some((from, to, current))) => {
             if current == name {
@@ -157,11 +182,11 @@ pub(crate) fn set_front_matter_template(text: &str, name: Option<&str>) -> Optio
             }
             // The line's text only: its ending stays as it is.
             let end = from + bare(&text[from..to]).len();
-            Some((from, end, format!("template: {}", write_value(name))))
+            Some((from, end, format!("{key}: {}", write_value(name))))
         }
         (Some(name), None) => {
             let line_eol = if text[block.start..block.body].ends_with("\r\n") { "\r\n" } else { "\n" };
-            Some((block.close, block.close, format!("template: {}{line_eol}", write_value(name))))
+            Some((block.close, block.close, format!("{key}: {}{line_eol}", write_value(name))))
         }
         (None, None) => None,
         (None, Some((from, to, _))) => {

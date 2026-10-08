@@ -299,3 +299,67 @@ proptest! {
         }
     }
 }
+
+// ----- line_width (M13) ----------------------------------------------------------------------------------------------
+
+fn width(text: &str) -> Option<u32> {
+    doc(text).front_matter_line_width()
+}
+
+/// The text after applying the edit `set_front_matter_line_width` returns (`None` when there is none).
+fn set_width(text: &str, w: Option<u32>) -> Option<String> {
+    let mut d = doc(text);
+    let edit = d.set_front_matter_line_width(w)?;
+    d.replace(edit.range, &edit.replacement).unwrap();
+    Some(d.text().to_owned())
+}
+
+#[test]
+fn line_width_reads_integers_in_range_only() {
+    assert_eq!(width("---\nline_width: 56\n---\n"), Some(56));
+    assert_eq!(width("---\nline_width: \"56\"\n---\n"), Some(56));
+    assert_eq!(width("---\nline_width:   56  \n---\n"), Some(56));
+    assert_eq!(width("---\nline_width: 30\n---\n"), Some(30));
+    assert_eq!(width("---\nline_width: 160\n---\n"), Some(160));
+    for bad in ["abc", "0", "999", "56px", "29", "161", "-56", "5.6", ""] {
+        assert_eq!(width(&format!("---\nline_width: {bad}\n---\n")), None, "{bad}");
+    }
+    assert_eq!(width("line_width: 56\n"), None);
+    assert_eq!(width("---\nline_width_x: 56\n---\n"), None);
+}
+
+#[test]
+fn line_width_first_duplicate_wins() {
+    assert_eq!(width("---\nline_width: 56\nline_width: 96\n---\n"), Some(56));
+    assert_eq!(set_width("---\nline_width: 56\nline_width: 96\n---\n", Some(72)).as_deref(), Some("---\nline_width: 72\nline_width: 96\n---\n"));
+}
+
+#[test]
+fn line_width_is_made_replaced_and_removed() {
+    assert_eq!(set_width("Body\n", Some(56)).as_deref(), Some("---\nline_width: 56\n---\n\nBody\n"));
+    assert_eq!(set_width("---\nline_width: 56\n---\nBody\n", Some(96)).as_deref(), Some("---\nline_width: 96\n---\nBody\n"));
+    assert_eq!(set_width("---\nline_width: 56\n---\nBody\n", Some(56)), None);
+    assert_eq!(set_width("---\nline_width: \"56\"\n---\nBody\n", Some(56)), None);
+    assert_eq!(set_width("---\nline_width: 56\n---\n\nBody\n", None).as_deref(), Some("Body\n"));
+    assert_eq!(set_width("Body\n", None), None);
+}
+
+#[test]
+fn line_width_among_other_keys_and_line_endings() {
+    assert_eq!(set_width("---\ntitle: T\ntemplate: A\n---\nx\n", Some(72)).as_deref(), Some("---\ntitle: T\ntemplate: A\nline_width: 72\n---\nx\n"));
+    assert_eq!(set_width("---\ntitle: T\nline_width: 72\ntemplate: A\n---\nx\n", None).as_deref(), Some("---\ntitle: T\ntemplate: A\n---\nx\n"));
+    assert_eq!(set_width("---\nline_width: 72\ntitle: T\n---\nx\n", None).as_deref(), Some("---\ntitle: T\n---\nx\n"));
+    assert_eq!(set_width("a\r\nb\r\n", Some(56)).as_deref(), Some("---\r\nline_width: 56\r\n---\r\n\r\na\r\nb\r\n"));
+    assert_eq!(set_width("---\r\ntitle: T\r\n---\r\nx\r\n", Some(56)).as_deref(), Some("---\r\ntitle: T\r\nline_width: 56\r\n---\r\nx\r\n"));
+    assert_eq!(width("\u{feff}---\r\nline_width: 96\r\n---\r\nx"), Some(96));
+    assert_eq!(set_width("\u{feff}x\n", Some(56)).as_deref(), Some("\u{feff}---\nline_width: 56\n---\n\nx\n"));
+}
+
+#[test]
+fn the_template_and_the_width_live_in_one_block() {
+    let t = set(&set_width("Body\n", Some(56)).unwrap(), Some("Academic")).unwrap();
+    assert_eq!(t, "---\nline_width: 56\ntemplate: Academic\n---\n\nBody\n");
+    assert_eq!(read(&t).as_deref(), Some("Academic"));
+    assert_eq!(width(&t), Some(56));
+    assert_eq!(set_width(&t, None).as_deref(), Some("---\ntemplate: Academic\n---\n\nBody\n"));
+}
