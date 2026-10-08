@@ -62,6 +62,17 @@ pub struct RenderOptions {
     /// their size in points. An `<img>` for a destination listed here carries `width` and `height`,
     /// so the page reserves its room before the picture arrives and nothing jumps.
     pub image_sizes: Vec<ImageSize>,
+    /// Pictures the shell has read for the export (the core reads no files): an `<img>` whose destination is listed
+    /// here gets a `data:` URI of the bytes as its `src`, so the page needs nothing beside it.
+    pub image_data: Vec<ImageData>,
+}
+
+/// A picture's bytes and type, for the destination exactly as written in the Markdown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageData {
+    pub destination: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
 }
 
 /// A picture's size, in CSS pixels (points), for the destination exactly as written in the Markdown.
@@ -82,6 +93,7 @@ impl Default for RenderOptions {
             fallback_title: String::new(),
             style: None,
             image_sizes: Vec::new(),
+            image_data: Vec::new(),
         }
     }
 }
@@ -162,6 +174,23 @@ fn render(text: &str, window: Option<(usize, usize)>, opts: &RenderOptions) -> S
     page.push_str(&body);
     page.push_str("</main>\n</body>\n</html>\n");
     page
+}
+
+/// Standard base64 with padding.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
+        for k in 0..4 {
+            if k <= chunk.len() {
+                out.push(ALPHABET[(n >> (18 - 6 * k) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// The standalone page's policy, in its head before anything a document can write (a later
@@ -985,7 +1014,11 @@ impl<'a, 'o> Renderer<'a, 'o> {
 
     fn image(&mut self, dest: &str, title: &str, from: usize, end: usize) {
         self.write("<img src=\"");
-        if !self.opts.sanitize || is_safe_url(dest, true) {
+        if let Some(d) = self.opts.image_data.iter().find(|d| d.destination == dest && !d.bytes.is_empty()) {
+            // Base64 has nothing in it that needs escaping, and a `data:` URI is safe where the picture is the owner's.
+            let uri = format!("data:{};base64,{}", d.mime, base64(&d.bytes));
+            self.attr(&uri);
+        } else if !self.opts.sanitize || is_safe_url(dest, true) {
             self.href(dest);
         }
         self.write("\" alt=\"");

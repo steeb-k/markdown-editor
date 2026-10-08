@@ -25,6 +25,10 @@ syntect = { version = "5.3.0", default-features = false, features = ["parsing", 
 # syntect SyntaxSet. Same pure-Rust regex backend.
 two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
 
+# The .docx package. Pure Rust (deflate through miniz_oxide): no C library, so it builds for both macOS architectures and
+# Linux. The same crate reads the package back, which the tests use.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 [dev-dependencies]
 # pulldown-cmark's own HTML writer, as the reference the renderer is compared with (tests/render.rs).
 pulldown-cmark = { version = "=0.13.4", default-features = false, features = ["html"] }

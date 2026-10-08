@@ -1,0 +1,12 @@
+---
+source: crates/markdown-core/tests/export.rs
+expression: plain(&text)
+---
+Unicode 🎉
+
+Emoji: 👩‍💻 🇯🇵 🎉
+Combining: é ñ ä
+CJK: 日本語の太字。中文
+
+- リスト
+- café ✨

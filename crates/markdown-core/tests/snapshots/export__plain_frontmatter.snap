@@ -1,0 +1,11 @@
+---
+source: crates/markdown-core/tests/export.rs
+expression: plain(&text)
+---
+Document
+
+    fn main() {
+        println!("hello");
+    }
+
+    print("tilde fence")
