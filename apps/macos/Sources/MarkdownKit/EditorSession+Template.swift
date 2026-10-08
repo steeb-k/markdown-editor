@@ -9,6 +9,11 @@ extension EditorSession {
         coordinator.sync { $0.frontMatterTemplate() }
     }
 
+    /// The `line_width:` the front matter gives this document (an integer from 30 to 160), as the core reads it.
+    public func frontMatterLineWidth() -> Int? {
+        coordinator.sync { $0.frontMatterLineWidth() }.map(Int.init)
+    }
+
     /// The template for a front matter name, and the note the Format menu shows when the name is not installed.
     public func resolvedTemplate(frontMatterName: String?) -> (template: InstalledTemplate, note: String?) {
         TemplateStore.shared.resolve(frontMatterName: frontMatterName, defaultName: settings.defaultTemplate)
@@ -24,15 +29,26 @@ extension EditorSession {
     /// caret where it was in the text. False when there is nothing to change or the text cannot be edited.
     @discardableResult
     public func setTemplate(name: String?) -> Bool {
+        applyFrontMatterEdit(actionName: "Change Template") { $0.setFrontMatterTemplate(name: name) }
+    }
+
+    /// Makes `width` the front matter's `line_width:` (nil removes the key) as one undoable edit, "Change Line Width".
+    @discardableResult
+    public func setLineWidth(_ width: Int?) -> Bool {
+        applyFrontMatterEdit(actionName: "Change Line Width") { $0.setFrontMatterLineWidth(width: width.map { UInt32($0) }) }
+    }
+
+    /// One front matter edit from the core as one undo step, keeping the caret where it was in the text.
+    private func applyFrontMatterEdit(actionName: String, _ make: (Document) -> TextEdit?) -> Bool {
         guard let tv = textView, tv.isEditable else { return false }
-        guard var edit = coordinator.sync({ $0.setFrontMatterTemplate(name: name) }) else { return false }
+        guard var edit = coordinator.sync(make) else { return false }
         // The core's selection is the caret after the new text; the writer's own caret stays with the words it was in.
         let sel = tv.selectedRange()
         let (a, b) = (Int(edit.range.start), Int(edit.range.end))
         let newLength = (edit.replacement as NSString).length
         func moved(_ p: Int) -> Int { p >= b ? p + newLength - (b - a) : (p > a ? a + newLength : p) }
         edit.selection = Utf16Range(start: UInt32(moved(sel.location)), end: UInt32(moved(NSMaxRange(sel))))
-        tv.apply(edit, actionName: "Change Template")
+        tv.apply(edit, actionName: actionName)
         return true
     }
 }

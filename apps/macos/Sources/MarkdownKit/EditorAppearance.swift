@@ -10,21 +10,25 @@ public struct EditorAppearance {
     public let fonts: FontSet
     /// Total line height as a multiple of the font size.
     public let lineHeight: CGFloat
+    /// The editor column's width in characters: the document's own `line_width:` when it has one, else the setting.
     public let maxCharacters: Int
+    /// The setting's width alone, which the preview's column keeps whatever a document says (templates govern it).
+    public let settingsCharacters: Int
 
     /// Space above the first line and below the last, inside the scroll view's content insets
     /// (which already keep clear of the title bar and the toolbar).
     public static let topInset: CGFloat = 52
     public static let minimumSideMargin: CGFloat = 28
 
-    public init(settings: Settings, appearance: NSAppearance?, store: ThemeStore = .shared) {
+    public init(settings: Settings, appearance: NSAppearance?, documentLineWidth: Int? = nil, store: ThemeStore = .shared) {
         choice = settings.theme
         theme = store.theme(for: settings.theme, appearance: appearance)
         palette = store.palette(theme)
         fonts = FontStore.fonts(choice: settings.fontChoice, customFamily: settings.customFontFamily,
                                 size: CGFloat(settings.fontSize))
         lineHeight = 1.5
-        maxCharacters = settings.lineWidth
+        settingsCharacters = settings.lineWidth
+        maxCharacters = documentLineWidth ?? settings.lineWidth
     }
 
     /// Width of the text column: `maxCharacters` of the current font ("0" is the yardstick).

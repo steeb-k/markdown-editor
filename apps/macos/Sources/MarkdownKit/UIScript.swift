@@ -353,6 +353,8 @@ final class UIScriptRunner {
             notesStep(n, then: done)
         } else if let name = step["template"] as? String {
             templateStep(name, then: done)
+        } else if let l = step["lineWidth"] as? [String: Any] {
+            lineWidthStep(l, then: done)
         } else if let o = step["outline"] as? [String: Any] {
             outlineStep(o, then: done)
         } else if let h = step["history"] as? [String: Any] {
@@ -2426,6 +2428,7 @@ final class UIScriptRunner {
         if let n = a["notes"] as? [String: Any] { notesAssertions(n) }
         if let o = a["outline"] as? [String: Any] { outlineAssertions(o) }
         if let t = a["template"] as? [String: Any] { templateAssertions(t) }
+        if a["measure"] != nil || a["lineWidthMenu"] != nil { lineWidthAssertions(a) }
         if let t = a["templates"] as? [String: Any] { templatesAssertions(t) }
         if let c = a["code"] as? [String: Any] { codeAssertions(c) }
         if let p = a["palette"] as? [String: Any] { paletteAssertions(p) }

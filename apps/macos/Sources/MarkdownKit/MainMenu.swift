@@ -252,6 +252,7 @@ enum MainMenu {
             _ = item(m, "Make Text Bigger", #selector(AppDelegate.biggerText(_:)), "+")
             _ = item(m, "Make Text Smaller", #selector(AppDelegate.smallerText(_:)), "-")
             _ = item(m, "Actual Size", #selector(AppDelegate.actualSize(_:)), "0")
+            attach(m, LineWidthMenu.makeMenu())
             m.addItem(.separator())
             _ = item(m, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         }

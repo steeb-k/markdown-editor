@@ -141,6 +141,9 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         for t in held { realign(t, token: selectionToken) }
     }
     private var observers: [NSObjectProtocol] = []
+    /// The `line_width:` the front matter had at the last edit, which the appearance's measure takes in place of the
+    /// setting's.
+    private(set) var documentLineWidth: Int?
 
     public init(settings: Settings = .shared, forcedAppearance: NSAppearance? = nil) {
         self.settings = settings
@@ -262,6 +265,7 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
         inDelegate = true
         coordinator.waitForResult(seq: seq)
         inDelegate = false
+        followLineWidth()
         onTextChange?()
         if !isLoading {
             onLibraryTextChange?()
@@ -375,15 +379,37 @@ public final class EditorSession: NSObject, NSTextStorageDelegate, NSTextViewDel
     }
 
     private func settingsChanged() {
-        let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance())
+        let new = EditorAppearance(settings: settings, appearance: currentSystemAppearance(), documentLineWidth: documentLineWidth)
         applyAppearance(new)
         applyFocusToolSettings()
         authorship.setMeName(name: settings.authorName)
     }
 
+    /// The measure follows the document's own `line_width:` (PLAN 3.24): read after every edit, and the column is laid
+    /// out again only when what the front matter says has changed.
+    private func followLineWidth() {
+        // Only a text that opens with a front matter fence, or one that had a width, can have a different answer; and the
+        // core is asked on its own queue, since waiting for it here would undo the bounded wait of a keystroke.
+        let head = storage.string.hasPrefix("---") || storage.string.hasPrefix("\u{feff}---")
+        guard head || documentLineWidth != nil else { return }
+        // Loading a file is not a keystroke: the width is known before the first line is laid out.
+        if isLoading {
+            let width = frontMatterLineWidth()
+            if width != documentLineWidth { documentLineWidth = width; refreshAppearance() }
+            return
+        }
+        coordinator.async({ $0.frontMatterLineWidth() }) { [weak self] width, seq in
+            guard let self, seq == coordinator.latestSeq else { return }
+            let width = width.map(Int.init)
+            guard width != documentLineWidth else { return }
+            documentLineWidth = width
+            refreshAppearance()
+        }
+    }
+
     /// Re-reads settings and the effective appearance (System theme follows the OS live).
     public func refreshAppearance() {
-        applyAppearance(EditorAppearance(settings: settings, appearance: currentSystemAppearance()))
+        applyAppearance(EditorAppearance(settings: settings, appearance: currentSystemAppearance(), documentLineWidth: documentLineWidth))
     }
 
     func currentSystemAppearance() -> NSAppearance? {

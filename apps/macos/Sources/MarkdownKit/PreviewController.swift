@@ -747,7 +747,7 @@ enum PreviewTypography {
         // A monospaced body is also the code font (same stack: the stylesheet then sets code at the same size).
         let mono = bodyIsMono ? body : stack(for: a.fonts.mono, monospaced: true)
         return Typography(fontFamily: body, monoFamily: mono, fontSizePx: Double(a.fonts.size),
-                          lineHeight: Double(a.lineHeight), measureCh: Double(a.maxCharacters))
+                          lineHeight: Double(a.lineHeight), measureCh: Double(a.settingsCharacters))
     }
 
     /// A font as a CSS family stack: the bundled faces by the names declared for them, installed

@@ -206,6 +206,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         case #selector(showAcknowledgements(_:)): return HelpDocuments.resource("Acknowledgements", extension: "md") != nil
         case #selector(biggerText(_:)): return Settings.shared.fontSize < Settings.fontSizeRange.upperBound
         case #selector(smallerText(_:)): return Settings.shared.fontSize > Settings.fontSizeRange.lowerBound
+        case #selector(lineWidthInfo(_:)): return false
+        case #selector(setLineWidthPreset(_:)):
+            item.state = Settings.shared.lineWidth == item.tag ? .on : .off
+            return true
         default: return true
         }
     }

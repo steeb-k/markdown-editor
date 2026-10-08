@@ -474,6 +474,10 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
     public func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(chooseLookTemplate(_:)): return textView.isEditable
+        case #selector(setDocumentLineWidth(_:)):
+            // Use Setting is the one checked when the front matter has no key; a width that is no preset is "Custom (N)".
+            item.state = (session.documentLineWidth ?? 0) == item.tag ? .on : .off
+            return textView.isEditable
         case #selector(showEditorLayout(_:)): item.state = session.layout == .editor ? .on : .off; return true
         case #selector(showSplitLayout(_:)): item.state = session.layout == .split ? .on : .off; return true
         case #selector(showPreviewLayout(_:)): item.state = session.layout == .preview ? .on : .off; return true
