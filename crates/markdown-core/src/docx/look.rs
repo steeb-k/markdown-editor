@@ -59,6 +59,8 @@ pub(crate) struct Para {
     pub first_line_pt: Option<f64>,
     pub left_pt: f64,
     pub keep_with_next: bool,
+    /// No space between neighbours of the same style (list items), the full space before and after the run of them.
+    pub contextual: bool,
     pub shade: Option<String>,
     /// (side, line, size in eighths of a point, colour, space in points).
     pub borders: Vec<(&'static str, &'static str, i64, String, i64)>,

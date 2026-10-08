@@ -189,8 +189,6 @@ proptest! {
         let text = format!("{}{}", if bom { "\u{feff}" } else { "" }, body.join(eol));
         let name = name.trim().to_owned();
         prop_assume!(!name.is_empty());
-        // A key given twice is invalid YAML: the edit handles the first, so removal would leave the second.
-        prop_assume!(body.iter().filter(|l| **l == "template: X").count() <= 1);
         let set_text = set(&text, Some(&name)).unwrap_or_else(|| text.clone());
         prop_assert_eq!(read(&set_text), Some(name.clone()), "{:?} -> {:?}", text, set_text);
         if let Some(removed) = set(&set_text, None) {
@@ -328,10 +326,22 @@ fn line_width_reads_integers_in_range_only() {
     assert_eq!(width("---\nline_width_x: 56\n---\n"), None);
 }
 
+/// A key written twice is invalid YAML, read by its first line: an edit replaces or removes every line of the key
+/// at once, else a removal would leave the second line to take effect.
 #[test]
-fn line_width_first_duplicate_wins() {
+fn line_width_first_duplicate_wins_and_an_edit_takes_every_line() {
     assert_eq!(width("---\nline_width: 56\nline_width: 96\n---\n"), Some(56));
-    assert_eq!(set_width("---\nline_width: 56\nline_width: 96\n---\n", Some(72)).as_deref(), Some("---\nline_width: 72\nline_width: 96\n---\n"));
+    assert_eq!(set_width("---\nline_width: 56\nline_width: 96\n---\n", Some(72)).as_deref(), Some("---\nline_width: 72\n---\n"));
+    assert_eq!(set_width("---\nline_width: 56\nline_width: 96\n---\n", Some(56)).as_deref(), Some("---\nline_width: 56\n---\n"));
+    assert_eq!(set_width("---\nline_width: 56\nline_width: 96\n---\n\nBody\n", None).as_deref(), Some("Body\n"));
+    // The lines of other keys between the two stay, in their order.
+    assert_eq!(set_width("---\ntitle: T\nline_width: 56\ntags: [a]\nline_width: 96\ntemplate: X\n---\n", None).as_deref(),
+               Some("---\ntitle: T\ntags: [a]\ntemplate: X\n---\n"));
+    assert_eq!(set_width("---\ntitle: T\nline_width: 56\ntags: [a]\nline_width: 96\ntemplate: X\n---\n", Some(72)).as_deref(),
+               Some("---\ntitle: T\nline_width: 72\ntags: [a]\ntemplate: X\n---\n"));
+    // Removing the block's first line takes the blank lines after it too (a block opening blank is no block).
+    assert_eq!(set_width("---\nline_width: 56\n\nline_width: 96\n\ntitle: T\n---\n", None).as_deref(), Some("---\ntitle: T\n---\n"));
+    assert_eq!(set_width("---\r\nline_width: 56\r\nline_width: 96\r\n---\r\nBody\r\n", Some(72)).as_deref(), Some("---\r\nline_width: 72\r\n---\r\nBody\r\n"));
 }
 
 #[test]

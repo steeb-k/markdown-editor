@@ -57,14 +57,20 @@ fn find_block(text: &str) -> Option<Block> {
 
 /// The byte range of the first top-level `key:` line of the block body, with its line ending, and the value text.
 fn find_key(text: &str, b: &Block, key: &str) -> Option<(usize, usize, String)> {
+    find_keys(text, b, key).into_iter().next()
+}
+
+/// Every top-level line of `key`, in order (a duplicate key is read by its first line and removed with it).
+fn find_keys(text: &str, b: &Block, key: &str) -> Vec<(usize, usize, String)> {
     let mut at = b.body;
+    let mut out = Vec::new();
     for line in text[b.body..b.close].split_inclusive('\n') {
         if let Some(rest) = line.strip_prefix(key).and_then(|r| r.strip_prefix(':')) {
-            return Some((at, at + line.len(), read_value(bare(rest))));
+            out.push((at, at + line.len(), read_value(bare(rest))));
         }
         at += line.len();
     }
-    None
+    out
 }
 
 /// A YAML scalar as a name: quoted (`"a \"b\""`, `'it''s'`) or bare up to a ` #` comment, trimmed.
@@ -185,7 +191,11 @@ pub(crate) fn set_front_matter_key(text: &str, key: &str, value: Option<&str>) -
         let gap = if blank { "" } else { eol };
         return Some((start, start, format!("---{eol}{key}: {}{eol}---{eol}{gap}", write_value(name))));
     };
-    let existing = find_key(text, &block, key);
+    let keys = find_keys(text, &block, key);
+    if keys.len() > 1 {
+        return set_repeated_key(text, &block, key, name, &keys);
+    }
+    let existing = keys.into_iter().next();
     match (name, existing) {
         (Some(name), Some((from, to, current))) => {
             if current == name {
@@ -216,14 +226,57 @@ pub(crate) fn set_front_matter_key(text: &str, key: &str, value: Option<&str>) -
                 }
                 return Some((from, to, String::new()));
             }
-            // Nothing else in the block: it goes, and the blank line that was made for it.
-            let after = &text[block.end..];
-            // Unless the text after it would then open a front matter block of its own.
-            let blank = after
-                .split_inclusive('\n')
-                .next()
-                .filter(|l| bare(l).trim().is_empty() && !l.is_empty() && find_block(&after[l.len()..]).is_none());
-            Some((block.start, block.end + blank.map_or(0, str::len), String::new()))
+            Some(block_removal(text, &block))
         }
     }
+}
+
+/// Nothing else in the block: it goes, and the blank line that was made for it, unless the text after it would then
+/// open a front matter block of its own.
+fn block_removal(text: &str, block: &Block) -> (usize, usize, String) {
+    let after = &text[block.end..];
+    let blank = after
+        .split_inclusive('\n')
+        .next()
+        .filter(|l| bare(l).trim().is_empty() && !l.is_empty() && find_block(&after[l.len()..]).is_none());
+    (block.start, block.end + blank.map_or(0, str::len), String::new())
+}
+
+/// A key written more than once: the first line is read, so the first is replaced (or removed) and the others go with
+/// it in the same edit, else a removal would leave the second line to take effect. The lines of other keys between
+/// them stay; with none of them left the block goes as a whole.
+fn set_repeated_key(text: &str, block: &Block, key: &str, name: Option<&str>, keys: &[(usize, usize, String)]) -> Option<(usize, usize, String)> {
+    let (first, last) = (keys[0].0, keys[keys.len() - 1].1);
+    let is_key = |at: usize| keys.iter().any(|k| k.0 == at);
+    let mut kept = String::new();
+    let mut at = first;
+    for line in text[first..last].split_inclusive('\n') {
+        if !is_key(at) {
+            kept.push_str(line);
+        }
+        at += line.len();
+    }
+    if let Some(name) = name {
+        let line_eol = if text[block.start..block.body].ends_with("\r\n") { "\r\n" } else { "\n" };
+        return Some((first, last, format!("{key}: {}{line_eol}{kept}", write_value(name))));
+    }
+    let others = !kept.trim().is_empty() || !text[block.body..first].trim().is_empty() || !text[last..block.close].trim().is_empty();
+    if !others {
+        return Some(block_removal(text, block));
+    }
+    let mut to = last;
+    if first == block.body {
+        // As for one line: a block that opens with a blank line is no block to the parser.
+        let blank = kept.len() - kept.trim_start_matches([' ', '\t', '\r', '\n']).len();
+        kept.drain(..blank);
+        if kept.is_empty() {
+            for line in text[to..block.close].split_inclusive('\n') {
+                if !bare(line).bytes().all(|b| b == b' ' || b == b'\t') {
+                    break;
+                }
+                to += line.len();
+            }
+        }
+    }
+    Some((first, to, kept))
 }

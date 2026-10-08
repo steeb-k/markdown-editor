@@ -47,12 +47,14 @@ impl Resources {
         id
     }
 
-    /// The relationship for an external address (the same address twice is one relationship).
+    /// The relationship for an external address (the same address twice is one relationship). The target must be a
+    /// URI, which an address written as `<my file.md>` is not: a space and the other characters a URI cannot hold are
+    /// percent-encoded, and what is already encoded is left as it is.
     pub fn hyperlink(&mut self, url: &str) -> String {
         if let Some(id) = self.links.get(url) {
             return id.clone();
         }
-        let id = self.add("hyperlink", url.to_owned(), true);
+        let id = self.add("hyperlink", uri_target(url), true);
         self.links.insert(url.to_owned(), id.clone());
         id
     }
@@ -198,4 +200,19 @@ pub(crate) fn zip(parts: Parts) -> Vec<u8> {
         Ok(z.finish()?.into_inner())
     };
     write().unwrap_or_default()
+}
+
+/// `url` as a relationship target: bytes outside the characters a URI allows (RFC 3986's unreserved, reserved and `%`),
+/// including spaces, controls and non-ASCII, percent-encoded.
+pub(crate) fn uri_target(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+    for b in url.bytes() {
+        let allowed = b.is_ascii_alphanumeric() || b"-._~:/?#[]@!$&'()*+,;=%".contains(&b);
+        if allowed {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }

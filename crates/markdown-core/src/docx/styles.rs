@@ -79,6 +79,9 @@ pub(crate) fn ppr_xml(para: &Para, num_pr: &str, outline: Option<u8>) -> String 
         }
         x.push_str("/>");
     }
+    if para.contextual {
+        x.push_str("<w:contextualSpacing/>");
+    }
     if let Some(a) = para.align {
         x.push_str(&val("jc", a));
     }
@@ -211,8 +214,10 @@ pub(crate) fn styles_xml(look: &Look, heading_num: Option<u32>) -> String {
     para.align = None;
     w.paragraph("Code", "Code", Some("Normal"), &face, &para, None);
 
-    // Lists, table cells, the footnotes and the rule.
-    let para = Para { after_pt: look.body_pt * 0.15, line: normal.line, align: normal.align, ..Para::default() };
+    // Lists, table cells, the footnotes and the rule. Items sit close together and the list keeps a paragraph's space
+    // from what follows it, as the HTML sets them: Word's contextual spacing, which drops the space between neighbours
+    // of one style.
+    let para = Para { after_pt: normal.after_pt, line: normal.line, align: normal.align, contextual: true, ..Para::default() };
     w.paragraph("ListParagraph", "List Paragraph", Some("Normal"), &body_face, &para, None);
 
     let cell = Para { line: normal.line, ..Para::default() };

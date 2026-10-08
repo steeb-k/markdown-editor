@@ -338,6 +338,26 @@ fn docx_links_are_relationships() {
     // Ampersands in an address are escaped.
     let d = docx("[q](https://x.org/?a=1&b=2)\n");
     assert!(d.rels().contains("Target=\"https://x.org/?a=1&amp;b=2\""));
+    // A target must be a URI: a space, a non-ASCII letter and the characters a URI cannot hold are percent-encoded,
+    // and one already encoded stays as written.
+    let d = docx("[f](<my file.md>) [u](https://x.org/caf\u{e9}) [b](https://x.org/a%20b) [c](https://x.org/{x}|y)\n");
+    let rels = d.rels();
+    assert!(rels.contains("Target=\"my%20file.md\""), "{rels}");
+    assert!(rels.contains("Target=\"https://x.org/caf%C3%A9\""), "{rels}");
+    assert!(rels.contains("Target=\"https://x.org/a%20b\""), "{rels}");
+    assert!(rels.contains("Target=\"https://x.org/%7Bx%7D%7Cy\""), "{rels}");
+}
+
+/// Items sit close together and the list keeps a paragraph's space from what follows it, as the HTML sets them.
+#[test]
+fn docx_list_items_have_contextual_spacing() {
+    let d = docx("- a\n- b\n\nAfter.\n");
+    let list = d.style("ListParagraph");
+    let normal = d.style("Normal");
+    assert!(list.contains("<w:contextualSpacing/>"), "{list}");
+    assert!(!normal.contains("<w:contextualSpacing/>"));
+    let after = |s: &str| s.split("w:after=\"").nth(1).and_then(|r| r.split('"').next()).map(str::to_owned);
+    assert_eq!(after(&list), after(&normal), "a list's space after is a paragraph's");
 }
 
 #[test]
