@@ -103,6 +103,22 @@ fn plain_survives_what_panics_the_parser() {
     assert!(!plain(">1. [r]:u\n\t").is_empty());
 }
 
+// ----- Markdown ---------------------------------------------------------------------------------
+
+#[test]
+fn markdown_without_front_matter() {
+    let without = |t: &str| doc(t).text_without_front_matter();
+    assert_eq!(without("---\ntitle: T\n---\n\n# Head\n"), "# Head\n");
+    assert_eq!(without("---\ntitle: T\n---\n# Head\n"), "# Head\n");
+    assert_eq!(without("---\r\ntitle: T\r\n...\r\n\r\n\r\nBody\r\n"), "Body\r\n");
+    assert_eq!(without("\u{feff}---\na: b\n---\nBody\n"), "\u{feff}Body\n");
+    assert_eq!(without("---\na: b\n---\n"), "");
+    // Not front matter: left as written.
+    assert_eq!(without("# Head\n\n---\na: b\n---\n"), "# Head\n\n---\na: b\n---\n");
+    assert_eq!(without("---\n\nnot a block\n---\n"), "---\n\nnot a block\n---\n");
+    assert_eq!(without(""), "");
+}
+
 // ----- the HTML export's pictures ---------------------------------------------------------------
 
 fn html_with(text: &str, data: Vec<ImageData>) -> String {

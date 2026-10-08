@@ -1189,6 +1189,11 @@ impl Document {
         self.with(|d| d.render_html(&options.into()))
     }
 
+    /// The text without its front matter block and the blank lines after it.
+    pub fn text_without_front_matter(&self) -> String {
+        self.with(|d| d.text_without_front_matter())
+    }
+
     /// The document as plain text: no markup, `\n` line endings.
     pub fn render_plain(&self) -> String {
         self.with(|d| d.render_plain())

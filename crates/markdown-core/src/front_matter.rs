@@ -150,6 +150,17 @@ pub(crate) fn front_matter_line_width(text: &str) -> Option<u32> {
     v.parse::<u32>().ok().filter(|n| (30..=160).contains(n))
 }
 
+/// `text` without its front matter block and the blank lines after it (a byte order mark stays): the Markdown export's
+/// "leave the front matter out". Text with no block is returned as it is.
+pub(crate) fn without_front_matter(text: &str) -> String {
+    let Some(block) = find_block(text) else { return text.to_owned() };
+    let mut rest = &text[block.end..];
+    while let Some(line) = rest.split_inclusive('\n').next().filter(|l| bare(l).bytes().all(|b| b == b' ' || b == b'\t')) {
+        rest = &rest[line.len()..];
+    }
+    format!("{}{rest}", &text[..block.start])
+}
+
 /// The edit that makes `line_width:` the given number (`None` removes the key).
 pub(crate) fn set_front_matter_line_width(text: &str, width: Option<u32>) -> Option<(usize, usize, String)> {
     set_front_matter_key(text, "line_width", width.map(|w| w.to_string()).as_deref())

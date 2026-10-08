@@ -307,6 +307,12 @@ impl Document {
         self.front_matter_edit(crate::front_matter::set_front_matter_template(&self.text, name))
     }
 
+    /// The text without its front matter block and the blank lines after it, for the Markdown export that leaves the
+    /// front matter out; text with no block is returned as it is.
+    pub fn text_without_front_matter(&self) -> String {
+        crate::front_matter::without_front_matter(&self.text)
+    }
+
     /// The document's own measure: the `line_width:` of the front matter as an integer from 30 to 160, else `None`.
     pub fn front_matter_line_width(&self) -> Option<u32> {
         crate::front_matter::front_matter_line_width(&self.text)
