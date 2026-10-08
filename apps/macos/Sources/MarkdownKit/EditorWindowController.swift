@@ -437,7 +437,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         guard let window, let doc = document as? MarkdownDocument else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = (doc.displayName ?? "Untitled") + ".pdf"
+        panel.nameFieldStringValue = doc.exportFileName(extension: "pdf")
         if let folder = doc.fileURL?.deletingLastPathComponent() { panel.directoryURL = folder }
         panel.canCreateDirectories = true
         panel.beginSheetModal(for: window) { response in
@@ -486,7 +486,7 @@ public final class EditorWindowController: NSWindowController, NSWindowDelegate,
         guard let window, let doc = document as? MarkdownDocument else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [format.contentType]
-        panel.nameFieldStringValue = (doc.displayName ?? "Untitled") + "." + format.fileExtension
+        panel.nameFieldStringValue = doc.exportFileName(extension: format.fileExtension)
         if let folder = doc.fileURL?.deletingLastPathComponent() { panel.directoryURL = folder }
         panel.canCreateDirectories = true
         panel.accessoryView = accessory

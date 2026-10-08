@@ -609,6 +609,71 @@ final class ExportTests: XCTestCase {
         doc.close()
     }
 
+    /// The save panel asks before it replaces a file, but an open document's file is not the export's to replace: the
+    /// document would read it back as changed on disk, and the Markdown export (no annotation block, maybe no front
+    /// matter) or the plain text one over a `.txt` would take the marks, the front matter or the markup out of it.
+    func testAnExportDoesNotReplaceAnOpenDocumentsFile() throws {
+        let original = "---\ntitle: T\n---\n\nmine\n"
+        let doc = try document(original)
+        let own = try XCTUnwrap(doc.fileURL)
+        for (format, keep) in [(ExportFormat.markdown, false), (.plainText, true)] {
+            let (url, error) = exportFormat(doc, format, to: own.lastPathComponent, keepFrontMatter: keep)
+            XCTAssertEqual(error as? ExportError, .isOpenDocument(own.lastPathComponent), "\(format)")
+            XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), original, "the file is untouched")
+        }
+        // Another spelling of the same file, as a case-insensitive volume has it.
+        let (_, error) = exportFormat(doc, .markdown, to: own.lastPathComponent.uppercased())
+        XCTAssertEqual(error as? ExportError, .isOpenDocument(own.lastPathComponent.uppercased()))
+        // Another open document's file.
+        let other = try document("other\n", file: "other.md")
+        NSDocumentController.shared.addDocument(other)
+        defer { NSDocumentController.shared.removeDocument(other); other.close() }
+        let (_, otherError) = exportFormat(doc, .markdown, to: "other.md")
+        XCTAssertEqual(otherError as? ExportError, .isOpenDocument("other.md"))
+        XCTAssertEqual(try String(contentsOf: tmp.appendingPathComponent("other.md"), encoding: .utf8), "other\n")
+        XCTAssertTrue((otherError as? LocalizedError)?.errorDescription?.contains("other.md") == true)
+        // A file that is no document's is replaced as before.
+        let (_, fine) = exportFormat(doc, .markdown, to: "copy.md")
+        XCTAssertNil(fine)
+        doc.close()
+    }
+
+    func testTheOtherFormatsSettleWhenTheDocumentClosesAndWhenTwoRunAtOnce() throws {
+        try put("small.png")
+        let doc = try document(Self.formatted)
+        // Typed and not saved: the export is of the text as it is now.
+        doc.session.textView?.insertText("Typed now. ", replacementRange: NSRange(location: (doc.session.text as NSString).length, length: 0))
+        var results: [Error?] = []
+        let a = tmp.appendingPathComponent("a.docx"), b = tmp.appendingPathComponent("b.html"), c = tmp.appendingPathComponent("a.txt")
+        doc.exportWord(to: a) { results.append($0) }
+        doc.exportHTML(to: b) { results.append($0) }
+        doc.exportPlainText(to: c) { results.append($0) }
+        doc.exportPlainText(to: c) { results.append($0) }
+        doc.close()
+        XCTAssertTrue(spin(timeout: 30) { results.count == 4 }, "every export finished")
+        pumpRunLoop(0.2)
+        XCTAssertEqual(results.count, 4)
+        XCTAssertTrue(results.allSatisfy { $0 == nil }, "\(results)")
+        XCTAssertEqual(MarkdownDocument.exportsInFlight, 0)
+        XCTAssertTrue(try String(contentsOf: c, encoding: .utf8).contains("Typed now."))
+        XCTAssertTrue(try String(contentsOf: b, encoding: .utf8).contains("Typed now."))
+        XCTAssertNotNil(try unzip(a)["word/media/image1.png"])
+    }
+
+    /// The save panels' names: the document's name with the format's extension in place of `.md`. The display name keeps
+    /// the extension whenever the file's is not hidden (a file not made by a save panel), which gave `doc.md.html`.
+    func testTheSavePanelsNameIsTheDocumentsWithTheFormatsExtension() throws {
+        let doc = try document("# Hello\n", file: "My.Notes.md")
+        XCTAssertEqual(doc.exportFileName(extension: "html"), "My.Notes.html")
+        XCTAssertEqual(doc.exportFileName(extension: "md"), "My.Notes.md")
+        XCTAssertEqual(doc.exportFileName(extension: "pdf"), "My.Notes.pdf")
+        doc.close()
+        let untitled = try document("", file: nil)
+        XCTAssertEqual(untitled.exportFileName(extension: "docx"), (untitled.displayName ?? "Untitled") + ".docx")
+        XCTAssertFalse(untitled.exportFileName(extension: "docx").contains(".md"))
+        untitled.close()
+    }
+
     func testTheExportMenuHasTheFiveFormatsAndTheyAreEnabledOnlyWithADocument() throws {
         _ = NSApplication.shared
         let file = try XCTUnwrap(MainMenu.build().items.first { $0.title == "File" }?.submenu)

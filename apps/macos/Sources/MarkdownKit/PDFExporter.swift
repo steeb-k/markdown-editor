@@ -344,6 +344,8 @@ extension MarkdownDocument {
 enum ExportError: Error, LocalizedError, Equatable {
     case pageDidNotLoad, printFailed, useAsynchronousPath
     case cannotWrite(String)
+    /// The destination is the file of a document that is open.
+    case isOpenDocument(String)
 
     var errorDescription: String? {
         switch self {
@@ -352,12 +354,14 @@ enum ExportError: Error, LocalizedError, Equatable {
         case .useAsynchronousPath: return "Use File > Print."
         case .cannotWrite(let name):
             return "\(ExportFormat.subject(ofFileNamed: name)) could not be saved as “\(name)” because you don’t have permission to write there."
+        case .isOpenDocument(let name):
+            return "\(ExportFormat.subject(ofFileNamed: name)) could not be saved as “\(name)” because that file is a document open in Markdown."
         }
     }
 
     var recoverySuggestion: String? {
         switch self {
-        case .cannotWrite: return "Choose another folder or file name."
+        case .cannotWrite, .isOpenDocument: return "Choose another folder or file name."
         default: return nil
         }
     }

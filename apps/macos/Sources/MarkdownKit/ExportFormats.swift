@@ -62,6 +62,13 @@ enum ExportPictures {
 }
 
 extension MarkdownDocument {
+    /// The name a save panel for an export starts with: the document's name with `ext` in place of its own (the
+    /// display name keeps `.md` when the file's extension is not hidden, which would give `name.md.html`).
+    public func exportFileName(extension ext: String) -> String {
+        let base = fileURL.map { $0.deletingPathExtension().lastPathComponent } ?? displayName ?? "Untitled"
+        return base + "." + ext
+    }
+
     /// One self-contained HTML file: the core's standalone page with the document's template inlined, in the Light theme (the
     /// printed look) and the editor's type, and the local pictures embedded as `data:` URIs. The bundled fonts' `@font-face`
     /// rules are left out (they point at the app's own scheme); the family names stay in the stacks, so a reader without
@@ -111,6 +118,15 @@ extension MarkdownDocument {
         }
     }
 
+    /// Whether two file URLs name one file: the same path once links are resolved, or (on a case-insensitive volume, or
+    /// through a hard link) the same file on disk.
+    static func sameFile(_ a: URL, _ b: URL) -> Bool {
+        if a.standardizedFileURL.resolvingSymlinksInPath().path == b.standardizedFileURL.resolvingSymlinksInPath().path { return true }
+        guard let x = try? a.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier,
+              let y = try? b.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier else { return false }
+        return x.isEqual(y)
+    }
+
     /// The common path: the pictures are read on a utility queue (their names come from the core first), `render` runs on the
     /// session's analysis queue, where the core document lives, and the file is written on a utility queue. A destination
     /// that cannot be written is reported before any of it. `completion` runs once, on the main thread.
@@ -119,6 +135,13 @@ extension MarkdownDocument {
                            render: @escaping (Document, [ImageData], [ImageSize]) -> Data) {
         if let problem = ExportError.destinationProblem(url) {
             completion(problem)
+            return
+        }
+        // An open document's file (this one's included) is not the export's to replace, though the save panel offers it:
+        // the document would read it back as changed on disk, and lose its marks, its front matter or its markup.
+        let open = NSDocumentController.shared.documents.compactMap(\.fileURL) + [fileURL].compactMap { $0 }
+        if open.contains(where: { Self.sameFile($0, url) }) {
+            completion(ExportError.isOpenDocument(url.lastPathComponent))
             return
         }
         // As for the PDF: the system may end the app at once at log-out or when it has nothing on screen, and the window may
